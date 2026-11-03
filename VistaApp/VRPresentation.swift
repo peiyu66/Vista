@@ -9,7 +9,12 @@ import Observation
     var active = false
     var opening = false
     var message: String?
-    var image: CGImage? { testPattern ? Self.pattern : player?.frame?.image }
+    var image: CGImage? {
+        testPattern ? (settings.projection == .equidistantFisheye180 ? Self.fisheyePatterns[settings.layout] : Self.pattern) : player?.frame?.image
+    }
+    private static let fisheyePatterns: [VRLayout: CGImage] = VRLayout.allCases.reduce(into: [:]) { result, layout in
+        result[layout] = VRFisheyeCalibration.image(layout: layout)
+    }
     static let pattern: CGImage? = {
         guard let context = CGContext(data: nil, width: 1024, height: 512, bitsPerComponent: 8, bytesPerRow: 4096,
                                       space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
@@ -35,7 +40,11 @@ struct VRSettingsView: View {
         Picker("排列", selection: Binding(get: { presentation.settings.layout }, set: { presentation.settings.layout = $0; edited() })) {
             ForEach(VRLayout.allCases, id: \.self) { Text($0.title).tag($0) }
         }.accessibilityIdentifier("vrLayout")
-        if presentation.settings.layout != .mono { Toggle("交換左右眼", isOn: Binding(get: { presentation.settings.swapEyes }, set: { presentation.settings.swapEyes = $0; edited() })) }
+        if presentation.settings.projection == .equidistantFisheye180 {
+            Text("每眼須為置中的 180° 等距圓形影像，圓徑等於短邊；不適用前後雙魚眼 360° 或需鏡頭校正的素材。")
+                .font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("fisheyeScope")
+        }
+        if presentation.settings.layout != .mono { Toggle("交換左右眼", isOn: Binding(get: { presentation.settings.swapEyes }, set: { presentation.settings.swapEyes = $0; edited() })).accessibilityIdentifier("swapVREyes") }
     }
 }
 
@@ -44,7 +53,8 @@ struct VRSettingsView: View {
     var error: String?
     var ready = false
     private var material: ShaderGraphMaterial?
-    private var projection: VRProjection?
+    private struct GeometryKey: Equatable { let projection: VRProjection; let width: Int; let height: Int }
+    private var geometry: GeometryKey?
     @ObservationIgnored private var pending: (CGImage?, VRSettings)?
     @ObservationIgnored private var worker: Task<Void, Never>?
     @ObservationIgnored private var generation = 0
@@ -86,15 +96,18 @@ struct VRSettingsView: View {
             guard expected == generation else { return }
             try material.setParameter(name: "LeftTexture", value: .textureResource(leftTexture))
             try material.setParameter(name: "RightTexture", value: .textureResource(rightTexture))
-            if projection != settings.projection || entity.model == nil {
-                let data = VRMesh(projection: settings.projection)
+            let key = GeometryKey(projection: settings.projection, width: left.width, height: left.height)
+            if geometry != key || entity.model == nil {
+                guard let data = VRMesh(projection: settings.projection, eyeWidth: left.width, eyeHeight: left.height) else {
+                    throw CocoaError(.coderInvalidValue)
+                }
                 var descriptor = MeshDescriptor(name: "Vista panorama")
                 descriptor.positions = MeshBuffers.Positions(data.positions)
                 descriptor.normals = MeshBuffers.Normals(data.normals)
                 descriptor.textureCoordinates = MeshBuffers.TextureCoordinates(data.uv)
                 descriptor.primitives = .triangles(data.indices)
                 entity.model = ModelComponent(mesh: try MeshResource.generate(from: [descriptor]), materials: [material])
-                projection = settings.projection
+                geometry = key
             } else { entity.model?.materials = [material] }
             entity.orientation = simd_quatf(angle: Float(settings.yawDegrees * .pi / 180), axis: [0, 1, 0])
             entity.isEnabled = true; ready = true; error = nil
@@ -118,7 +131,13 @@ struct VRImmersiveView: View {
         } attachments: {
             Attachment(id: "controls") {
                 VStack {
-                    if presentation.testPattern { Text("投影測試圖，非影片播放").accessibilityIdentifier("vrTestPattern") }
+                    if presentation.testPattern {
+                        Text("投影測試圖，非影片播放").accessibilityIdentifier("vrTestPattern")
+                        if presentation.settings.projection == .equidistantFisheye180 {
+                            Text("魚眼校準圖：環線 30°／60°／90°，上綠、右紅、下藍、左黃")
+                                .font(.caption).accessibilityIdentifier("fisheyeCalibration")
+                        }
+                    }
                     if let error = renderer.error { Text(error).accessibilityIdentifier("vrError") }
                     else if renderer.ready { Text(presentation.settings.projection.title).accessibilityIdentifier("vrReady") }
                     else { ProgressView("準備投影…") }

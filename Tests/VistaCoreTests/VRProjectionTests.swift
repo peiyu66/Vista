@@ -25,7 +25,7 @@ struct VRProjectionTests {
         settings.layout = .overUnder
         #expect(settings.crop(width: 400, height: 201, rightEye: false) == nil)
     }
-    @Test(arguments: VRProjection.allCases) func projectionCoverageAndTextureOrientation(projection: VRProjection) {
+    @Test(arguments: [VRProjection.equirectangular180, .equirectangular360]) func projectionCoverageAndTextureOrientation(projection: VRProjection) {
         let mesh = VRMesh(projection: projection)
         #expect(mesh.positions.count == 65 * 33)
         #expect(mesh.indices.count == 64 * 32 * 6)
@@ -41,8 +41,8 @@ struct VRProjectionTests {
             #expect(mesh.positions[16 * 65].z > 99)
         }
     }
-    @Test func trianglesFaceTheViewerInsideSphere() {
-        let mesh = VRMesh(projection: .equirectangular360)
+    @Test(arguments: VRProjection.allCases) func trianglesFaceTheViewerInsideSphere(projection: VRProjection) {
+        let mesh = VRMesh(projection: projection)
         for i in stride(from: 0, to: mesh.indices.count, by: 3) {
             let a = mesh.positions[Int(mesh.indices[i])], b = mesh.positions[Int(mesh.indices[i + 1])], c = mesh.positions[Int(mesh.indices[i + 2])]
             let cross = simd_cross(b - a, c - a)

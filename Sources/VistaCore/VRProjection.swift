@@ -4,8 +4,14 @@ import simd
 import CryptoKit
 
 public enum VRProjection: String, Codable, CaseIterable, Sendable {
-    case equirectangular180, equirectangular360
-    public var title: String { self == .equirectangular180 ? "等距柱狀 180°" : "等距柱狀 360°" }
+    case equirectangular180, equirectangular360, equidistantFisheye180
+    public var title: String {
+        switch self {
+        case .equirectangular180: "等距柱狀 180°"
+        case .equirectangular360: "等距柱狀 360°"
+        case .equidistantFisheye180: "等距魚眼 180°（置中圓）"
+        }
+    }
 }
 public enum VRLayout: String, Codable, CaseIterable, Sendable {
     case mono, sideBySide, overUnder
@@ -36,9 +42,14 @@ public struct VRMesh: Sendable {
     public let normals: [SIMD3<Float>]
     public let uv: [SIMD2<Float>]
     public let indices: [UInt32]
-    public init(projection: VRProjection) {
+    public init(projection: VRProjection) { self.init(projection: projection, eyeAspect: 1) }
+    public init?(projection: VRProjection, eyeWidth: Int, eyeHeight: Int) {
+        guard eyeWidth > 0, eyeHeight > 0 else { return nil }
+        self.init(projection: projection, eyeAspect: Float(eyeWidth) / Float(eyeHeight))
+    }
+    private init(projection: VRProjection, eyeAspect: Float) {
         let columns = 64, rows = 32
-        let span: Float = projection == .equirectangular180 ? .pi : 2 * .pi
+        let span: Float = projection == .equirectangular360 ? 2 * .pi : .pi
         var positions: [SIMD3<Float>] = [], normals: [SIMD3<Float>] = [], uv: [SIMD2<Float>] = []
         var indices: [UInt32] = []
         for row in 0...rows {
@@ -48,7 +59,14 @@ public struct VRMesh: Sendable {
                 let direction = SIMD3<Float>(sin(longitude) * cos(latitude), sin(latitude), -cos(longitude) * cos(latitude))
                 positions.append(direction * 100)
                 normals.append(-direction)
-                uv.append(SIMD2(u, 1 - v))
+                if projection == .equidistantFisheye180 {
+                    let radial = hypot(direction.x, direction.y)
+                    let angle = atan2(radial, max(0, -direction.z))
+                    // r = f*theta; the 90-degree rim maps to the inscribed circle.
+                    let scale = radial > 0.000001 ? angle / (.pi * radial) : 1 / Float.pi
+                    uv.append(SIMD2(0.5 + direction.x * scale * min(1, 1 / eyeAspect),
+                                    0.5 + direction.y * scale * min(1, eyeAspect)))
+                } else { uv.append(SIMD2(u, 1 - v)) }
             }
         }
         for row in 0..<rows { for column in 0..<columns {

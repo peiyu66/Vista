@@ -61,6 +61,38 @@ final class VistaUITests: XCTestCase {
         XCTAssertFalse(app.buttons["clearVRFormat"].exists)
         XCTAssertFalse(app.staticTexts["vrPreferenceError"].exists)
     }
+    @MainActor func testFisheyeCalibrationLayoutsAndPersistence() throws {
+        let app = XCUIApplication()
+        func openFixture() {
+            XCTAssertTrue(app.buttons["openDemo"].waitForExistence(timeout: 10)); app.buttons["openDemo"].tap()
+            for name in ["影片，資料夾", "電影，資料夾", "科幻，資料夾", "星際漫遊_SBS_180.mp4，檔案"] {
+                XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 5)); app.buttons[name].tap()
+            }
+            XCTAssertTrue(app.staticTexts["mediaHeader"].waitForExistence(timeout: 5))
+        }
+        app.launch(); openFixture()
+        app.descendants(matching: .any)["vrProjection"].firstMatch.tap()
+        app.buttons["等距魚眼 180°（置中圓）"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["fisheyeScope"].exists)
+        for layout in ["單眼", "左右排列", "上下排列"] {
+            app.descendants(matching: .any)["vrLayout"].firstMatch.tap(); app.buttons[layout].firstMatch.tap()
+            app.buttons["openVRTest"].tap()
+            XCTAssertTrue(app.staticTexts["vrReady"].waitForExistence(timeout: 30))
+            XCTAssertEqual(app.staticTexts["vrReady"].label, "等距魚眼 180°（置中圓）")
+            XCTAssertEqual(app.staticTexts["vrLayoutReady"].label, layout)
+            XCTAssertTrue(app.staticTexts["fisheyeCalibration"].exists)
+            XCTAssertFalse(app.staticTexts["vrError"].exists)
+            print("FISHEYE_VISUAL_READY", layout)
+            Thread.sleep(forTimeInterval: 5)
+            app.buttons["closeVR"].tap()
+            XCTAssertTrue(app.buttons["openVRTest"].waitForExistence(timeout: 10))
+        }
+        app.terminate(); app.launch(); openFixture()
+        XCTAssertTrue(app.staticTexts["fisheyeScope"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["clearVRFormat"].exists)
+        app.buttons["clearVRFormat"].tap()
+        XCTAssertFalse(app.staticTexts["fisheyeScope"].exists)
+    }
     @MainActor func testMetadataAppliesWithoutOverwritingManualFormat() throws {
         let app = XCUIApplication()
         func openFixture() {
