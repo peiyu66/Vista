@@ -1,6 +1,7 @@
 import Foundation
 import CoreGraphics
 import simd
+import CryptoKit
 
 public enum VRProjection: String, Codable, CaseIterable, Sendable {
     case equirectangular180, equirectangular360
@@ -55,5 +56,96 @@ public struct VRMesh: Sendable {
             indices += [a, c, b, b, c, d]
         } }
         self.positions = positions; self.normals = normals; self.uv = uv; self.indices = indices
+    }
+}
+
+
+/// Persisted format deliberately excludes the session's viewing direction.
+public struct VRFormat: Codable, Equatable, Sendable {
+    public let projection: VRProjection
+    public let layout: VRLayout
+    public let swapEyes: Bool
+    public init(_ settings: VRSettings) {
+        projection = settings.projection; layout = settings.layout; swapEyes = settings.swapEyes
+    }
+    public var settings: VRSettings {
+        var value = VRSettings()
+        value.projection = projection; value.layout = layout; value.swapEyes = swapEyes
+        return value
+    }
+}
+
+public struct VRPreferenceSource: Sendable {
+    fileprivate let components: [String]
+    public static let demo = Self(components: ["demo-v1"])
+    public static func smb(server: String, share: String, account: String) -> Self {
+        Self(components: ["smb-v1", server.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), share, account])
+    }
+}
+
+/// Main-actor serialization; opaque identifiers are privacy minimization, not encryption.
+@MainActor public final class VRPreferenceStore {
+    private struct Record: Codable {
+        let revision: String
+        let format: VRFormat
+    }
+    private struct Archive: Codable {
+        var version = 1
+        var secret: Data
+        var records: [String: Record] = [:]
+    }
+    public enum Failure: Error { case invalidArchive, capacity }
+    private let url: URL
+    private var archive: Archive
+    public static let local: Result<VRPreferenceStore, Error> = Result {
+        let folder = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                                 appropriateFor: nil, create: true).appendingPathComponent("Vista", isDirectory: true)
+        return try VRPreferenceStore(url: folder.appendingPathComponent("vr-formats-v1.json"))
+    }
+    public init(url: URL) throws {
+        self.url = url
+        if FileManager.default.fileExists(atPath: url.path) {
+            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max
+            guard size <= 2_097_152 else { throw Failure.invalidArchive }
+            archive = try JSONDecoder().decode(Archive.self, from: Data(contentsOf: url))
+            guard archive.version == 1, archive.secret.count == 32, archive.records.count <= 5000 else {
+                throw Failure.invalidArchive
+            }
+        } else {
+            let key = SymmetricKey(size: .bits256)
+            archive = Archive(secret: key.withUnsafeBytes { Data($0) })
+        }
+    }
+    private func digest(_ parts: [String]) throws -> String {
+        let bytes = try JSONEncoder().encode(parts)
+        return HMAC<SHA256>.authenticationCode(for: bytes, using: SymmetricKey(data: archive.secret))
+            .map { String(format: "%02x", $0) }.joined()
+    }
+    public func load(source: VRPreferenceSource, file: MediaFile, revision: String) throws -> VRFormat? {
+        let key = try digest(source.components + file.components)
+        guard let record = archive.records[key], record.revision == (try digest(["revision", revision])) else { return nil }
+        return record.format
+    }
+    public func save(_ format: VRFormat?, source: VRPreferenceSource, file: MediaFile, revision: String) throws {
+        let key = try digest(source.components + file.components)
+        var next = archive
+        if let format {
+            guard next.records[key] != nil || next.records.count < 5000 else { throw Failure.capacity }
+            next.records[key] = Record(revision: try digest(["revision", revision]), format: format)
+        } else { next.records.removeValue(forKey: key) }
+        let bytes = try JSONEncoder().encode(next)
+        guard bytes.count <= 2_097_152 else { throw Failure.capacity }
+        var folder = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        var values = URLResourceValues(); values.isExcludedFromBackup = true
+        try folder.setResourceValues(values)
+        #if os(visionOS)
+        try bytes.write(to: url, options: [.atomic, .completeFileProtection])
+        #else
+        try bytes.write(to: url, options: .atomic)
+        #endif
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        archive = next
     }
 }

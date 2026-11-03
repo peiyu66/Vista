@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// A share-relative file identity. Never accepts an absolute path or traversal.
 public struct MediaFile: Sendable, Equatable {
@@ -32,6 +33,7 @@ public struct MediaInspection: Sendable, Equatable {
     }
     public let fileSize: UInt64
     public let headerKind: HeaderKind
+    public let revision: String
 }
 public enum MediaInspector {
     public static let headerLimit = 65_536
@@ -42,7 +44,8 @@ public enum MediaInspector {
         guard header.data.count <= headerLimit, UInt64(header.data.count) <= header.fileSize else {
             throw MediaInspectionError.invalidResponse
         }
-        return MediaInspection(fileSize: header.fileSize, headerKind: identify(header.data))
+        return MediaInspection(fileSize: header.fileSize, headerKind: identify(header.data),
+                               revision: String(header.fileSize) + ":" + SHA256.hash(data: header.data).map { String(format: "%02x", $0) }.joined())
     }
     /// Header identification only; never infers codecs, valid tracks or decode support.
     public static func identify(_ data: Data) -> MediaInspection.HeaderKind {

@@ -29,11 +29,12 @@ struct ConnectionView: View {
     @State private var isDemo = false
     @State private var connectedServer = ""
     @State private var connectedShare = ""
+    @State private var preferenceSource = VRPreferenceSource.demo
     var input: ConnectionInput { ConnectionInput(server: server, share: share, username: username) }
     var body: some View {
         Group {
             if let browser {
-                BrowserView(model: browser, isDemo: isDemo, serverName: connectedServer, shareName: connectedShare, mediaSource: isDemo ? DemoMediaSource() : session) {
+                BrowserView(model: browser, isDemo: isDemo, serverName: connectedServer, shareName: connectedShare, preferenceSource: preferenceSource, mediaSource: isDemo ? DemoMediaSource() : session) {
                     browser.stop()
                     self.browser = nil
                     let closing = session
@@ -73,6 +74,7 @@ struct ConnectionView: View {
                             Button("使用示範資料") {
                                 password = ""; message = nil; isDemo = true
                                 connectedServer = "示範伺服器"; connectedShare = "示範分享"
+                                preferenceSource = .demo
                                 browser = BrowserModel(provider: DemoDirectoryProvider())
                             }.disabled(connecting).accessibilityIdentifier("openDemo")
                         }
@@ -97,6 +99,7 @@ struct ConnectionView: View {
                 session = connected; isDemo = false
                 connectedServer = submitted.server.trimmingCharacters(in: .whitespacesAndNewlines)
                 connectedShare = submitted.share.trimmingCharacters(in: .whitespacesAndNewlines)
+                preferenceSource = .smb(server: connectedServer, share: connectedShare, account: submitted.username)
                 browser = BrowserModel(provider: connected)
             } catch {
                 if !Task.isCancelled { message = "無法連線。請確認伺服器、分享名稱、帳密與網路後重試。" }
@@ -117,6 +120,7 @@ struct BrowserView: View {
     let isDemo: Bool
     let serverName: String
     let shareName: String
+    let preferenceSource: VRPreferenceSource
     let mediaSource: (any MediaByteSource)?
     var disconnect: () -> Void
     var body: some View {
@@ -158,7 +162,7 @@ struct BrowserView: View {
         .allowsHitTesting(model.playback == nil).accessibilityHidden(model.playback != nil)
         .overlay {
             if let selection = model.playback {
-                PlaybackView(selection: selection, source: mediaSource, isDemo: isDemo) { model.playback = nil }
+                PlaybackView(selection: selection, source: mediaSource, isDemo: isDemo, preferenceSource: preferenceSource) { model.playback = nil }
             }
         }
         .task { model.start() }
@@ -229,9 +233,13 @@ struct PlaybackView: View {
     let selection: PlaybackSelection
     let source: (any MediaByteSource)?
     let isDemo: Bool
+    let preferenceSource: VRPreferenceSource
     var close: () -> Void
     @State private var inspection: MediaInspection?
     @State private var inspectionFailed = false
+    @State private var preferenceMessage: String?
+    @State private var rememberedFormat: VRFormat?
+    @State private var preferencesReady = false
     @State private var attempt = 0
     @State private var player = PlaybackController()
     @State private var scrubTime = 0.0
@@ -271,7 +279,12 @@ struct PlaybackView: View {
                         Text("\(timeLabel(isScrubbing ? scrubTime : player.position)) / \(timeLabel(trackInfo.duration))")
                             .monospacedDigit().accessibilityIdentifier("playbackTime")
                     }
-                    VRSettingsView(presentation: vr)
+                    VRSettingsView(presentation: vr).disabled(!preferencesReady)
+                    if rememberedFormat != nil {
+                        Button("清除此片格式") { saveFormat(nil); vr.settings = VRSettings() }
+                            .accessibilityIdentifier("clearVRFormat")
+                    }
+                    if let preferenceMessage { Text(preferenceMessage).accessibilityIdentifier("vrPreferenceError") }
                     HStack {
                         Button("進入 VR") { Task { await enterVR(testPattern: false) } }
                             .disabled(player.frame == nil || vr.active || vr.opening).accessibilityIdentifier("openVR")
@@ -302,6 +315,10 @@ struct PlaybackView: View {
             }
         }.padding(24).frame(maxWidth: 680, maxHeight: .infinity)
         .onAppear { vr.settings = VRSettings(); vr.message = nil }
+        .onChange(of: VRFormat(vr.settings)) { _, format in
+            guard preferencesReady, format != rememberedFormat, format != VRFormat(VRSettings()) || rememberedFormat != nil else { return }
+            saveFormat(format)
+        }
         .onDisappear {
             player.stop()
             if vr.active { Task { await dismissVR() } }
@@ -310,6 +327,7 @@ struct PlaybackView: View {
             if !isScrubbing { scrubTime = position }
         }
         .task(id: attempt) {
+            preferencesReady = false
             inspection = nil
             inspectionFailed = false
             do {
@@ -318,10 +336,25 @@ struct PlaybackView: View {
                 let result = try await MediaInspector.inspect(file, source: source)
                 try Task.checkCancellation()
                 inspection = result
+                do {
+                    let saved = try VRPreferenceStore.local.get().load(source: preferenceSource, file: file, revision: result.revision)
+                    rememberedFormat = saved
+                    vr.settings = saved?.settings ?? VRSettings()
+                    preferenceMessage = nil
+                } catch { preferenceMessage = "無法讀取已存格式；仍可手動設定。" }
+                preferencesReady = true
             } catch {
-                if !Task.isCancelled { inspectionFailed = true }
+                if !Task.isCancelled { inspectionFailed = true; preferencesReady = true; preferenceMessage = "無法確認檔案；本次格式不會保存。" }
             }
         }
+    }
+    private func saveFormat(_ format: VRFormat?) {
+        guard let inspection,
+              let file = try? MediaFile(components: selection.directory.components + [selection.file.name]) else { return }
+        do {
+            try VRPreferenceStore.local.get().save(format, source: preferenceSource, file: file, revision: inspection.revision)
+            rememberedFormat = format; preferenceMessage = nil
+        } catch { preferenceMessage = "無法保存格式；本次設定仍可使用。" }
     }
     private func timeLabel(_ value: Double) -> String {
         let seconds = Int(max(0, min(value, Double(Int.max / 2))))

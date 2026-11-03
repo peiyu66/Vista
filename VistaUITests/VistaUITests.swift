@@ -34,6 +34,33 @@ final class VistaUITests: XCTestCase {
         app.buttons["returnToBrowser"].tap()
         XCTAssertTrue(app.buttons["星際漫遊_SBS_180.mp4，檔案"].waitForExistence(timeout: 5))
     }
+    @MainActor func testVRFormatSurvivesRelaunchAndCanBeCleared() throws {
+        let app = XCUIApplication()
+        func openFixture() {
+            XCTAssertTrue(app.buttons["openDemo"].waitForExistence(timeout: 10)); app.buttons["openDemo"].tap()
+            for name in ["影片，資料夾", "電影，資料夾", "科幻，資料夾", "星際漫遊_SBS_180.mp4，檔案"] {
+                XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 5)); app.buttons[name].tap()
+            }
+            XCTAssertTrue(app.staticTexts["mediaHeader"].waitForExistence(timeout: 5))
+        }
+        app.launch(); openFixture()
+        if app.buttons["clearVRFormat"].exists { app.buttons["clearVRFormat"].tap() }
+        app.descendants(matching: .any)["vrProjection"].firstMatch.tap(); app.buttons["等距柱狀 360°"].firstMatch.tap()
+        app.descendants(matching: .any)["vrLayout"].firstMatch.tap(); app.buttons["左右排列"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["clearVRFormat"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["vrPreferenceError"].exists)
+        app.terminate(); app.launch(); openFixture()
+        XCTAssertTrue(app.buttons["clearVRFormat"].waitForExistence(timeout: 5))
+        app.buttons["openVRTest"].tap()
+        XCTAssertTrue(app.staticTexts["vrReady"].waitForExistence(timeout: 30))
+        XCTAssertEqual(app.staticTexts["vrReady"].label, "等距柱狀 360°")
+        XCTAssertEqual(app.staticTexts["vrLayoutReady"].label, "左右排列")
+        app.buttons["closeVR"].tap()
+        XCTAssertTrue(app.buttons["clearVRFormat"].waitForExistence(timeout: 10)); app.buttons["clearVRFormat"].tap()
+        app.terminate(); app.launch(); openFixture()
+        XCTAssertFalse(app.buttons["clearVRFormat"].exists)
+        XCTAssertFalse(app.staticTexts["vrPreferenceError"].exists)
+    }
     @MainActor func testConnectionValidationAndKeyboardSubmit() throws {
         let app = XCUIApplication()
         app.launch()
