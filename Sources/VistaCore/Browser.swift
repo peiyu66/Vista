@@ -151,7 +151,7 @@ public struct DemoDirectoryProvider: DirectoryProvider {
         case []: entries = [FileEntry("影片", .directory), FileEntry("大量影片", .directory), FileEntry("空資料夾", .directory), FileEntry("讀取失敗範例", .directory)]
         case ["影片"]: entries = [FileEntry("電影", .directory), FileEntry("旅行", .directory)]
         case ["影片", "電影"]: entries = [FileEntry("科幻", .directory), FileEntry("紀錄片", .directory), FileEntry("預告片.mp4", .video)]
-        case ["影片", "電影", "科幻"]: entries = [FileEntry("星際漫遊_SBS_180.mp4", .video), FileEntry("月球之旅.mkv", .video), FileEntry("影片說明.txt", .other)]
+        case ["影片", "電影", "科幻"]: entries = [FileEntry("星際漫遊_SBS_180.mp4", .video), FileEntry("月球之旅.mkv", .video), FileEntry("影片說明.txt", .other), FileEntry("格式標記示範.mp4", .video)]
         case ["空資料夾"]: entries = []
         default: entries = [FileEntry("示範影片.mp4", .video)]
         }

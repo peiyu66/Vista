@@ -27,14 +27,15 @@ import Observation
 
 struct VRSettingsView: View {
     @Bindable var presentation: VRPresentation
+    var edited: () -> Void = {}
     var body: some View {
-        Picker("投影", selection: $presentation.settings.projection) {
+        Picker("投影", selection: Binding(get: { presentation.settings.projection }, set: { presentation.settings.projection = $0; edited() })) {
             ForEach(VRProjection.allCases, id: \.self) { Text($0.title).tag($0) }
         }.accessibilityIdentifier("vrProjection")
-        Picker("排列", selection: $presentation.settings.layout) {
+        Picker("排列", selection: Binding(get: { presentation.settings.layout }, set: { presentation.settings.layout = $0; edited() })) {
             ForEach(VRLayout.allCases, id: \.self) { Text($0.title).tag($0) }
         }.accessibilityIdentifier("vrLayout")
-        if presentation.settings.layout != .mono { Toggle("交換左右眼", isOn: $presentation.settings.swapEyes) }
+        if presentation.settings.layout != .mono { Toggle("交換左右眼", isOn: Binding(get: { presentation.settings.swapEyes }, set: { presentation.settings.swapEyes = $0; edited() })) }
     }
 }
 

@@ -240,6 +240,7 @@ struct PlaybackView: View {
     @State private var preferenceMessage: String?
     @State private var rememberedFormat: VRFormat?
     @State private var preferencesReady = false
+    @State private var formatChoice = VRFormatChoice()
     @State private var attempt = 0
     @State private var player = PlaybackController()
     @State private var scrubTime = 0.0
@@ -279,15 +280,27 @@ struct PlaybackView: View {
                         Text("\(timeLabel(isScrubbing ? scrubTime : player.position)) / \(timeLabel(trackInfo.duration))")
                             .monospacedDigit().accessibilityIdentifier("playbackTime")
                     }
-                    VRSettingsView(presentation: vr).disabled(!preferencesReady)
+                    VRSettingsView(presentation: vr, edited: chooseManualFormat).disabled(!preferencesReady)
+                    if formatChoice.manual == nil {
+                        if let metadata = formatChoice.metadata {
+                            Text(metadata.message).font(.callout).accessibilityIdentifier("vrMetadataStatus")
+                        } else if preferencesReady {
+                            ProgressView("讀取格式標記…")
+                        }
+                        if preferencesReady && !formatChoice.confirmed {
+                            Button("使用目前格式", action: chooseManualFormat).accessibilityIdentifier("confirmVRFormat")
+                        }
+                    }
                     if rememberedFormat != nil {
-                        Button("清除此片格式") { saveFormat(nil); vr.settings = VRSettings() }
+                        Button("清除此片格式") {
+                            if saveFormat(nil) { formatChoice.manual = nil; vr.settings = formatChoice.format.settings }
+                        }
                             .accessibilityIdentifier("clearVRFormat")
                     }
                     if let preferenceMessage { Text(preferenceMessage).accessibilityIdentifier("vrPreferenceError") }
                     HStack {
                         Button("進入 VR") { Task { await enterVR(testPattern: false) } }
-                            .disabled(player.frame == nil || vr.active || vr.opening).accessibilityIdentifier("openVR")
+                            .disabled(player.frame == nil || !formatChoice.confirmed || vr.active || vr.opening).accessibilityIdentifier("openVR")
                         if isDemo {
                             Button("投影測試圖") { Task { await enterVR(testPattern: true) } }
                                 .disabled(vr.active || vr.opening).accessibilityIdentifier("openVRTest")
@@ -315,10 +328,6 @@ struct PlaybackView: View {
             }
         }.padding(24).frame(maxWidth: 680, maxHeight: .infinity)
         .onAppear { vr.settings = VRSettings(); vr.message = nil }
-        .onChange(of: VRFormat(vr.settings)) { _, format in
-            guard preferencesReady, format != rememberedFormat, format != VRFormat(VRSettings()) || rememberedFormat != nil else { return }
-            saveFormat(format)
-        }
         .onDisappear {
             player.stop()
             if vr.active { Task { await dismissVR() } }
@@ -339,22 +348,34 @@ struct PlaybackView: View {
                 do {
                     let saved = try VRPreferenceStore.local.get().load(source: preferenceSource, file: file, revision: result.revision)
                     rememberedFormat = saved
-                    vr.settings = saved?.settings ?? VRSettings()
+                    formatChoice.manual = saved
+                    vr.settings = formatChoice.format.settings
                     preferenceMessage = nil
                 } catch { preferenceMessage = "無法讀取已存格式；仍可手動設定。" }
                 preferencesReady = true
+                let metadata = try await VRMetadataInspector.inspect(file, source: source)
+                try Task.checkCancellation()
+                formatChoice.metadata = metadata
+                if formatChoice.manual == nil { vr.settings = formatChoice.format.settings }
             } catch {
-                if !Task.isCancelled { inspectionFailed = true; preferencesReady = true; preferenceMessage = "無法確認檔案；本次格式不會保存。" }
+                if !Task.isCancelled { inspectionFailed = true; preferencesReady = true; formatChoice.metadata = .unavailable; preferenceMessage = "無法確認檔案；本次格式不會保存。" }
             }
         }
     }
-    private func saveFormat(_ format: VRFormat?) {
+    private func chooseManualFormat() {
+        guard preferencesReady else { return }
+        let format = VRFormat(vr.settings)
+        formatChoice.manual = format
+        _ = saveFormat(format)
+    }
+    @discardableResult private func saveFormat(_ format: VRFormat?) -> Bool {
         guard let inspection,
-              let file = try? MediaFile(components: selection.directory.components + [selection.file.name]) else { return }
+              let file = try? MediaFile(components: selection.directory.components + [selection.file.name]) else { return false }
         do {
             try VRPreferenceStore.local.get().save(format, source: preferenceSource, file: file, revision: inspection.revision)
             rememberedFormat = format; preferenceMessage = nil
-        } catch { preferenceMessage = "無法保存格式；本次設定仍可使用。" }
+            return true
+        } catch { preferenceMessage = "無法保存格式；本次設定仍可使用。"; return false }
     }
     private func timeLabel(_ value: Double) -> String {
         let seconds = Int(max(0, min(value, Double(Int.max / 2))))
@@ -363,7 +384,7 @@ struct PlaybackView: View {
             : String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
     private func enterVR(testPattern: Bool) async {
-        guard !vr.active, !vr.opening else { return }
+        guard !vr.active, !vr.opening, testPattern || formatChoice.confirmed else { return }
         vr.opening = true; vr.message = nil
         if testPattern { player.stop() }
         vr.player = player; vr.testPattern = testPattern

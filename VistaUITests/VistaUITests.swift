@@ -61,6 +61,43 @@ final class VistaUITests: XCTestCase {
         XCTAssertFalse(app.buttons["clearVRFormat"].exists)
         XCTAssertFalse(app.staticTexts["vrPreferenceError"].exists)
     }
+    @MainActor func testMetadataAppliesWithoutOverwritingManualFormat() throws {
+        let app = XCUIApplication()
+        func openFixture() {
+            XCTAssertTrue(app.buttons["openDemo"].waitForExistence(timeout: 10)); app.buttons["openDemo"].tap()
+            for name in ["影片，資料夾", "電影，資料夾", "科幻，資料夾", "格式標記示範.mp4，檔案"] {
+                XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 5)); app.buttons[name].tap()
+            }
+            XCTAssertTrue(app.staticTexts["mediaHeader"].waitForExistence(timeout: 5))
+        }
+        func verifyProjection(_ projection: String, _ layout: String) {
+            app.buttons["openVRTest"].tap()
+            XCTAssertTrue(app.staticTexts["vrReady"].waitForExistence(timeout: 30))
+            XCTAssertEqual(app.staticTexts["vrReady"].label, projection)
+            XCTAssertEqual(app.staticTexts["vrLayoutReady"].label, layout)
+            app.buttons["closeVR"].tap()
+            XCTAssertTrue(app.buttons["openVRTest"].waitForExistence(timeout: 10))
+        }
+        app.launch(); openFixture()
+        if app.buttons["clearVRFormat"].exists { app.buttons["clearVRFormat"].tap() }
+        XCTAssertTrue(app.staticTexts["vrMetadataStatus"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts["vrMetadataStatus"].label, "已依影片格式標記設定")
+        XCTAssertFalse(app.buttons["clearVRFormat"].exists)
+        verifyProjection("等距柱狀 360°", "上下排列")
+        app.descendants(matching: .any)["vrProjection"].firstMatch.tap(); app.buttons["等距柱狀 180°"].firstMatch.tap()
+        app.descendants(matching: .any)["vrLayout"].firstMatch.tap(); app.buttons["左右排列"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["clearVRFormat"].waitForExistence(timeout: 5))
+        app.terminate(); app.launch(); openFixture()
+        XCTAssertTrue(app.buttons["clearVRFormat"].waitForExistence(timeout: 5))
+        verifyProjection("等距柱狀 180°", "左右排列")
+        app.buttons["clearVRFormat"].tap()
+        XCTAssertTrue(app.staticTexts["vrMetadataStatus"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["vrMetadataStatus"].label, "已依影片格式標記設定")
+        app.terminate(); app.launch(); openFixture()
+        XCTAssertTrue(app.staticTexts["vrMetadataStatus"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts["vrMetadataStatus"].label, "已依影片格式標記設定")
+        XCTAssertFalse(app.buttons["clearVRFormat"].exists)
+    }
     @MainActor func testConnectionValidationAndKeyboardSubmit() throws {
         let app = XCUIApplication()
         app.launch()
@@ -105,6 +142,10 @@ final class VistaUITests: XCTestCase {
         XCTAssertTrue(app.buttons["playVideo"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["mediaHeader"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["mediaHeader"].label, "檔頭：ISO BMFF（MP4 家族）")
+        if app.buttons["clearVRFormat"].exists { app.buttons["clearVRFormat"].tap() }
+        XCTAssertTrue(app.staticTexts["vrMetadataStatus"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts["vrMetadataStatus"].label, "未找到格式標記，請手動選擇。")
+        XCTAssertTrue(app.buttons["confirmVRFormat"].exists)
         app.buttons["playVideo"].tap()
         let status = app.staticTexts["playbackStatus"]
         let finished = NSPredicate(format: "label == %@ OR label == %@", "播放結束", "無法確認硬體解碼，已停止播放。")

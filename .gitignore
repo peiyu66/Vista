@@ -33,3 +33,6 @@ TestMedia/
 
 # Project-generated six-second seek fixture
 !Tests/VistaCoreTests/Resources/SyntheticSeek.mp4
+
+# Project-generated color fixture with Spherical Video V2 metadata
+!Sources/VistaCore/Resources/SyntheticVR.mp4

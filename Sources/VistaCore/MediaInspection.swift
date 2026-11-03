@@ -75,19 +75,19 @@ public extension MediaByteSource {
 /// Project-generated color frames. No private or downloaded media.
 public struct DemoMediaSource: MediaByteSource {
     public init() {}
-    private func bytes() throws -> Data {
+    private func bytes(for file: MediaFile) throws -> Data {
         #if SWIFT_PACKAGE
         let bundle = Bundle.module
         #else
         let bundle = Bundle.main
         #endif
-        guard let url = bundle.url(forResource: "Synthetic", withExtension: "mp4") else { throw MediaInspectionError.unavailable }
+        guard let url = bundle.url(forResource: file.components.last == "格式標記示範.mp4" ? "SyntheticVR" : "Synthetic", withExtension: "mp4") else { throw MediaInspectionError.unavailable }
         return try Data(contentsOf: url)
     }
-    public func fileSize(for file: MediaFile) async throws -> UInt64 { UInt64(try bytes().count) }
+    public func fileSize(for file: MediaFile) async throws -> UInt64 { UInt64(try bytes(for: file).count) }
     public func read(_ file: MediaFile, range: Range<UInt64>) async throws -> Data {
         try Task.checkCancellation()
-        let data = try bytes()
+        let data = try bytes(for: file)
         guard range.upperBound <= data.count, range.count <= 1_048_576 else { throw MediaInspectionError.invalidResponse }
         return data.subdata(in: Int(range.lowerBound)..<Int(range.upperBound))
     }
