@@ -14,8 +14,13 @@ public struct FileEntry: Identifiable, Hashable, Sendable {
     public enum Kind: Sendable { case directory, video, other }
     public let name: String
     public let kind: Kind
+    /// nil means the provider did not expose a hidden attribute.
+    public let hiddenAttribute: Bool?
+    public var isHidden: Bool { name.hasPrefix(".") || hiddenAttribute == true }
     public var id: String { name }
-    public init(_ name: String, _ kind: Kind) { self.name = name; self.kind = kind }
+    public init(_ name: String, _ kind: Kind, hiddenAttribute: Bool? = nil) {
+        self.name = name; self.kind = kind; self.hiddenAttribute = hiddenAttribute
+    }
 }
 
 public struct DirectoryPage: Sendable {
@@ -94,7 +99,7 @@ public struct PlaybackSelection: Identifiable, Equatable {
                 let existing = Set(self.state(at: path).entries.map(\.id))
                 var seen = existing
                 let safe = page.entries.filter {
-                    !$0.name.isEmpty && $0.name != "." && $0.name != ".." &&
+                    !$0.isHidden && !$0.name.isEmpty && $0.name != "." && $0.name != ".." &&
                     !$0.name.contains("/") && !$0.name.contains("\\") &&
                     !$0.name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) &&
                     seen.insert($0.id).inserted

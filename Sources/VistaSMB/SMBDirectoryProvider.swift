@@ -40,13 +40,7 @@ public actor SMBDirectoryProvider: DirectoryProvider {
                     switch result {
                     case .failure: continuation.resume(throwing: URLError(.cannotLoadFromNetwork))
                     case .success(let items):
-                        let mapped = items.compactMap { item -> FileEntry? in
-                            guard let name = item[.nameKey] as? String,
-                                  let type = item[.fileResourceTypeKey] as? URLFileResourceType else { return nil }
-                            if type == .directory { return FileEntry(name, .directory) }
-                            let ext = (name as NSString).pathExtension.lowercased()
-                            return FileEntry(name, ["mp4", "mkv", "mov", "m4v"].contains(ext) ? .video : .other)
-                        }.sorted {
+                        let mapped = items.compactMap(Self.visibleEntry).sorted {
                             if ($0.kind == .directory) != ($1.kind == .directory) { return $0.kind == .directory }
                             return $0.name.localizedStandardCompare($1.name) == .orderedAscending
                         }
@@ -64,6 +58,20 @@ public actor SMBDirectoryProvider: DirectoryProvider {
         guard offset >= 0, offset <= entries.count else { throw URLError(.badServerResponse) }
         let end = min(offset + 100, entries.count)
         return DirectoryPage(entries: Array(entries[offset..<end]), nextOffset: end < entries.count ? end : nil)
+    }
+
+    /// Filter before pagination so hidden-only network results do not create empty UI pages.
+    nonisolated static func visibleEntry(_ item: [URLResourceKey: any Sendable]) -> FileEntry? {
+        guard let name = item[.nameKey] as? String,
+              let type = item[.fileResourceTypeKey] as? URLFileResourceType else { return nil }
+        let kind: FileEntry.Kind
+        if type == .directory { kind = .directory }
+        else {
+            let ext = (name as NSString).pathExtension.lowercased()
+            kind = ["mp4", "mkv", "mov", "m4v"].contains(ext) ? .video : .other
+        }
+        let entry = FileEntry(name, kind, hiddenAttribute: item[.isHiddenKey] as? Bool)
+        return entry.isHidden ? nil : entry
     }
 
     public func disconnect() async {
