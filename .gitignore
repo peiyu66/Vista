@@ -1,0 +1,22 @@
+# macOS / Xcode
+.DS_Store
+DerivedData/
+build/
+xcuserdata/
+*.xcuserstate
+.build/
+
+# Local credentials, settings and media
+.env
+.env.*
+!.env.example
+*.p12
+*.mobileprovision
+*.developerprofile
+*.key
+*.pem
+.local/
+TestMedia/
+*.mp4
+*.mkv
+*.mov
