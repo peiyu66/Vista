@@ -327,7 +327,7 @@ struct PlaybackView: View {
                 }.frame(maxWidth: .infinity).padding(.vertical, 16)
             }
         }.padding(24).frame(maxWidth: 680, maxHeight: .infinity)
-        .onAppear { vr.settings = VRSettings(); vr.message = nil }
+        .onAppear { vr.settings = VRSettings(); vr.message = nil; vr.calibration.resetForNewFile() }
         .onDisappear {
             player.stop()
             if vr.active { Task { await dismissVR() } }

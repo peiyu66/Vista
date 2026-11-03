@@ -22,6 +22,8 @@ public struct VRSettings: Codable, Hashable, Sendable {
     public var layout: VRLayout = .mono
     public var swapEyes = false
     public var yawDegrees: Double = 0
+    public var pitchDegrees: Double = 0
+    public var rollDegrees: Double = 0
     public init() {}
     public func crop(width: Int, height: Int, rightEye: Bool) -> CGRect? {
         guard width > 0, height > 0 else { return nil }

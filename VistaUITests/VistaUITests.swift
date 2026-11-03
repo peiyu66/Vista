@@ -93,6 +93,35 @@ final class VistaUITests: XCTestCase {
         app.buttons["clearVRFormat"].tap()
         XCTAssertFalse(app.staticTexts["fisheyeScope"].exists)
     }
+    @MainActor func testInitialPoseAndManualRecenter() throws {
+        let app = XCUIApplication(); app.launch()
+        XCTAssertTrue(app.buttons["openDemo"].waitForExistence(timeout: 10)); app.buttons["openDemo"].tap()
+        for name in ["影片，資料夾", "電影，資料夾", "科幻，資料夾", "星際漫遊_SBS_180.mp4，檔案"] {
+            XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 5)); app.buttons[name].tap()
+        }
+        XCTAssertTrue(app.buttons["openVRTest"].waitForExistence(timeout: 5))
+        app.buttons["openVRTest"].tap()
+        XCTAssertTrue(app.staticTexts["vrReady"].waitForExistence(timeout: 30))
+        let recenter = app.buttons["recenterVR"]
+        XCTAssertTrue(recenter.waitForExistence(timeout: 10))
+        let enabled = NSPredicate(format: "enabled == true")
+        expectation(for: enabled, evaluatedWith: recenter); waitForExpectations(timeout: 10)
+        let initial = recenter.value as? String
+        XCTAssertTrue(["已取得初始方向", "尚未取得初始方向"].contains(initial ?? ""))
+        print("SIM_INITIAL_POSE_STATUS", initial ?? "missing")
+        if initial == "尚未取得初始方向" { XCTAssertTrue(app.staticTexts["initialPoseUnavailable"].exists) }
+        app.buttons["向上轉"].tap(); app.buttons["左傾"].tap(); app.buttons["方向歸零"].tap()
+        recenter.tap()
+        expectation(for: enabled, evaluatedWith: recenter); waitForExpectations(timeout: 10)
+        print("SIM_RECENTER_STATUS", recenter.value as? String ?? "missing")
+        app.buttons["closeVR"].tap()
+        XCTAssertTrue(app.buttons["openVRTest"].waitForExistence(timeout: 10))
+        app.buttons["openVRTest"].tap()
+        XCTAssertTrue(app.staticTexts["vrReady"].waitForExistence(timeout: 30))
+        XCTAssertTrue(recenter.waitForExistence(timeout: 10))
+        XCTAssertEqual(recenter.value as? String, initial)
+        app.buttons["closeVR"].tap()
+    }
     @MainActor func testMetadataAppliesWithoutOverwritingManualFormat() throws {
         let app = XCUIApplication()
         func openFixture() {

@@ -9,6 +9,8 @@ import Observation
     var active = false
     var opening = false
     var message: String?
+    let calibration = VRViewCalibration()
+    var calibrationRequest = 0
     var image: CGImage? {
         testPattern ? (settings.projection == .equidistantFisheye180 ? Self.fisheyePatterns[settings.layout] : Self.pattern) : player?.frame?.image
     }
@@ -109,7 +111,7 @@ struct VRSettingsView: View {
                 entity.model = ModelComponent(mesh: try MeshResource.generate(from: [descriptor]), materials: [material])
                 geometry = key
             } else { entity.model?.materials = [material] }
-            entity.orientation = simd_quatf(angle: Float(settings.yawDegrees * .pi / 180), axis: [0, 1, 0])
+            entity.orientation = VRInitialPose.manualRotation(yaw: settings.yawDegrees, pitch: settings.pitchDegrees, roll: settings.rollDegrees)
             entity.isEnabled = true; ready = true; error = nil
         } catch is CancellationError { }
         catch { guard expected == generation else { return }; entity.isEnabled = false; ready = false; self.error = "無法建立 VR 投影。請返回視窗重試。" }
@@ -120,14 +122,23 @@ struct VRImmersiveView: View {
     @Environment(VRPresentation.self) private var presentation
     @Environment(\.dismissImmersiveSpace) private var dismiss
     @State private var renderer = VRRenderer()
+    @State private var placement = Entity()
+    @State private var controlsAnchor: AnchorEntity = {
+        let anchor = AnchorEntity(.head)
+        anchor.anchoring.trackingMode = .once
+        return anchor
+    }()
     private struct UpdateKey: Hashable { let image: ObjectIdentifier?; let settings: VRSettings }
     var body: some View {
         RealityView { content, attachments in
-            content.add(renderer.entity)
-            if let controls = attachments.entity(for: "controls") {
-                controls.position = [0, 1.25, -1.5]
-                content.add(controls)
-            }
+            content.add(placement)
+            content.add(controlsAnchor)
+            placement.addChild(renderer.entity)
+            applyPlacement()
+            placeControls(attachments.entity(for: "controls"))
+        } update: { _, attachments in
+            applyPlacement()
+            placeControls(attachments.entity(for: "controls"))
         } attachments: {
             Attachment(id: "controls") {
                 VStack {
@@ -138,15 +149,33 @@ struct VRImmersiveView: View {
                                 .font(.caption).accessibilityIdentifier("fisheyeCalibration")
                         }
                     }
+                    if presentation.calibration.status == .capturing {
+                        ProgressView("設定初始方向…")
+                    } else if presentation.calibration.status == .unavailable {
+                        Text("無法取得初始方向；可手動調整或重新置中。")
+                            .font(.caption).accessibilityIdentifier("initialPoseUnavailable")
+                    }
                     if let error = renderer.error { Text(error).accessibilityIdentifier("vrError") }
                     else if renderer.ready { Text(presentation.settings.projection.title).accessibilityIdentifier("vrReady") }
                     else { ProgressView("準備投影…") }
                     Text(presentation.settings.layout.title).accessibilityIdentifier("vrLayoutReady")
                     HStack {
                         Button("向左轉") { presentation.settings.yawDegrees -= 15 }
-                        Button("方向歸零") { presentation.settings.yawDegrees = 0 }
+                        Button("方向歸零") { resetManualDirection() }
                         Button("向右轉") { presentation.settings.yawDegrees += 15 }
                     }
+                    .disabled(presentation.calibration.status == .capturing)
+                    HStack {
+                        Button("向上轉") { presentation.settings.pitchDegrees += 15 }
+                        Button("向下轉") { presentation.settings.pitchDegrees -= 15 }
+                        Button("左傾") { presentation.settings.rollDegrees += 15 }
+                        Button("右傾") { presentation.settings.rollDegrees -= 15 }
+                    }.disabled(presentation.calibration.status == .capturing)
+                    Button("重新置中") {
+                        presentation.calibration.requestRecenter(); presentation.calibrationRequest += 1
+                    }.disabled(presentation.calibration.status == .capturing)
+                        .accessibilityIdentifier("recenterVR")
+                        .accessibilityValue(presentation.calibration.status == .ready ? "已取得初始方向" : "尚未取得初始方向")
                     if !presentation.testPattern, let player = presentation.player {
                         Button(player.isPaused ? "繼續" : "暫停", action: player.togglePause).disabled(player.isPreparing || !player.isPlaying)
                     }
@@ -157,6 +186,29 @@ struct VRImmersiveView: View {
         .task(id: UpdateKey(image: presentation.image.map(ObjectIdentifier.init), settings: presentation.settings)) {
             renderer.submit(image: presentation.image, settings: presentation.settings)
         }
-        .onDisappear { renderer.stop(); presentation.active = false; presentation.player = nil; presentation.testPattern = false }
+        .task(id: presentation.calibrationRequest) {
+            if await presentation.calibration.capture(using: DeviceInitialPose()) { resetManualDirection() }
+        }
+        .onDisappear {
+            presentation.calibration.cancel()
+            renderer.stop(); presentation.active = false; presentation.player = nil; presentation.testPattern = false
+        }
+    }
+    private func resetManualDirection() {
+        presentation.settings.yawDegrees = 0; presentation.settings.pitchDegrees = 0; presentation.settings.rollDegrees = 0
+    }
+    private func placeControls(_ controls: Entity?) {
+        guard let controls else { return }
+        // Use the explicit frozen pose when available; the native once anchor is only a fallback.
+        let parent: Entity = presentation.calibration.pose == nil ? controlsAnchor : placement
+        if controls.parent != parent { parent.addChild(controls) }
+        controls.position = [0, -0.25, -1.5]
+    }
+    private func applyPlacement() {
+        if let pose = presentation.calibration.pose {
+            placement.position = pose.position; placement.orientation = pose.orientation
+        } else {
+            placement.position = [0, 1.5, 0]; placement.orientation = simd_quatf()
+        }
     }
 }
