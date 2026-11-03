@@ -39,3 +39,7 @@ TestMedia/
 
 # Project-generated HEVC test fixture
 !Tests/VistaCoreTests/Resources/SyntheticHEVC.mp4
+
+# Project-generated VP9 container probes
+!Tests/VistaCoreTests/Resources/SyntheticVP9.mp4
+!Tests/VistaCoreTests/Resources/SyntheticVP9.mkv
