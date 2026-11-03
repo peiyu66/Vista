@@ -1,5 +1,6 @@
 // Vista MIT. Trusted synthetic-fixture experiment only; not an untrusted-media parser boundary.
 #include "mkvparser/mkvparser.h"
+#include "AllocationBudget.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -21,18 +22,21 @@ class Reader final : public mkvparser::IMkvReader {
     static constexpr long long gapPayload = 1LL << 32;
     static constexpr long long gapSize = gapPayload + 9;
 public:
+    static int openFiles;
     size_t calls = 0, bytes = 0, largest = 0;
     size_t budget = 1024 * 1024;
     bool cancelled = false;
     size_t cancelAfter = 50000;
     explicit Reader(const char* path) : fd(open(path, O_RDONLY)), size(0) {
         struct stat st{};
-        require(fd >= 0 && fstat(fd, &st) == 0 && S_ISREG(st.st_mode));
-        size = st.st_size;
-        require(size > 0 && size <= 1024 * 1024);
+        if (fd < 0 || fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size <= 0 || st.st_size > 1024 * 1024) {
+            if (fd >= 0) close(fd);
+            fd = -1; require(false);
+        }
+        size = st.st_size; ++openFiles;
     }
     void insertVirtualVoid(long long at) { insertion = at; }
-    ~Reader() override { if (fd >= 0) close(fd); }
+    ~Reader() override { if (fd >= 0) { close(fd); --openFiles; } }
     int Length(long long* total, long long* available) override {
         if (cancelled) return -1;
         *total = *available = size + (insertion >= 0 ? gapSize : 0); return 0;
@@ -56,17 +60,22 @@ public:
         return pread(fd, out, size_t(len), physical) == len ? 0 : -1;
     }
 };
+int Reader::openFiles = 0;
+struct FileAudit { ~FileAudit() { std::fprintf(stderr, "READER_HANDLES live=%d\n", Reader::openFiles); } };
 static std::string hex(const unsigned char* data, size_t size) {
     const char* digits = "0123456789abcdef"; std::string result;
     for (size_t i = 0; i < size; ++i) { result += digits[data[i] >> 4]; result += digits[data[i] & 15]; }
     return result;
 }
 int main(int argc, char** argv) {
+    allocation_budget::Scope allocationScope;
+    FileAudit fileScope;
     try {
         require(argc == 2 || argc == 3);
         Reader reader(argv[1]);
         if (argc == 3) {
-            if (std::strcmp(argv[2], "cancel") == 0) reader.cancelled = true;
+            if (std::strcmp(argv[2], "alloc-budget") == 0) allocation_budget::tighten();
+            else if (std::strcmp(argv[2], "cancel") == 0) reader.cancelled = true;
             else if (std::strcmp(argv[2], "cancel-midway") == 0) reader.cancelAfter = 100;
             else if (std::strcmp(argv[2], "bounds") == 0) {
                 unsigned char byte = 0;

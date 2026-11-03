@@ -64,3 +64,20 @@ H.264 解析與重讀共 687 次、2,731 bytes、最大單次 127 bytes；HEVC 6
 BSD 條件允許源碼及二進位重散布，需保留著作權、條件與免責，不得借作者名背書。靜態與動態連結皆需保留聲明；此元件本身不要求 LGPL 式重新連結安排。原型只驗證靜態 archive，沒有建置／簽署動態 framework 或 XCFramework。若加入 App，需納入相符的來源清單與 bundled notices、版本更新／安全檢查及 App Store 整體審查；目前的開發目錄聲明不等於已完成 App 分發合規，PATENTS 也不代表所有 H.264／HEVC 專利均被涵蓋。
 
 下一合理工作是限制資源的 demux adapter 與可測取消／快取，再接單視訊 MKV 硬解；音訊、Cues 定位、lacing、字幕、加密及未知 CodecState 不可順帶宣稱完成。沒有因原型可行而放寬硬解政策，VP9 本次 Mac 仍不可硬解。沒有新增需要使用者選擇的授權衝突；正式導入之前仍需逐項完成安全與分發工程。
+
+
+## 安全化檢查點（2026-11-03）
+
+原始碼確認兩個獨立界線：`SafeArrayAlloc` 的單次防溢位上限為 2 GiB，不是 Vista 適用的總量預算；`Tracks::ParseTrackEntry` 會先依 CodecPrivate 長度配置，再呼叫 reader。字串、track／cluster／cue 等也有各自配置位置。因此不能以單次 SMB 讀取 64 KiB 就認定 parser 記憶體已有上限。官方 vendor 檔仍原樣保留。
+
+隔離執行檔新增 C++ 配置攔截，單次 256 KiB、同時存活 2 MiB、100,000 次嘗試上限（含追蹤標頭）。H.264／HEVC 正常路徑的追蹤峰值各為 33,770／33,861 bytes，結束歸零。自造 300,000-byte CodecPrivate 在配置階段被拒絕，未送入影片解碼；非法 VINT、未知長度 header、配置預算不足與 128 個固定種子 bit mutation 均完成，沒有程序崩潰、逾時或追蹤配置／reader handle 遺留。AddressSanitizer／UndefinedBehaviorSanitizer 全輪無錯誤回報；這是有限 corpus 的證據，不是完整安全稽核或所有惡意檔案保證。
+
+新快取原型以 64 KiB 區塊、最多 4 區塊 LRU（256 KiB payload）、單來源 1 MiB 累計讀取預算及單一進行中 I/O 工作。700 個同區塊小讀取只呼叫來源一次。跨區塊、驅逐、越界、截斷、耗盡預算、重疊請求、取消與關閉均有測試；取消後清快取、失效 generation，晚到結果不會發布。失敗讀取也耗用預算，防止無界重試。資料是合成非同步來源，不是真 SMB，未加入 App。
+
+### 暫不接入播放器的具體原因
+
+1. 配置攔截是測試執行檔的全域 new/new[] hook，不能安全套用到包含 UI、其他套件及多執行緒的 App；C malloc／OS／解碼器配置也不在該預算內。三個 SDK 的 parser archive 仍是官方原始碼，沒有內建此防護。下一步需 parser 專屬配置 context／範圍，而非沿用全域 hook。
+2. 同步 C++ parser 到非同步 SMB 尚無已驗證 bridge。快取在取消後保留唯一 active slot，直到後端返回；故能防止無界孤兒 I/O，但無法替不合作的後端保證即時結束。須接入並驗證實際逾時／取消、關閉及來源內容版本契約。
+3. 當前 parser 原型仍限制 1 MiB 實體合成檔、單視訊、少量 cluster／sample。這不是長片、音訊或 Cues 跳轉的安全資源模型，不能直接去掉限制以換取大檔支援。
+
+因此本輪完成安全測試基礎與有界快取原型，但產品 MKV 入口保持關閉；沒有新增軟解或修改私人分享。未發現需要更換專案授權的衝突，也沒有權限拒絕，阻礙是尚未完成的工程證據。下一階段應先完成 parser 專屬配置及同步／非同步 bridge，再選最小單視訊範圍接回既有硬解播放器。
