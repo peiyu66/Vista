@@ -7,13 +7,14 @@ import VistaCore
 #endif
 
 public enum PlaybackFailure: Error, Equatable {
-    case unsupportedContainer, unsupportedTrack, hardwareUnavailable, readFailed, decodeFailed, audioFailed
+    case unsupportedContainer, unsupportedTrack, hardwareUnavailable, readFailed, decodeFailed, audioFailed, seekUnavailable
     public var message: String {
         switch self {
         case .unsupportedContainer: "目前僅提供 MP4／MOV 視訊播放，這個容器尚未支援。"
         case .unsupportedTrack: "無法辨識可播放的單一視訊軌道。"
         case .hardwareUnavailable: "無法確認硬體解碼，已停止播放。"
         case .readFailed: "無法讀取影片。請確認連線及檔案後重試。"
+        case .seekUnavailable: "無法安全跳轉至這個位置。請換個位置或從頭播放。"
         case .audioFailed: "音訊播放或同步失敗，已停止播放。"
         case .decodeFailed: "影片解碼失敗，已停止播放。"
         }
@@ -34,6 +35,8 @@ public struct PlaybackReport: Sendable {
     public let decodedFrames: Int
     public let hardwareVerified: Bool
     public let audioSamples: Int
+    public let decodingStartTime: Double
+    public let prerollFrames: Int
 }
 
 /// AVFoundation receives only a session-local opaque URL, never SMB credentials or paths.
@@ -43,6 +46,7 @@ public struct PlaybackReport: Sendable {
     let size: UInt64
     let contentType: String
     private var tasks: [ObjectIdentifier: Task<Void, Never>] = [:]
+    private var stopped = false
     init(source: any MediaByteSource, file: MediaFile, size: UInt64, contentType: String) {
         self.source = source; self.file = file; self.size = size; self.contentType = contentType
     }
@@ -50,7 +54,7 @@ public struct PlaybackReport: Sendable {
         MainActor.assumeIsolated { load(request) }
     }
     private func load(_ request: AVAssetResourceLoadingRequest) -> Bool {
-        guard tasks.count < 8 else { request.finishLoading(with: PlaybackFailure.readFailed); return true }
+        guard !stopped, tasks.count < 8 else { request.finishLoading(with: PlaybackFailure.readFailed); return true }
         let id = ObjectIdentifier(request)
         tasks[id] = Task {
             defer { tasks[id] = nil }
@@ -80,9 +84,15 @@ public struct PlaybackReport: Sendable {
         return true
     }
     nonisolated func resourceLoader(_ loader: AVAssetResourceLoader, didCancel request: AVAssetResourceLoadingRequest) {
-        MainActor.assumeIsolated { tasks.removeValue(forKey: ObjectIdentifier(request))?.cancel() }
+        MainActor.assumeIsolated { tasks[ObjectIdentifier(request)]?.cancel() }
     }
-    func stop() { tasks.values.forEach { $0.cancel() }; tasks.removeAll() }
+    func stop() async {
+        stopped = true
+        let pending = Array(tasks.values)
+        pending.forEach { $0.cancel() }
+        tasks.removeAll()
+        for task in pending { await task.value }
+    }
 }
 
 private struct PixelFrame: @unchecked Sendable { let pixel: CVPixelBuffer; let pts: CMTime }
@@ -109,21 +119,23 @@ public actor HardwarePlayback {
     private let muteAudio: Bool
     public init() { muteAudio = false }
     init(muteAudioForTesting: Bool) { muteAudio = muteAudioForTesting }
-    public func play(file: MediaFile, source: any MediaByteSource, timeline suppliedTimeline: PlaybackTimeline? = nil,
+    public func play(file: MediaFile, source: any MediaByteSource, startAt: Double = 0, timeline suppliedTimeline: PlaybackTimeline? = nil,
                      onInfo: @MainActor @Sendable (VideoTrackInfo) -> Void,
                      onFrame: @MainActor @Sendable (VideoFrame) -> Void) async throws -> PlaybackReport {
+        guard startAt.isFinite, startAt >= 0 else { throw PlaybackFailure.seekUnavailable }
         let ext = (file.components.last! as NSString).pathExtension.lowercased()
         guard ["mp4", "m4v", "mov"].contains(ext) else { throw PlaybackFailure.unsupportedContainer }
         let size: UInt64
         do { size = try await source.fileSize(for: file) } catch is CancellationError { throw CancellationError() }
         catch { throw PlaybackFailure.readFailed }
+        try Task.checkCancellation()
         guard size > 0, size <= Int64.max else { throw PlaybackFailure.readFailed }
         let bridge = await ResourceBridge(source: source, file: file, size: size, contentType: ext == "mov" ? "com.apple.quicktime-movie" : "public.mpeg-4")
         let asset = AVURLAsset(url: URL(string: "vista-media://session/movie.\(ext)")!)
         await MainActor.run { asset.resourceLoader.setDelegate(bridge, queue: .main) }
         do {
             let timeline = if let suppliedTimeline { suppliedTimeline } else { await PlaybackTimeline() }
-            let report = try await decode(asset: asset, timeline: timeline, onInfo: onInfo, onFrame: onFrame)
+            let report = try await decode(asset: asset, startAt: startAt, timeline: timeline, onInfo: onInfo, onFrame: onFrame)
             asset.cancelLoading(); await bridge.stop(); return report
         } catch {
             asset.cancelLoading(); await bridge.stop()
@@ -131,7 +143,7 @@ public actor HardwarePlayback {
             throw (error as? PlaybackFailure) ?? .readFailed
         }
     }
-    private func decode(asset: AVURLAsset, timeline: PlaybackTimeline,
+    private func decode(asset: AVURLAsset, startAt: Double, timeline: PlaybackTimeline,
                         onInfo: @MainActor @Sendable (VideoTrackInfo) -> Void,
                         onFrame: @MainActor @Sendable (VideoFrame) -> Void) async throws -> PlaybackReport {
         let tracks = try await asset.loadTracks(withMediaType: .video)
@@ -149,6 +161,8 @@ public actor HardwarePlayback {
         let duration = try await asset.load(.duration).seconds
         let transform = try await track.load(.preferredTransform)
         guard duration.isFinite, duration > 0, dimensions.width > 0, dimensions.height > 0 else { throw PlaybackFailure.unsupportedTrack }
+        guard startAt < duration else { throw PlaybackFailure.seekUnavailable }
+        await timeline.prepare(at: startAt)
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
         guard audioTracks.count <= 1 else { throw PlaybackFailure.audioFailed }
         if let audioTrack = audioTracks.first {
@@ -167,14 +181,14 @@ public actor HardwarePlayback {
         try verifyHardware(session)
         let audio: AudioPlayback?
         if let audioTrack = audioTracks.first {
-            let clock = await PlaybackAudioClock(muted: muteAudio)
-            let prepared = try AudioPlayback(asset: asset, track: audioTrack, clock: clock)
+            let clock = await PlaybackAudioClock(muted: muteAudio, startAt: startAt)
+            let prepared = try AudioPlayback(asset: asset, track: audioTrack, clock: clock, startAt: startAt)
             audio = prepared
             await timeline.attachAudio(clock, feed: { try await prepared.pump(through: $0) })
         } else { audio = nil }
         do {
             let report = try await readVideo(asset: asset, track: track, format: format, session: session,
-                                            transform: transform, duration: duration, timeline: timeline,
+                                            transform: transform, duration: duration, startAt: startAt, timeline: timeline,
                                             audio: audio, onFrame: onFrame)
             await audio?.stop(); await timeline.detachAudio()
             return report
@@ -184,10 +198,11 @@ public actor HardwarePlayback {
         }
     }
     private func readVideo(asset: AVURLAsset, track: AVAssetTrack, format: CMFormatDescription,
-                           session: VTDecompressionSession, transform: CGAffineTransform, duration: Double,
+                           session: VTDecompressionSession, transform: CGAffineTransform, duration: Double, startAt: Double,
                            timeline: PlaybackTimeline, audio: AudioPlayback?,
                            onFrame: @MainActor @Sendable (VideoFrame) -> Void) async throws -> PlaybackReport {
         let reader = try AVAssetReader(asset: asset)
+        reader.timeRange = CMTimeRange(start: CMTime(seconds: startAt, preferredTimescale: 60_000), duration: .positiveInfinity)
         defer { reader.cancelReading() }
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
         output.alwaysCopiesSampleData = false
@@ -199,6 +214,11 @@ public actor HardwarePlayback {
         var lastPTS = -Double.infinity
         var rendered = 0
         var emptySamples = 0
+        var firstSampleTime: Double?
+        var prerollFrames = 0
+        var prerollSamples = 0
+        var prerollBytes = 0
+        var lastPreroll: PixelFrame?
         var pending: [PixelFrame] = []
         var lastDTS = -Double.infinity
         func render(_ frames: [PixelFrame], isolation: isolated HardwarePlayback) async throws {
@@ -206,6 +226,13 @@ public actor HardwarePlayback {
                 try Task.checkCancellation()
                 let pts = frame.pts.seconds
                 guard pts.isFinite, pts >= lastPTS, pts >= 0, pts <= duration + 1 else { throw PlaybackFailure.decodeFailed }
+                if pts < startAt {
+                    lastPreroll = frame
+                    lastPTS = pts
+                    prerollFrames += 1
+                    continue
+                }
+                lastPreroll = nil
                 let image = CIImage(cvPixelBuffer: frame.pixel).transformed(by: transform)
                 guard let cgImage = context.createCGImage(image, from: image.extent) else { throw PlaybackFailure.decodeFailed }
                 try Task.checkCancellation()
@@ -225,6 +252,24 @@ public actor HardwarePlayback {
             }
             emptySamples = 0
             guard let sampleFormat = CMSampleBufferGetFormatDescription(sample), CMFormatDescriptionEqual(format, otherFormatDescription: sampleFormat) else { throw PlaybackFailure.unsupportedTrack }
+            let sampleTime = CMSampleBufferGetOutputPresentationTimeStamp(sample).seconds
+            guard sampleTime.isFinite else { throw PlaybackFailure.seekUnavailable }
+            if firstSampleTime == nil {
+                firstSampleTime = sampleTime
+                if startAt > 0 {
+                    let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[String: Any]]
+                    let flags = attachments?.first ?? [:]
+                    guard flags[kCMSampleAttachmentKey_NotSync as String] as? Bool != true,
+                          flags[kCMSampleAttachmentKey_PartialSync as String] as? Bool != true,
+                          flags[kCMSampleAttachmentKey_DependsOnOthers as String] as? Bool != true,
+                          sampleTime <= startAt, startAt - sampleTime <= 30 else { throw PlaybackFailure.seekUnavailable }
+                }
+            }
+            if sampleTime < startAt {
+                prerollSamples += 1
+                prerollBytes += CMSampleBufferGetTotalSampleSize(sample)
+                guard prerollSamples <= 4096, prerollBytes <= 128 * 1024 * 1024 else { throw PlaybackFailure.seekUnavailable }
+            }
             let result = VTDecompressionSessionDecodeFrame(session, sampleBuffer: sample, flags: [._EnableTemporalProcessing], infoFlagsOut: nil) { status, _, pixel, pts, _ in
                 inbox.receive(status: status, pixel: pixel, pts: pts)
             }
@@ -249,7 +294,16 @@ public actor HardwarePlayback {
         guard pending.count <= 32, pending.reduce(0, { $0 + CVPixelBufferGetDataSize($1.pixel) }) <= 128 * 1024 * 1024 else { throw PlaybackFailure.decodeFailed }
         pending.sort { CMTimeCompare($0.pts, $1.pts) < 0 }
         try await render(pending, isolation: self)
+        // A request within the final frame's interval may have no later presentation timestamp.
+        if rendered == 0, let lastPreroll {
+            let image = CIImage(cvPixelBuffer: lastPreroll.pixel).transformed(by: transform)
+            guard let cgImage = context.createCGImage(image, from: image.extent) else { throw PlaybackFailure.decodeFailed }
+            let next = VideoFrame(image: cgImage, time: startAt)
+            try await timeline.present(at: startAt) { onFrame(next) }
+            lastPTS = startAt; rendered = 1
+        }
         guard rendered > 0 else { throw PlaybackFailure.decodeFailed }
+        try await timeline.waitUntilRunning()
         if audio != nil {
             var position = lastPTS
             while position < duration {
@@ -258,7 +312,7 @@ public actor HardwarePlayback {
                 try await timeline.present(at: position) {}
             }
         }
-        return PlaybackReport(decodedFrames: rendered, hardwareVerified: true, audioSamples: await audio?.sampleCount ?? 0)
+        return PlaybackReport(decodedFrames: rendered, hardwareVerified: true, audioSamples: await audio?.sampleCount ?? 0, decodingStartTime: firstSampleTime ?? 0, prerollFrames: prerollFrames)
     }
     private func verifyHardware(_ session: VTDecompressionSession) throws {
         var value: CFTypeRef?

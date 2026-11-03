@@ -30,3 +30,6 @@ TestMedia/
 
 # Project-generated AAC + H.264 test fixture
 !Tests/VistaCoreTests/Resources/SyntheticAV.mp4
+
+# Project-generated six-second seek fixture
+!Tests/VistaCoreTests/Resources/SyntheticSeek.mp4

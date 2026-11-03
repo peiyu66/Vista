@@ -63,6 +63,15 @@ final class VistaUITests: XCTestCase {
             app.buttons["stopVideo"].tap()
             XCTAssertEqual(status.label, "已停止")
         }
+        let position = app.sliders["playbackPosition"]
+        XCTAssertTrue(position.exists)
+        app.buttons["skipForward"].tap()
+        XCTAssertEqual(status.label, "播放結束")
+        XCTAssertEqual(app.staticTexts["playbackTime"].label, "00:02 / 00:02")
+        app.buttons["skipBackward"].tap()
+        expectation(for: finished, evaluatedWith: status)
+        waitForExpectations(timeout: 20)
+        // Slider adjustment/drag is not automated by this visionOS runtime; see acceptance notes.
         XCTAssertTrue(app.buttons["返回檔案"].isHittable)
         app.buttons["返回檔案"].tap()
         XCTAssertTrue(app.buttons["星際漫遊_SBS_180.mp4，檔案"].waitForExistence(timeout: 5))

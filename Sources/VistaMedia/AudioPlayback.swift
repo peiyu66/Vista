@@ -17,11 +17,13 @@ private final class AudioObservers: @unchecked Sendable {
     private var stopped = false
     private var started = false
     private var sessionActive = false
-    init(muted: Bool) {
+    private let startTime: CMTime
+    init(muted: Bool, startAt: Double = 0) {
+        startTime = CMTime(seconds: startAt, preferredTimescale: 60_000)
         renderer.isMuted = muted
         synchronizer.addRenderer(renderer)
         synchronizer.delaysRateChangeUntilHasSufficientMediaData = false
-        synchronizer.setRate(0, time: .zero)
+        synchronizer.setRate(0, time: startTime)
         observe(.AVSampleBufferAudioRendererWasFlushedAutomatically, object: renderer)
         observe(.AVSampleBufferAudioRendererOutputConfigurationDidChange, object: renderer)
         #if os(visionOS)
@@ -56,7 +58,7 @@ private final class AudioObservers: @unchecked Sendable {
         } catch { throw PlaybackFailure.audioFailed }
         #endif
         started = true
-        synchronizer.setRate(1, time: .zero)
+        synchronizer.setRate(1, time: startTime)
     }
     func pause() { if started { synchronizer.rate = 0 } }
     func resume() { if started && !stopped { synchronizer.rate = 1 } }
@@ -82,9 +84,10 @@ actor AudioPlayback {
     private var previousEnd = -Double.infinity
     private var reachedEnd = false
     private(set) var sampleCount = 0
-    init(asset: AVAsset, track: AVAssetTrack, clock: PlaybackAudioClock) throws {
+    init(asset: AVAsset, track: AVAssetTrack, clock: PlaybackAudioClock, startAt: Double = 0) throws {
         self.clock = clock
         reader = try AVAssetReader(asset: asset)
+        reader.timeRange = CMTimeRange(start: CMTime(seconds: startAt, preferredTimescale: 60_000), duration: .positiveInfinity)
         output = AVAssetReaderTrackOutput(track: track, outputSettings: [
             AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 16,
             AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false,

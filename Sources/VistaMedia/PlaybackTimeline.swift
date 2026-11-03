@@ -17,7 +17,10 @@ import Foundation
     var audioTime: Double? { audioClock?.time }
     public func stopAudio() { audioClock?.stop() }
     func detachAudio() { audioClock = nil; feedAudio = nil }
-    public init() {}
+    private var requestedStart: Double?
+    private var previewFirstFrame: Bool
+    public init(previewFirstFrame: Bool = false) { self.previewFirstFrame = previewFirstFrame }
+    func prepare(at time: Double) { requestedStart = time }
 
     public func pause() {
         guard !isPaused else { return }
@@ -53,6 +56,13 @@ import Foundation
     }
     public func present(at pts: Double, output: @MainActor @Sendable () -> Void) async throws {
         guard pts.isFinite, pts >= 0 else { throw PlaybackFailure.decodeFailed }
+        if previewFirstFrame {
+            try Task.checkCancellation()
+            previewFirstFrame = false
+            pause()
+            output()
+            return
+        }
         var stalledSince = clock.now
         var lastAudioTime = -Double.infinity
         while true {
@@ -71,7 +81,7 @@ import Foundation
                 try await clock.sleep(for: .milliseconds(5))
                 continue
             }
-            if origin == nil { origin = clock.now; firstPTS = pts }
+            if origin == nil { origin = clock.now; firstPTS = requestedStart ?? pts }
             let deadline = origin!.advanced(by: .seconds(pts - firstPTS) + pausedDuration)
             if clock.now < deadline {
                 try await clock.sleep(until: deadline)
