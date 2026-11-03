@@ -19,7 +19,7 @@ final class VistaUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["connectionMessage"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.progressIndicators["connectionProgress"].exists)
     }
-    @MainActor func testTwoColumnsAndPlaybackReturn() throws {
+    @MainActor func testTwoColumnsMediaInspectionAndPlaybackReturn() throws {
         let app = XCUIApplication()
         app.launch()
         XCTAssertTrue(app.buttons["openDemo"].waitForExistence(timeout: 10))
@@ -43,6 +43,9 @@ final class VistaUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["directoryPath"].label, "/影片/電影/科幻")
         app.buttons["星際漫遊_SBS_180.mp4，檔案"].tap()
         XCTAssertTrue(app.staticTexts["尚未啟用播放"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["mediaHeader"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["mediaHeader"].label, "檔頭：ISO BMFF（MP4 家族）")
+        XCTAssertTrue(app.buttons["返回檔案"].isHittable)
         app.buttons["返回檔案"].tap()
         XCTAssertTrue(app.buttons["星際漫遊_SBS_180.mp4，檔案"].waitForExistence(timeout: 5))
         app.buttons["back"].tap()

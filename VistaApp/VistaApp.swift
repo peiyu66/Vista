@@ -4,6 +4,7 @@ import SwiftUI
     var body: some Scene {
         WindowGroup { ConnectionView() }
             .defaultSize(width: 1000, height: 680)
+            .windowResizability(.contentMinSize)
     }
 }
 
@@ -24,7 +25,7 @@ struct ConnectionView: View {
     var body: some View {
         Group {
             if let browser {
-                BrowserView(model: browser, isDemo: isDemo, serverName: connectedServer, shareName: connectedShare) {
+                BrowserView(model: browser, isDemo: isDemo, serverName: connectedServer, shareName: connectedShare, mediaSource: isDemo ? DemoMediaSource() : session) {
                     browser.stop()
                     self.browser = nil
                     let closing = session
@@ -108,6 +109,7 @@ struct BrowserView: View {
     let isDemo: Bool
     let serverName: String
     let shareName: String
+    let mediaSource: (any MediaSource)?
     var disconnect: () -> Void
     var body: some View {
         VStack(spacing: 0) {
@@ -146,7 +148,7 @@ struct BrowserView: View {
         }
         .task { model.start() }
         .sheet(item: $model.playback) { selection in
-            PlaybackView(selection: selection) { model.playback = nil }
+            PlaybackView(selection: selection, source: mediaSource, isDemo: isDemo) { model.playback = nil }
         }
     }
 }
@@ -210,27 +212,55 @@ struct DirectoryColumn: View {
 
 struct PlaybackView: View {
     let selection: PlaybackSelection
+    let source: (any MediaSource)?
+    let isDemo: Bool
     var close: () -> Void
+    @State private var inspection: MediaInspection?
+    @State private var inspectionFailed = false
+    @State private var attempt = 0
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 16) {
             HStack {
                 Button("返回檔案", systemImage: "chevron.left", action: close)
                 Spacer()
                 Text("播放預覽").font(.headline)
             }
-            Spacer()
-            Image(systemName: "play.rectangle").font(.system(size: 80)).foregroundStyle(.secondary)
-            Text(selection.file.name).font(.title2).multilineTextAlignment(.center)
-            Text("尚未啟用播放").font(.headline)
-            Text("這是播放介面與返回流程預覽。影片需要經過 SMB 讀取、格式辨識與硬體解碼驗證後才能播放。")
-                .foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 500)
-            HStack(spacing: 24) {
-                Image(systemName: "gobackward.10")
-                Image(systemName: "play.fill")
-                Image(systemName: "goforward.10")
-            }.font(.title).foregroundStyle(.tertiary).accessibilityLabel("播放控制尚未啟用")
-            Spacer()
-            Text("返回後保留瀏覽位置與選取檔案。").font(.caption).foregroundStyle(.secondary)
-        }.padding(32).frame(width: 680, height: 520)
+            Divider()
+            ScrollView {
+                VStack(spacing: 16) {
+                    Image(systemName: "play.rectangle").font(.system(size: 60)).foregroundStyle(.secondary)
+                    Text(selection.file.name).font(.title2).multilineTextAlignment(.center)
+                    if isDemo { Text("示範資料").font(.caption) }
+                    if let inspection {
+                        Text("檔案大小：\(ByteCountFormatter.string(fromByteCount: Int64(clamping: inspection.fileSize), countStyle: .file))")
+                        Text("檔頭：\(inspection.headerKind.rawValue)").accessibilityIdentifier("mediaHeader")
+                    } else if inspectionFailed {
+                        Text("無法讀取檔案資訊。請確認連線與檔案後重試。")
+                        Button("重試") { attempt += 1 }
+                    } else { ProgressView("讀取檔案資訊…") }
+                    Text("尚未啟用播放").font(.headline)
+                    Text("影片仍需通過完整格式與硬體解碼驗證才能播放。")
+                        .foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 500)
+                    HStack(spacing: 24) {
+                        Image(systemName: "gobackward.10")
+                        Image(systemName: "play.fill")
+                        Image(systemName: "goforward.10")
+                    }.font(.title).foregroundStyle(.tertiary).accessibilityLabel("播放控制尚未啟用")
+                }.frame(maxWidth: .infinity).padding(.vertical, 16)
+            }
+        }.padding(32).frame(width: 680, height: 620)
+        .task(id: attempt) {
+            inspection = nil
+            inspectionFailed = false
+            do {
+                guard let source else { throw MediaInspectionError.unavailable }
+                let file = try MediaFile(components: selection.directory.components + [selection.file.name])
+                let result = try await MediaInspector.inspect(file, source: source)
+                try Task.checkCancellation()
+                inspection = result
+            } catch {
+                if !Task.isCancelled { inspectionFailed = true }
+            }
+        }
     }
 }

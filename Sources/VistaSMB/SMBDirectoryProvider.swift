@@ -5,7 +5,7 @@ import VistaCore
 #endif
 
 /// Owns one authenticated session. Never encode, log or persist the manager or credentials.
-public actor SMBDirectoryProvider: DirectoryProvider {
+public actor SMBDirectoryProvider: DirectoryProvider, MediaSource {
     private let manager: SMB2Manager
     private var cache: [DirectoryPath: [FileEntry]] = [:]
     private var closed = false
@@ -72,6 +72,27 @@ public actor SMBDirectoryProvider: DirectoryProvider {
         }
         let entry = FileEntry(name, kind, hiddenAttribute: item[.isHiddenKey] as? Bool)
         return entry.isHidden ? nil : entry
+    }
+
+    public func header(for file: MediaFile) async throws -> MediaHeader {
+        try Task.checkCancellation()
+        guard !closed else { throw MediaInspectionError.unavailable }
+        do {
+            let attributes = try await manager.attributesOfItem(atPath: file.relativePath)
+            try Task.checkCancellation()
+            guard !closed, attributes[.fileResourceTypeKey] as? URLFileResourceType == .regular,
+                  let size = attributes[.fileSizeKey] as? UInt64 else {
+                throw MediaInspectionError.invalidResponse
+            }
+            let count = min(size, UInt64(MediaInspector.headerLimit))
+            let data: Data
+            if count == 0 { data = Data() }
+            else { data = try await manager.contents(atPath: file.relativePath, range: UInt64(0)..<count, progress: nil) }
+            try Task.checkCancellation()
+            guard !closed, data.count == Int(count) else { throw MediaInspectionError.invalidResponse }
+            return MediaHeader(fileSize: size, data: data)
+        } catch is CancellationError { throw CancellationError() }
+        catch { throw MediaInspectionError.unavailable }
     }
 
     public func disconnect() async {
