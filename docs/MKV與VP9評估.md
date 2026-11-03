@@ -104,3 +104,10 @@ BSD 條件允許源碼及二進位重散布，需保留著作權、條件與免�
 現有 `SMBMediaReader.close()` 只設 closed 狀態，range transport 呼叫 AMSMB2 contents；雖 manager 設 15 秒 timeout，尚未證實能在逾時／取消後中止全部底層工作。新 bridge 可以及時停止 parser，但不能替不合作來源保證立即釋放。仍需跨播放 session 的共享 admission／cleanup，確保舊 I/O 真正結束前不建立無界的新 session。
 
 此外，現有來源沒有固定檔案快照／版本契約，不能保證不同區塊在檔案被替換時屬於同一版本。原型也仍限 1 MiB 合成檔、24 個樣本，尚未將 bridge 樣本接至既有播放器的音訊、跳轉及生命週期。基於這些具體缺口，產品 MKV 入口保持關閉；不是因為配置 context 不可行，也不是授權或權限被拒絕。下一步先補實際 transport 的生命週期、跨 session 資源上限與來源一致性，再驗證最小單視訊硬解路徑。
+
+
+## SMB 契約接續（2026-11-03）
+
+已新增共享 admission、draining、整體期限及讀取前後版本比對的 `SMBReadSession`，並實際接上 AMSMB2 的可用 progress 取消旗標；尚未掛入 App 播放流程。10 個契約測試、ThreadSanitizer、全套 81 測試與 visionOS 建置通過。真正 blocking I/O 不能靠 Task.cancel 即時中止，故逾時後保留名額直到後端返回。
+
+版本檢查分成嚴格不可變快照與明確的 metadata 偵測。現有 adapter 不具快照承諾，預設在網路 I/O 前拒絕；相同 metadata 的內容變動已以測試證明不能偵測。MKV 仍不開放，不能為了接線改用較弱模式而不說明。契約、依賴來源及下一步界線統一見 [SMB 讀取生命週期](SMB讀取生命週期.md)。
