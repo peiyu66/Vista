@@ -7,9 +7,13 @@ import VistaCore
 /// Owns one authenticated session. Never encode, log or persist the manager or credentials.
 public actor SMBDirectoryProvider: DirectoryProvider, MediaByteSource {
     private let manager: SMB2Manager
+    private let mediaReader: SMBMediaReader
     private var cache: [DirectoryPath: [FileEntry]] = [:]
     private var closed = false
-    private init(manager: SMB2Manager) { self.manager = manager }
+    private init(manager: SMB2Manager) {
+        self.manager = manager
+        self.mediaReader = SMBMediaReader(transport: AMSMBRangeTransport(manager: manager))
+    }
 
     public static func connect(input: ConnectionInput, password: String) async throws -> SMBDirectoryProvider {
         guard input.isValid else { throw URLError(.badURL) }
@@ -74,36 +78,12 @@ public actor SMBDirectoryProvider: DirectoryProvider, MediaByteSource {
         return entry.isHidden ? nil : entry
     }
 
-    public func fileSize(for file: MediaFile) async throws -> UInt64 {
-        try Task.checkCancellation()
-        guard !closed else { throw MediaInspectionError.unavailable }
-        do {
-            let attributes = try await manager.attributesOfItem(atPath: file.relativePath)
-            try Task.checkCancellation()
-            guard !closed, attributes[.fileResourceTypeKey] as? URLFileResourceType == .regular,
-                  let size = attributes[.fileSizeKey] as? UInt64, size <= Int64.max else { throw MediaInspectionError.invalidResponse }
-            return size
-        } catch is CancellationError { throw CancellationError() }
-        catch { throw MediaInspectionError.unavailable }
-    }
-
-    public func read(_ file: MediaFile, range: Range<UInt64>) async throws -> Data {
-        try Task.checkCancellation()
-        guard !closed, range.upperBound <= Int64.max, range.upperBound - range.lowerBound <= 1_048_576 else {
-            throw MediaInspectionError.invalidResponse
-        }
-        if range.isEmpty { return Data() }
-        do {
-            let data = try await manager.contents(atPath: file.relativePath, range: range, progress: nil)
-            try Task.checkCancellation()
-            guard !closed, UInt64(data.count) == range.upperBound - range.lowerBound else { throw MediaInspectionError.invalidResponse }
-            return data
-        } catch is CancellationError { throw CancellationError() }
-        catch { throw MediaInspectionError.unavailable }
-    }
+    public func fileSize(for file: MediaFile) async throws -> UInt64 { try await mediaReader.fileSize(for: file) }
+    public func read(_ file: MediaFile, range: Range<UInt64>) async throws -> Data { try await mediaReader.read(file, range: range) }
 
     public func disconnect() async {
         closed = true; cache.removeAll()
+        await mediaReader.close()
         try? await manager.disconnectShare()
     }
 }

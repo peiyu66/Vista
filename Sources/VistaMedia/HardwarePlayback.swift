@@ -57,19 +57,18 @@ public struct PlaybackReport: Sendable {
                 request.contentInformationRequest?.contentLength = Int64(size)
                 request.contentInformationRequest?.isByteRangeAccessSupported = true
                 if let dataRequest = request.dataRequest {
-                    guard dataRequest.requestedOffset >= 0, dataRequest.currentOffset >= 0, dataRequest.requestedLength >= 0 else { throw PlaybackFailure.readFailed }
-                    var offset = UInt64(dataRequest.currentOffset)
-                    let (requestedEnd, overflow) = UInt64(dataRequest.requestedOffset).addingReportingOverflow(UInt64(dataRequest.requestedLength))
-                    guard !overflow, offset <= size else { throw PlaybackFailure.readFailed }
-                    let end = dataRequest.requestsAllDataToEndOfResource ? size : min(size, requestedEnd)
-                    while offset < end {
+                    let plan = try MediaReadPlan(requestedOffset: dataRequest.requestedOffset,
+                                                 currentOffset: dataRequest.currentOffset,
+                                                 requestedLength: dataRequest.requestedLength,
+                                                 toEnd: dataRequest.requestsAllDataToEndOfResource, fileSize: size)
+                    for range in plan {
                         try Task.checkCancellation()
-                        let next = offset + min(65_536, end - offset)
-                        let data = try await source.read(file, range: offset..<next)
+                        let data = try await source.read(file, range: range)
                         try Task.checkCancellation()
-                        guard data.count == Int(next - offset) else { throw PlaybackFailure.readFailed }
+                        guard data.count == Int(range.upperBound - range.lowerBound) else { throw PlaybackFailure.readFailed }
                         dataRequest.respond(with: data)
-                        offset = next
+                        // Let cancellation/seek callbacks run before issuing more speculative I/O.
+                        await Task.yield()
                     }
                 }
                 if !Task.isCancelled { request.finishLoading() }
