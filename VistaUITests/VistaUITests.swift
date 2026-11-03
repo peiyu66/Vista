@@ -1,0 +1,35 @@
+import XCTest
+
+final class VistaUITests: XCTestCase {
+    @MainActor func testTwoColumnsAndPlaybackReturn() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.buttons["openDemo"].waitForExistence(timeout: 10))
+        app.buttons["openDemo"].tap()
+        XCTAssertTrue(app.buttons["影片，資料夾"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["back"].isEnabled)
+        app.buttons["影片，資料夾"].tap()
+        XCTAssertTrue(app.buttons["電影，資料夾"].waitForExistence(timeout: 5))
+        app.buttons["電影，資料夾"].tap()
+        XCTAssertTrue(app.buttons["科幻，資料夾"].waitForExistence(timeout: 5))
+        app.buttons["科幻，資料夾"].tap()
+        XCTAssertTrue(app.buttons["星際漫遊_SBS_180.mp4，檔案"].waitForExistence(timeout: 5))
+        app.buttons["星際漫遊_SBS_180.mp4，檔案"].tap()
+        XCTAssertTrue(app.staticTexts["尚未啟用播放"].waitForExistence(timeout: 5))
+        app.buttons["返回檔案"].tap()
+        XCTAssertTrue(app.buttons["星際漫遊_SBS_180.mp4，檔案"].waitForExistence(timeout: 5))
+        app.buttons["back"].tap()
+        XCTAssertTrue(app.buttons["科幻，資料夾"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["旅行，資料夾"].exists)
+        app.buttons["旅行，資料夾"].tap()
+        XCTAssertTrue(app.buttons["示範影片.mp4，檔案"].waitForExistence(timeout: 5))
+        app.buttons["離開分享"].tap()
+        XCTAssertTrue(app.buttons["openDemo"].waitForExistence(timeout: 5))
+        app.buttons["openDemo"].tap()
+        XCTAssertTrue(app.buttons["影片，資料夾"].waitForExistence(timeout: 5))
+        app.buttons["影片，資料夾"].tap()
+        XCTAssertTrue(app.buttons["電影，資料夾"].waitForExistence(timeout: 5))
+        app.buttons["電影，資料夾"].tap()
+        XCTAssertTrue(app.buttons["科幻，資料夾"].waitForExistence(timeout: 5))
+    }
+}
