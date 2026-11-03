@@ -74,10 +74,33 @@ BSD 條件允許源碼及二進位重散布，需保留著作權、條件與免�
 
 新快取原型以 64 KiB 區塊、最多 4 區塊 LRU（256 KiB payload）、單來源 1 MiB 累計讀取預算及單一進行中 I/O 工作。700 個同區塊小讀取只呼叫來源一次。跨區塊、驅逐、越界、截斷、耗盡預算、重疊請求、取消與關閉均有測試；取消後清快取、失效 generation，晚到結果不會發布。失敗讀取也耗用預算，防止無界重試。資料是合成非同步來源，不是真 SMB，未加入 App。
 
-### 暫不接入播放器的具體原因
+### 上一階段未接入播放器的原因（配置障礙已由下輪解除）
 
 1. 配置攔截是測試執行檔的全域 new/new[] hook，不能安全套用到包含 UI、其他套件及多執行緒的 App；C malloc／OS／解碼器配置也不在該預算內。三個 SDK 的 parser archive 仍是官方原始碼，沒有內建此防護。下一步需 parser 專屬配置 context／範圍，而非沿用全域 hook。
 2. 同步 C++ parser 到非同步 SMB 尚無已驗證 bridge。快取在取消後保留唯一 active slot，直到後端返回；故能防止無界孤兒 I/O，但無法替不合作的後端保證即時結束。須接入並驗證實際逾時／取消、關閉及來源內容版本契約。
 3. 當前 parser 原型仍限制 1 MiB 實體合成檔、單視訊、少量 cluster／sample。這不是長片、音訊或 Cues 跳轉的安全資源模型，不能直接去掉限制以換取大檔支援。
 
 因此本輪完成安全測試基礎與有界快取原型，但產品 MKV 入口保持關閉；沒有新增軟解或修改私人分享。未發現需要更換專案授權的衝突，也沒有權限拒絕，阻礙是尚未完成的工程證據。下一階段應先完成 parser 專屬配置及同步／非同步 bridge，再選最小單視訊範圍接回既有硬解播放器。
+
+
+## Parser context 與非同步橋接檢查點（2026-11-03）
+
+已消除依賴全域 allocator 攔截的障礙。現在預設編譯路徑將官方固定版本的 44 處 nothrow new 改成 opt-in tag overload，呼叫專屬 context；沒有 context、重入、同 context 並發或取消時拒絕。單次配置請求上限 256 KiB，累計 2 MiB／100,000 次嘗試，釋放不退還額度。使用標準成對 new／delete，沒有替換全域配置函式；不影響無關程式配置。官方原始檔與雜湊保留，衍生源碼由腳本生成並保留 BSD 聲明，不能把衍生版誤稱官方原封版本。
+
+每個 context 只能由一個 parser owner 使用；thread-local 只承載當前 owner 指標，預算本身持續至 session 結束。測試確認缺 context 拒絕、總額耗盡、取消、重入拒絕、不同執行緒獨立預算及同 context 競爭拒絕。H.264／HEVC 合成檔的 parser 累計配置請求各 28,227／28,477 bytes；不是 RSS、存活峰值或整個播放器的記憶體。
+
+三平台衍生 parser＋context 靜態 archive 編譯通過：macOS 232,152 bytes、visionOS simulator 234,248 bytes、visionOS device 233,584 bytes。符號檢查確認沒有標準 new/delete 覆寫；這些體積仍不是 App 安裝增量。C++ bridge 也通過三平台編譯，Swift bridge 通過三平台 Swift 6 typecheck；沒有執行實機。
+
+### 實際同步 parser／非同步來源橋接
+
+同步 parser 在專用 DispatchQueue 上執行，reader 經 C ABI 呼叫 Swift bridge，再由非同步 Task 讀取有界 cache。同步等待使用單調時限，拒絕主執行緒與同 bridge 重疊讀取；context 由呼叫端保留至 parser 返回，不將 callback 的輸出 buffer 交給晚到工作。取消／逾時喚醒等待者並永久封閉 bridge，配置點與最終結果再次檢查取消，晚到回應不發布。
+
+真正 libwebm parser 經此 bridge 讀兩種合成 MKV，各取得 24 樣本，每份檔案只向來源取一次資料。50 ms 逾時、主動取消、同 bridge 另一 parser 競爭、故意忽略取消的來源及晚到清理通過；等待後端返回後，cache 的 active slot 與內容清空。這是可控替身，沒有宣稱 SMB 實測或音畫播放。
+
+無全域 hook 的 parser ASan／UBSan、bridge ASan、128 變異與異常結構測試通過；另開 `--track` 的單執行緒 Probe 驗證 C++ 配置與檔案 handle 歸零。全域追蹤只留作額外測試工具，未進入 archive 或 bridge。尚未完成廣泛 fuzz、TSan 或所有容器結構的安全審核。
+
+### 本輪仍保守不開放 App MKV
+
+現有 `SMBMediaReader.close()` 只設 closed 狀態，range transport 呼叫 AMSMB2 contents；雖 manager 設 15 秒 timeout，尚未證實能在逾時／取消後中止全部底層工作。新 bridge 可以及時停止 parser，但不能替不合作來源保證立即釋放。仍需跨播放 session 的共享 admission／cleanup，確保舊 I/O 真正結束前不建立無界的新 session。
+
+此外，現有來源沒有固定檔案快照／版本契約，不能保證不同區塊在檔案被替換時屬於同一版本。原型也仍限 1 MiB 合成檔、24 個樣本，尚未將 bridge 樣本接至既有播放器的音訊、跳轉及生命週期。基於這些具體缺口，產品 MKV 入口保持關閉；不是因為配置 context 不可行，也不是授權或權限被拒絕。下一步先補實際 transport 的生命週期、跨 session 資源上限與來源一致性，再驗證最小單視訊硬解路徑。

@@ -1,6 +1,9 @@
 // Vista MIT. Trusted synthetic-fixture experiment only; not an untrusted-media parser boundary.
 #include "mkvparser/mkvparser.h"
+#include "ParserBudget.hpp"
+#ifdef VISTA_TRACK_GLOBAL_ALLOCS
 #include "AllocationBudget.hpp"
+#endif
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -68,13 +71,20 @@ static std::string hex(const unsigned char* data, size_t size) {
     return result;
 }
 int main(int argc, char** argv) {
+    #ifdef VISTA_TRACK_GLOBAL_ALLOCS
     allocation_budget::Scope allocationScope;
+#endif
+    const bool lowBudget = argc == 3 && std::strcmp(argv[2], "alloc-budget") == 0;
+    vista_parser::Budget parserBudget(lowBudget ? 64 : 2 * 1024 * 1024, lowBudget ? 64 : 256 * 1024);
+    vista_parser::Scope parserScope(parserBudget);
+    if (!parserScope.valid()) return 1;
+    struct Stats { vista_parser::Budget& b; ~Stats() { std::fprintf(stderr, "PARSER_BUDGET charged=%zu rejected=%zu attempts=%zu\n", b.charged.load(), b.rejected.load(), b.attempts.load()); } } stats{parserBudget};
     FileAudit fileScope;
     try {
         require(argc == 2 || argc == 3);
         Reader reader(argv[1]);
         if (argc == 3) {
-            if (std::strcmp(argv[2], "alloc-budget") == 0) allocation_budget::tighten();
+            if (std::strcmp(argv[2], "alloc-budget") == 0) {}
             else if (std::strcmp(argv[2], "cancel") == 0) reader.cancelled = true;
             else if (std::strcmp(argv[2], "cancel-midway") == 0) reader.cancelAfter = 100;
             else if (std::strcmp(argv[2], "bounds") == 0) {
