@@ -9,15 +9,16 @@ import AVFoundation
         guard (2...3).contains(CommandLine.arguments.count) else { throw CocoaError(.fileWriteInvalidFileName) }
         let url = URL(fileURLWithPath: CommandLine.arguments[1])
         guard !FileManager.default.fileExists(atPath: url.path) else { throw CocoaError(.fileWriteFileExists) }
-        guard CommandLine.arguments.count == 2 || ["--audio", "--seek"].contains(CommandLine.arguments[2]) else {
+        guard CommandLine.arguments.count == 2 || ["--audio", "--seek", "--hevc"].contains(CommandLine.arguments[2]) else {
             throw CocoaError(.fileWriteInvalidFileName)
         }
+        let hevcFixture = CommandLine.arguments.last == "--hevc"
         let seekFixture = CommandLine.arguments.count == 3 && CommandLine.arguments[2] == "--seek"
         let includeAudio = seekFixture || (CommandLine.arguments.count == 3 && CommandLine.arguments[2] == "--audio")
         let frameCount = seekFixture ? 72 : 24
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 64, AVVideoHeightKey: 64,
+            AVVideoCodecKey: hevcFixture ? AVVideoCodecType.hevc : AVVideoCodecType.h264, AVVideoWidthKey: 64, AVVideoHeightKey: 64,
             AVVideoCompressionPropertiesKey: [AVVideoMaxKeyFrameIntervalKey: seekFixture ? 12 : 240,
                                              AVVideoAllowFrameReorderingKey: true]
         ])

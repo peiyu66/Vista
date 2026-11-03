@@ -7,10 +7,11 @@ import VistaCore
 #endif
 
 public enum PlaybackFailure: Error, Equatable {
-    case unsupportedContainer, unsupportedTrack, hardwareUnavailable, readFailed, decodeFailed, audioFailed, seekUnavailable
+    case unsupportedContainer, unsupportedTrack, unsupportedCodec, hardwareUnavailable, readFailed, decodeFailed, audioFailed, seekUnavailable
     public var message: String {
         switch self {
         case .unsupportedContainer: "目前僅提供 MP4／MOV 視訊播放，這個容器尚未支援。"
+        case .unsupportedCodec: "這個視訊編碼尚未支援，已停止播放。"
         case .unsupportedTrack: "無法辨識可播放的單一視訊軌道。"
         case .hardwareUnavailable: "無法確認硬體解碼，已停止播放。"
         case .readFailed: "無法讀取影片。請確認連線及檔案後重試。"
@@ -156,7 +157,7 @@ public actor HardwarePlayback {
         switch codec { case kCMVideoCodecType_H264: codecName = "H.264"
         case kCMVideoCodecType_HEVC: codecName = "HEVC"
         case kCMVideoCodecType_VP9: codecName = "VP9"
-        default: throw PlaybackFailure.unsupportedTrack }
+        default: throw PlaybackFailure.unsupportedCodec }
         let dimensions = CMVideoFormatDescriptionGetDimensions(format)
         let duration = try await asset.load(.duration).seconds
         let transform = try await track.load(.preferredTransform)
@@ -270,7 +271,8 @@ public actor HardwarePlayback {
                 prerollBytes += CMSampleBufferGetTotalSampleSize(sample)
                 guard prerollSamples <= 4096, prerollBytes <= 128 * 1024 * 1024 else { throw PlaybackFailure.seekUnavailable }
             }
-            let result = VTDecompressionSessionDecodeFrame(session, sampleBuffer: sample, flags: [._EnableTemporalProcessing], infoFlagsOut: nil) { status, _, pixel, pts, _ in
+            // Presentation ordering is handled in the bounded queue below.
+            let result = VTDecompressionSessionDecodeFrame(session, sampleBuffer: sample, flags: [], infoFlagsOut: nil) { status, _, pixel, pts, _ in
                 inbox.receive(status: status, pixel: pixel, pts: pts)
             }
             guard result == noErr, VTDecompressionSessionWaitForAsynchronousFrames(session) == noErr else { throw PlaybackFailure.decodeFailed }
@@ -282,7 +284,12 @@ public actor HardwarePlayback {
             pending.append(contentsOf: try inbox.take())
             guard pending.count <= 32, pending.reduce(0, { $0 + CVPixelBufferGetDataSize($1.pixel) }) <= 128 * 1024 * 1024 else { throw PlaybackFailure.decodeFailed }
             pending.sort { CMTimeCompare($0.pts, $1.pts) < 0 }
-            let ready = pending.prefix { $0.pts.seconds <= safeTime }
+            // HEVC composition timestamps may precede DTS. Keep a bounded
+            // 16-frame reorder window instead of treating DTS as a PTS lower bound.
+            // A stream exceeding this window still fails the monotonic PTS check.
+            let ready = CMFormatDescriptionGetMediaSubType(format) == kCMVideoCodecType_HEVC
+                ? pending.prefix(max(0, pending.count - 16))
+                : pending.prefix { $0.pts.seconds <= safeTime }
             try await render(Array(ready), isolation: self)
             pending.removeFirst(ready.count)
         }

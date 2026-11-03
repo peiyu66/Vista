@@ -36,3 +36,6 @@ TestMedia/
 
 # Project-generated color fixture with Spherical Video V2 metadata
 !Sources/VistaCore/Resources/SyntheticVR.mp4
+
+# Project-generated HEVC test fixture
+!Tests/VistaCoreTests/Resources/SyntheticHEVC.mp4
