@@ -19,7 +19,7 @@ final class VistaUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["connectionMessage"].waitForExistence(timeout: 3))
         XCTAssertFalse(app.progressIndicators["connectionProgress"].exists)
     }
-    @MainActor func testTwoColumnsMediaInspectionAndPlaybackReturn() throws {
+    @MainActor func testTwoColumnsHardwareVideoAndReturn() throws {
         let app = XCUIApplication()
         app.launch()
         XCTAssertTrue(app.buttons["openDemo"].waitForExistence(timeout: 10))
@@ -42,9 +42,22 @@ final class VistaUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["shareTitle"].label, "分享：示範分享")
         XCTAssertEqual(app.staticTexts["directoryPath"].label, "/影片/電影/科幻")
         app.buttons["星際漫遊_SBS_180.mp4，檔案"].tap()
-        XCTAssertTrue(app.staticTexts["尚未啟用播放"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["playVideo"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["mediaHeader"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.staticTexts["mediaHeader"].label, "檔頭：ISO BMFF（MP4 家族）")
+        app.buttons["playVideo"].tap()
+        let status = app.staticTexts["playbackStatus"]
+        let finished = NSPredicate(format: "label == %@ OR label == %@", "播放結束", "無法確認硬體解碼，已停止播放。")
+        expectation(for: finished, evaluatedWith: status)
+        waitForExpectations(timeout: 20)
+        print("SIM_PLAYBACK_STATUS", status.label)
+        XCTAssertTrue(app.staticTexts["videoTrackInfo"].exists)
+        if status.label == "播放結束" {
+            app.buttons["playVideo"].tap()
+            XCTAssertTrue(app.buttons["stopVideo"].waitForExistence(timeout: 3))
+            app.buttons["stopVideo"].tap()
+            XCTAssertEqual(status.label, "已停止")
+        }
         XCTAssertTrue(app.buttons["返回檔案"].isHittable)
         app.buttons["返回檔案"].tap()
         XCTAssertTrue(app.buttons["星際漫遊_SBS_180.mp4，檔案"].waitForExistence(timeout: 5))

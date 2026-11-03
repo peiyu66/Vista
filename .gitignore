@@ -24,3 +24,6 @@ TestMedia/
 # Local test results
 *.xcresult/
 .swiftpm/
+
+# Project-generated, non-private 64x64 color-frame test fixture only
+!Sources/VistaCore/Resources/Synthetic.mp4

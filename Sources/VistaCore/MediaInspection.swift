@@ -56,12 +56,36 @@ public enum MediaInspector {
     }
 }
 
-/// Synthetic header for the visibly labeled demo, never a playable movie.
-public struct DemoMediaSource: MediaSource {
+/// Bounded random access for the media resource loader. No implicit whole-file download.
+public protocol MediaByteSource: MediaSource {
+    func fileSize(for file: MediaFile) async throws -> UInt64
+    func read(_ file: MediaFile, range: Range<UInt64>) async throws -> Data
+}
+public extension MediaByteSource {
+    func header(for file: MediaFile) async throws -> MediaHeader {
+        let size = try await fileSize(for: file)
+        let data = try await read(file, range: 0..<min(size, UInt64(MediaInspector.headerLimit)))
+        return MediaHeader(fileSize: size, data: data)
+    }
+}
+
+/// Project-generated color frames. No private or downloaded media.
+public struct DemoMediaSource: MediaByteSource {
     public init() {}
-    public func header(for file: MediaFile) async throws -> MediaHeader {
-        try await Task.sleep(for: .milliseconds(120))
-        let bytes = Data([0, 0, 0, 20] + Array("ftypisom".utf8) + [0, 0, 0, 0] + Array("isom".utf8))
-        return MediaHeader(fileSize: UInt64(bytes.count), data: bytes)
+    private func bytes() throws -> Data {
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        #else
+        let bundle = Bundle.main
+        #endif
+        guard let url = bundle.url(forResource: "Synthetic", withExtension: "mp4") else { throw MediaInspectionError.unavailable }
+        return try Data(contentsOf: url)
+    }
+    public func fileSize(for file: MediaFile) async throws -> UInt64 { UInt64(try bytes().count) }
+    public func read(_ file: MediaFile, range: Range<UInt64>) async throws -> Data {
+        try Task.checkCancellation()
+        let data = try bytes()
+        guard range.upperBound <= data.count, range.count <= 1_048_576 else { throw MediaInspectionError.invalidResponse }
+        return data.subdata(in: Int(range.lowerBound)..<Int(range.upperBound))
     }
 }

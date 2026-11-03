@@ -109,7 +109,7 @@ struct BrowserView: View {
     let isDemo: Bool
     let serverName: String
     let shareName: String
-    let mediaSource: (any MediaSource)?
+    let mediaSource: (any MediaByteSource)?
     var disconnect: () -> Void
     var body: some View {
         VStack(spacing: 0) {
@@ -212,23 +212,32 @@ struct DirectoryColumn: View {
 
 struct PlaybackView: View {
     let selection: PlaybackSelection
-    let source: (any MediaSource)?
+    let source: (any MediaByteSource)?
     let isDemo: Bool
     var close: () -> Void
     @State private var inspection: MediaInspection?
     @State private var inspectionFailed = false
     @State private var attempt = 0
+    @State private var playbackTask: Task<Void, Never>?
+    @State private var playbackID = UUID()
+    @State private var isPlaying = false
+    @State private var trackInfo: VideoTrackInfo?
+    @State private var frame: VideoFrame?
+    @State private var playbackMessage: String?
     var body: some View {
         VStack(spacing: 16) {
             HStack {
                 Button("返回檔案", systemImage: "chevron.left", action: close)
                 Spacer()
-                Text("播放預覽").font(.headline)
+                Text("視訊播放器").font(.headline)
             }
             Divider()
             ScrollView {
                 VStack(spacing: 16) {
-                    Image(systemName: "play.rectangle").font(.system(size: 60)).foregroundStyle(.secondary)
+                    if let frame {
+                        Image(decorative: frame.image, scale: 1).resizable().scaledToFit()
+                            .frame(maxHeight: 220).accessibilityIdentifier("decodedVideoFrame")
+                    } else { Image(systemName: "play.rectangle").font(.system(size: 60)).foregroundStyle(.secondary) }
                     Text(selection.file.name).font(.title2).multilineTextAlignment(.center)
                     if isDemo { Text("示範資料").font(.caption) }
                     if let inspection {
@@ -238,17 +247,20 @@ struct PlaybackView: View {
                         Text("無法讀取檔案資訊。請確認連線與檔案後重試。")
                         Button("重試") { attempt += 1 }
                     } else { ProgressView("讀取檔案資訊…") }
-                    Text("尚未啟用播放").font(.headline)
-                    Text("影片仍需通過完整格式與硬體解碼驗證才能播放。")
-                        .foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 500)
-                    HStack(spacing: 24) {
-                        Image(systemName: "gobackward.10")
-                        Image(systemName: "play.fill")
-                        Image(systemName: "goforward.10")
-                    }.font(.title).foregroundStyle(.tertiary).accessibilityLabel("播放控制尚未啟用")
+                    if let trackInfo {
+                        Text("\(trackInfo.codec) · \(trackInfo.width) × \(trackInfo.height)").accessibilityIdentifier("videoTrackInfo")
+                    }
+                    Text("視訊播放，暫無音訊").font(.caption)
+                    if let playbackMessage { Text(playbackMessage).accessibilityIdentifier("playbackStatus") }
+                    HStack {
+                        Button(isPlaying ? "播放中…" : "播放視訊", action: startPlayback)
+                            .disabled(isPlaying).accessibilityIdentifier("playVideo")
+                        if isPlaying { Button("停止", action: stopPlayback).accessibilityIdentifier("stopVideo") }
+                    }
                 }.frame(maxWidth: .infinity).padding(.vertical, 16)
             }
         }.padding(32).frame(width: 680, height: 620)
+        .onDisappear(perform: stopPlayback)
         .task(id: attempt) {
             inspection = nil
             inspectionFailed = false
@@ -263,4 +275,31 @@ struct PlaybackView: View {
             }
         }
     }
+    private func stopPlayback() {
+        playbackID = UUID()
+        playbackTask?.cancel(); playbackTask = nil
+        isPlaying = false; frame = nil
+        playbackMessage = "已停止"
+    }
+    private func startPlayback() {
+        guard !isPlaying, let source else { return }
+        let id = UUID(); playbackID = id
+        isPlaying = true; frame = nil; trackInfo = nil; playbackMessage = "正在準備影片…"
+        playbackTask = Task {
+            do {
+                let file = try MediaFile(components: selection.directory.components + [selection.file.name])
+                _ = try await HardwarePlayback().play(file: file, source: source, onInfo: { info in
+                    guard playbackID == id else { return }; trackInfo = info
+                }, onFrame: { next in
+                    guard playbackID == id else { return }; frame = next; playbackMessage = "硬體解碼播放中"
+                })
+                guard playbackID == id else { return }; playbackMessage = "播放結束"
+            } catch {
+                guard playbackID == id else { return }
+                playbackMessage = (error as? PlaybackFailure)?.message ?? "無法讀取影片。請確認連線及檔案後重試。"
+            }
+            if playbackID == id { isPlaying = false; playbackTask = nil }
+        }
+    }
+
 }
