@@ -18,11 +18,13 @@ struct ConnectionView: View {
     @State private var connecting = false
     @State private var connectionTask: Task<Void, Never>?
     @State private var isDemo = false
+    @State private var connectedServer = ""
+    @State private var connectedShare = ""
     var input: ConnectionInput { ConnectionInput(server: server, share: share, username: username) }
     var body: some View {
         Group {
             if let browser {
-                BrowserView(model: browser, isDemo: isDemo) {
+                BrowserView(model: browser, isDemo: isDemo, serverName: connectedServer, shareName: connectedShare) {
                     browser.stop()
                     self.browser = nil
                     let closing = session
@@ -61,6 +63,7 @@ struct ConnectionView: View {
                             }
                             Button("使用示範資料") {
                                 password = ""; message = nil; isDemo = true
+                                connectedServer = "示範伺服器"; connectedShare = "示範分享"
                                 browser = BrowserModel(provider: DemoDirectoryProvider())
                             }.disabled(connecting).accessibilityIdentifier("openDemo")
                         }
@@ -83,6 +86,8 @@ struct ConnectionView: View {
                 let connected = try await SMBDirectoryProvider.connect(input: submitted, password: secret)
                 guard !Task.isCancelled else { await connected.disconnect(); connecting = false; return }
                 session = connected; isDemo = false
+                connectedServer = submitted.server.trimmingCharacters(in: .whitespacesAndNewlines)
+                connectedShare = submitted.share.trimmingCharacters(in: .whitespacesAndNewlines)
                 browser = BrowserModel(provider: connected)
             } catch {
                 if !Task.isCancelled { message = "無法連線。請確認伺服器、分享名稱、帳密與網路後重試。" }
@@ -101,6 +106,8 @@ struct ConnectionView: View {
 struct BrowserView: View {
     @Bindable var model: BrowserModel
     let isDemo: Bool
+    let serverName: String
+    let shareName: String
     var disconnect: () -> Void
     var body: some View {
         VStack(spacing: 0) {
@@ -109,8 +116,14 @@ struct BrowserView: View {
                     .disabled(model.current.parent == nil).accessibilityLabel("回上層")
                     .accessibilityIdentifier("back")
                 VStack(alignment: .leading) {
-                    Text(isDemo ? "Vista · 示範分享" : "Vista · SMB 分享").font(.headline)
+                    Text("伺服器：\(serverName)").font(.headline)
+                        .lineLimit(1).truncationMode(.middle)
+                        .accessibilityIdentifier("serverTitle")
+                    Text("分享：\(shareName)").font(.subheadline)
+                        .lineLimit(1).truncationMode(.middle)
+                        .accessibilityIdentifier("shareTitle")
                     Text(model.current.display).font(.caption).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("directoryPath")
                         .lineLimit(1).truncationMode(.middle)
                 }
                 Spacer()
@@ -120,23 +133,16 @@ struct BrowserView: View {
             Divider()
             HStack(spacing: 0) {
                 if let parent = model.current.parent {
-                    DirectoryColumn(model: model, path: parent, isCurrent: false).id(parent)
+                    DirectoryColumn(model: model, path: parent, isCurrent: false, rootName: shareName).id(parent)
                 } else {
                     VStack(spacing: 12) {
                         Image(systemName: "externaldrive.connected.to.line.below").font(.largeTitle)
-                        Text("分享根目錄").font(.headline)
-                        Text("已在最上層").foregroundStyle(.secondary)
+                        Text(shareName).font(.headline)
                     }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 Divider()
-                DirectoryColumn(model: model, path: model.current, isCurrent: true).id(model.current)
+                DirectoryColumn(model: model, path: model.current, isCurrent: true, rootName: shareName).id(model.current)
             }
-            Divider()
-            HStack {
-                Text("點選資料夾進入下一層；左欄可切換同層資料夾。")
-                Spacer()
-                Text("僅瀏覽")
-            }.font(.caption).foregroundStyle(.secondary).padding(16)
         }
         .task { model.start() }
         .sheet(item: $model.playback) { selection in
@@ -149,13 +155,15 @@ struct DirectoryColumn: View {
     @Bindable var model: BrowserModel
     let path: DirectoryPath
     let isCurrent: Bool
+    let rootName: String
     private var state: DirectoryState { model.state(at: path) }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(isCurrent ? "本層" : "上層").font(.caption).foregroundStyle(.secondary)
-                    Text(path.name).font(.title3.bold()).lineLimit(1)
+                    Text(path.components.isEmpty ? rootName : path.name).font(.title3.bold()).lineLimit(1)
+                        .accessibilityIdentifier(isCurrent ? "currentDirectoryTitle" : "parentDirectoryTitle")
                 }
                 Spacer()
                 Text("\(state.entries.count) 項\(state.nextOffset == nil ? "" : "＋")").font(.caption).foregroundStyle(.secondary)
