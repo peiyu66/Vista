@@ -9,16 +9,26 @@ import Foundation
     private var pausedAt: ContinuousClock.Instant?
     private var pausedDuration = Duration.zero
     private var waiters: [UUID: CheckedContinuation<Void, any Error>] = [:]
+    private var audioClock: PlaybackAudioClock?
+    private var feedAudio: (@Sendable (Double) async throws -> Void)?
+    func attachAudio(_ clock: PlaybackAudioClock, feed: @escaping @Sendable (Double) async throws -> Void) {
+        audioClock = clock; feedAudio = feed
+    }
+    var audioTime: Double? { audioClock?.time }
+    public func stopAudio() { audioClock?.stop() }
+    func detachAudio() { audioClock = nil; feedAudio = nil }
     public init() {}
 
     public func pause() {
         guard !isPaused else { return }
+        audioClock?.pause()
         isPaused = true
         pausedAt = clock.now
     }
     public func resume() {
         guard isPaused else { return }
         if origin != nil, let pausedAt { pausedDuration += pausedAt.duration(to: clock.now) }
+        audioClock?.resume()
         pausedAt = nil; isPaused = false
         let pending = Array(waiters.values)
         waiters.removeAll()
@@ -43,8 +53,24 @@ import Foundation
     }
     public func present(at pts: Double, output: @MainActor @Sendable () -> Void) async throws {
         guard pts.isFinite, pts >= 0 else { throw PlaybackFailure.decodeFailed }
+        var stalledSince = clock.now
+        var lastAudioTime = -Double.infinity
         while true {
             try await waitUntilRunning()
+            if let audioClock {
+                try await feedAudio?(audioClock.time + 0.5)
+                try Task.checkCancellation()
+                if isPaused { continue }
+                try audioClock.start()
+                try audioClock.check()
+                let now = audioClock.time
+                guard now.isFinite, now - pts < 0.5 else { throw PlaybackFailure.audioFailed }
+                if now >= pts { try Task.checkCancellation(); output(); return }
+                if now > lastAudioTime + 0.001 { stalledSince = clock.now; lastAudioTime = now }
+                guard stalledSince.duration(to: clock.now) < .seconds(3) else { throw PlaybackFailure.audioFailed }
+                try await clock.sleep(for: .milliseconds(5))
+                continue
+            }
             if origin == nil { origin = clock.now; firstPTS = pts }
             let deadline = origin!.advanced(by: .seconds(pts - firstPTS) + pausedDuration)
             if clock.now < deadline {

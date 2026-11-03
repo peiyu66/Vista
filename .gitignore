@@ -27,3 +27,6 @@ TestMedia/
 
 # Project-generated, non-private 64x64 color-frame test fixture only
 !Sources/VistaCore/Resources/Synthetic.mp4
+
+# Project-generated AAC + H.264 test fixture
+!Tests/VistaCoreTests/Resources/SyntheticAV.mp4

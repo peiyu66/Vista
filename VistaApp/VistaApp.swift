@@ -257,7 +257,7 @@ struct PlaybackView: View {
                         Text("\(timeLabel(playbackTime)) / \(timeLabel(trackInfo.duration))")
                             .monospacedDigit().accessibilityIdentifier("playbackTime")
                     }
-                    Text("視訊播放，暫無音訊").font(.caption)
+                    if let trackInfo, !trackInfo.hasAudio { Text("影片無音軌").font(.caption) }
                     if let playbackMessage { Text(playbackMessage).accessibilityIdentifier("playbackStatus") }
                     HStack {
                         if isPlaying {
@@ -299,6 +299,7 @@ struct PlaybackView: View {
     }
     private func stopPlayback() {
         playbackID = UUID()
+        timeline?.stopAudio()
         playbackTask?.cancel(); playbackTask = nil
         isPlaying = false; isPaused = false; timeline = nil; frame = nil; playbackTime = 0
         playbackMessage = "已停止"

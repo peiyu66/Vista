@@ -7,13 +7,14 @@ import VistaCore
 #endif
 
 public enum PlaybackFailure: Error, Equatable {
-    case unsupportedContainer, unsupportedTrack, hardwareUnavailable, readFailed, decodeFailed
+    case unsupportedContainer, unsupportedTrack, hardwareUnavailable, readFailed, decodeFailed, audioFailed
     public var message: String {
         switch self {
         case .unsupportedContainer: "目前僅提供 MP4／MOV 視訊播放，這個容器尚未支援。"
         case .unsupportedTrack: "無法辨識可播放的單一視訊軌道。"
         case .hardwareUnavailable: "無法確認硬體解碼，已停止播放。"
         case .readFailed: "無法讀取影片。請確認連線及檔案後重試。"
+        case .audioFailed: "音訊播放或同步失敗，已停止播放。"
         case .decodeFailed: "影片解碼失敗，已停止播放。"
         }
     }
@@ -23,6 +24,7 @@ public struct VideoTrackInfo: Sendable, Equatable {
     public let width: Int32
     public let height: Int32
     public let duration: Double
+    public let hasAudio: Bool
 }
 public struct VideoFrame: @unchecked Sendable {
     public let image: CGImage
@@ -31,6 +33,7 @@ public struct VideoFrame: @unchecked Sendable {
 public struct PlaybackReport: Sendable {
     public let decodedFrames: Int
     public let hardwareVerified: Bool
+    public let audioSamples: Int
 }
 
 /// AVFoundation receives only a session-local opaque URL, never SMB credentials or paths.
@@ -103,7 +106,9 @@ private final class FrameInbox: @unchecked Sendable {
 /// The only video decoder in this path is a require-hardware VideoToolbox session.
 /// AVAssetReader supplies compressed samples (nil output settings); CoreImage only renders decoded pixels.
 public actor HardwarePlayback {
-    public init() {}
+    private let muteAudio: Bool
+    public init() { muteAudio = false }
+    init(muteAudioForTesting: Bool) { muteAudio = muteAudioForTesting }
     public func play(file: MediaFile, source: any MediaByteSource, timeline suppliedTimeline: PlaybackTimeline? = nil,
                      onInfo: @MainActor @Sendable (VideoTrackInfo) -> Void,
                      onFrame: @MainActor @Sendable (VideoFrame) -> Void) async throws -> PlaybackReport {
@@ -144,7 +149,14 @@ public actor HardwarePlayback {
         let duration = try await asset.load(.duration).seconds
         let transform = try await track.load(.preferredTransform)
         guard duration.isFinite, duration > 0, dimensions.width > 0, dimensions.height > 0 else { throw PlaybackFailure.unsupportedTrack }
-        await onInfo(VideoTrackInfo(codec: codecName, width: dimensions.width, height: dimensions.height, duration: duration))
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        guard audioTracks.count <= 1 else { throw PlaybackFailure.audioFailed }
+        if let audioTrack = audioTracks.first {
+            let audioFormats = try await audioTrack.load(.formatDescriptions)
+            guard audioFormats.count == 1, let audioFormat = audioFormats.first,
+                  AudioPlayback.supported(audioFormat) else { throw PlaybackFailure.audioFailed }
+        }
+        await onInfo(VideoTrackInfo(codec: codecName, width: dimensions.width, height: dimensions.height, duration: duration, hasAudio: !audioTracks.isEmpty))
         try Task.checkCancellation()
         var session: VTDecompressionSession?
         let status = VTDecompressionSessionCreate(allocator: nil, formatDescription: format,
@@ -153,6 +165,28 @@ public actor HardwarePlayback {
         guard status == noErr, let session else { throw PlaybackFailure.hardwareUnavailable }
         defer { VTDecompressionSessionInvalidate(session) }
         try verifyHardware(session)
+        let audio: AudioPlayback?
+        if let audioTrack = audioTracks.first {
+            let clock = await PlaybackAudioClock(muted: muteAudio)
+            let prepared = try AudioPlayback(asset: asset, track: audioTrack, clock: clock)
+            audio = prepared
+            await timeline.attachAudio(clock, feed: { try await prepared.pump(through: $0) })
+        } else { audio = nil }
+        do {
+            let report = try await readVideo(asset: asset, track: track, format: format, session: session,
+                                            transform: transform, duration: duration, timeline: timeline,
+                                            audio: audio, onFrame: onFrame)
+            await audio?.stop(); await timeline.detachAudio()
+            return report
+        } catch {
+            await audio?.stop(); await timeline.detachAudio()
+            throw error
+        }
+    }
+    private func readVideo(asset: AVURLAsset, track: AVAssetTrack, format: CMFormatDescription,
+                           session: VTDecompressionSession, transform: CGAffineTransform, duration: Double,
+                           timeline: PlaybackTimeline, audio: AudioPlayback?,
+                           onFrame: @MainActor @Sendable (VideoFrame) -> Void) async throws -> PlaybackReport {
         let reader = try AVAssetReader(asset: asset)
         defer { reader.cancelReading() }
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
@@ -216,7 +250,15 @@ public actor HardwarePlayback {
         pending.sort { CMTimeCompare($0.pts, $1.pts) < 0 }
         try await render(pending, isolation: self)
         guard rendered > 0 else { throw PlaybackFailure.decodeFailed }
-        return PlaybackReport(decodedFrames: rendered, hardwareVerified: true)
+        if audio != nil {
+            var position = lastPTS
+            while position < duration {
+                position = min(duration, position + 0.05)
+                try await timeline.waitUntilRunning()
+                try await timeline.present(at: position) {}
+            }
+        }
+        return PlaybackReport(decodedFrames: rendered, hardwareVerified: true, audioSamples: await audio?.sampleCount ?? 0)
     }
     private func verifyHardware(_ session: VTDecompressionSession) throws {
         var value: CFTypeRef?
