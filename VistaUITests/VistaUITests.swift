@@ -52,6 +52,11 @@ final class VistaUITests: XCTestCase {
         waitForExpectations(timeout: 20)
         print("SIM_PLAYBACK_STATUS", status.label)
         XCTAssertTrue(app.staticTexts["videoTrackInfo"].exists)
+        XCTAssertTrue(app.staticTexts["playbackTime"].exists)
+        XCTAssertFalse(app.buttons["pauseResumeVideo"].exists)
+        if status.label == "無法確認硬體解碼，已停止播放。" {
+            XCTAssertEqual(app.staticTexts["playbackTime"].label, "00:00 / 00:02")
+        }
         if status.label == "播放結束" {
             app.buttons["playVideo"].tap()
             XCTAssertTrue(app.buttons["stopVideo"].waitForExistence(timeout: 3))

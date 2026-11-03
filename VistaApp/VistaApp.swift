@@ -221,6 +221,9 @@ struct PlaybackView: View {
     @State private var playbackTask: Task<Void, Never>?
     @State private var playbackID = UUID()
     @State private var isPlaying = false
+    @State private var isPaused = false
+    @State private var timeline: PlaybackTimeline?
+    @State private var playbackTime = 0.0
     @State private var trackInfo: VideoTrackInfo?
     @State private var frame: VideoFrame?
     @State private var playbackMessage: String?
@@ -249,13 +252,20 @@ struct PlaybackView: View {
                     } else { ProgressView("讀取檔案資訊…") }
                     if let trackInfo {
                         Text("\(trackInfo.codec) · \(trackInfo.width) × \(trackInfo.height)").accessibilityIdentifier("videoTrackInfo")
+                        ProgressView(value: min(playbackTime, trackInfo.duration), total: trackInfo.duration)
+                            .accessibilityIdentifier("playbackProgress")
+                        Text("\(timeLabel(playbackTime)) / \(timeLabel(trackInfo.duration))")
+                            .monospacedDigit().accessibilityIdentifier("playbackTime")
                     }
                     Text("視訊播放，暫無音訊").font(.caption)
                     if let playbackMessage { Text(playbackMessage).accessibilityIdentifier("playbackStatus") }
                     HStack {
-                        Button(isPlaying ? "播放中…" : "播放視訊", action: startPlayback)
-                            .disabled(isPlaying).accessibilityIdentifier("playVideo")
-                        if isPlaying { Button("停止", action: stopPlayback).accessibilityIdentifier("stopVideo") }
+                        if isPlaying {
+                            Button(isPaused ? "繼續" : "暫停", action: togglePause).accessibilityIdentifier("pauseResumeVideo")
+                            Button("停止", action: stopPlayback).accessibilityIdentifier("stopVideo")
+                        } else {
+                            Button("播放視訊", action: startPlayback).accessibilityIdentifier("playVideo")
+                        }
                     }
                 }.frame(maxWidth: .infinity).padding(.vertical, 16)
             }
@@ -275,30 +285,43 @@ struct PlaybackView: View {
             }
         }
     }
+    private func timeLabel(_ value: Double) -> String {
+        let seconds = Int(max(0, min(value, Double(Int.max / 2))))
+        return seconds >= 3600
+            ? String(format: "%d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60)
+            : String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    }
+    private func togglePause() {
+        guard isPlaying, let timeline else { return }
+        if timeline.isPaused { timeline.resume(); playbackMessage = "繼續播放中" }
+        else { timeline.pause(); playbackMessage = "已暫停" }
+        isPaused = timeline.isPaused
+    }
     private func stopPlayback() {
         playbackID = UUID()
         playbackTask?.cancel(); playbackTask = nil
-        isPlaying = false; frame = nil
+        isPlaying = false; isPaused = false; timeline = nil; frame = nil; playbackTime = 0
         playbackMessage = "已停止"
     }
     private func startPlayback() {
         guard !isPlaying, let source else { return }
         let id = UUID(); playbackID = id
-        isPlaying = true; frame = nil; trackInfo = nil; playbackMessage = "正在準備影片…"
+        let control = PlaybackTimeline(); timeline = control
+        isPlaying = true; isPaused = false; playbackTime = 0; frame = nil; trackInfo = nil; playbackMessage = "正在準備影片…"
         playbackTask = Task {
             do {
                 let file = try MediaFile(components: selection.directory.components + [selection.file.name])
-                _ = try await HardwarePlayback().play(file: file, source: source, onInfo: { info in
+                _ = try await HardwarePlayback().play(file: file, source: source, timeline: control, onInfo: { info in
                     guard playbackID == id else { return }; trackInfo = info
                 }, onFrame: { next in
-                    guard playbackID == id else { return }; frame = next; playbackMessage = "硬體解碼播放中"
+                    guard playbackID == id else { return }; frame = next; playbackTime = next.time; playbackMessage = "硬體解碼播放中"
                 })
-                guard playbackID == id else { return }; playbackMessage = "播放結束"
+                guard playbackID == id else { return }; playbackTime = trackInfo?.duration ?? playbackTime; playbackMessage = "播放結束"
             } catch {
                 guard playbackID == id else { return }
                 playbackMessage = (error as? PlaybackFailure)?.message ?? "無法讀取影片。請確認連線及檔案後重試。"
             }
-            if playbackID == id { isPlaying = false; playbackTask = nil }
+            if playbackID == id { isPlaying = false; isPaused = false; timeline = nil; playbackTask = nil }
         }
     }
 

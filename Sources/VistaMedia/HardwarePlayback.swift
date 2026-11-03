@@ -104,7 +104,7 @@ private final class FrameInbox: @unchecked Sendable {
 /// AVAssetReader supplies compressed samples (nil output settings); CoreImage only renders decoded pixels.
 public actor HardwarePlayback {
     public init() {}
-    public func play(file: MediaFile, source: any MediaByteSource,
+    public func play(file: MediaFile, source: any MediaByteSource, timeline suppliedTimeline: PlaybackTimeline? = nil,
                      onInfo: @MainActor @Sendable (VideoTrackInfo) -> Void,
                      onFrame: @MainActor @Sendable (VideoFrame) -> Void) async throws -> PlaybackReport {
         let ext = (file.components.last! as NSString).pathExtension.lowercased()
@@ -117,7 +117,8 @@ public actor HardwarePlayback {
         let asset = AVURLAsset(url: URL(string: "vista-media://session/movie.\(ext)")!)
         await MainActor.run { asset.resourceLoader.setDelegate(bridge, queue: .main) }
         do {
-            let report = try await decode(asset: asset, onInfo: onInfo, onFrame: onFrame)
+            let timeline = if let suppliedTimeline { suppliedTimeline } else { await PlaybackTimeline() }
+            let report = try await decode(asset: asset, timeline: timeline, onInfo: onInfo, onFrame: onFrame)
             asset.cancelLoading(); await bridge.stop(); return report
         } catch {
             asset.cancelLoading(); await bridge.stop()
@@ -125,7 +126,7 @@ public actor HardwarePlayback {
             throw (error as? PlaybackFailure) ?? .readFailed
         }
     }
-    private func decode(asset: AVURLAsset,
+    private func decode(asset: AVURLAsset, timeline: PlaybackTimeline,
                         onInfo: @MainActor @Sendable (VideoTrackInfo) -> Void,
                         onFrame: @MainActor @Sendable (VideoFrame) -> Void) async throws -> PlaybackReport {
         let tracks = try await asset.loadTracks(withMediaType: .video)
@@ -161,9 +162,6 @@ public actor HardwarePlayback {
         guard reader.startReading() else { throw PlaybackFailure.readFailed }
         let inbox = FrameInbox()
         let context = CIContext(options: [.cacheIntermediates: false])
-        let clock = ContinuousClock()
-        var origin: ContinuousClock.Instant?
-        var firstPTS = 0.0
         var lastPTS = -Double.infinity
         var rendered = 0
         var emptySamples = 0
@@ -174,17 +172,17 @@ public actor HardwarePlayback {
                 try Task.checkCancellation()
                 let pts = frame.pts.seconds
                 guard pts.isFinite, pts >= lastPTS, pts >= 0, pts <= duration + 1 else { throw PlaybackFailure.decodeFailed }
-                if origin == nil { origin = clock.now; firstPTS = pts }
-                let deadline = origin!.advanced(by: .seconds(pts - firstPTS))
-                try await clock.sleep(until: deadline)
                 let image = CIImage(cvPixelBuffer: frame.pixel).transformed(by: transform)
                 guard let cgImage = context.createCGImage(image, from: image.extent) else { throw PlaybackFailure.decodeFailed }
                 try Task.checkCancellation()
-                await onFrame(VideoFrame(image: cgImage, time: pts))
+                let next = VideoFrame(image: cgImage, time: pts)
+                try await timeline.present(at: pts) { onFrame(next) }
                 lastPTS = pts; rendered += 1
             }
         }
-        while let sample = output.copyNextSampleBuffer() {
+        while true {
+            try await timeline.waitUntilRunning()
+            guard let sample = output.copyNextSampleBuffer() else { break }
             try Task.checkCancellation()
             if CMSampleBufferGetNumSamples(sample) == 0 {
                 emptySamples += 1
