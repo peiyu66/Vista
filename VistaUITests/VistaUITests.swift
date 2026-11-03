@@ -1,6 +1,39 @@
 import XCTest
 
 final class VistaUITests: XCTestCase {
+    @MainActor func testVRProjectionPatternOpensAndReturns() throws {
+        let app = XCUIApplication()
+        app.launch()
+        XCTAssertTrue(app.buttons["openDemo"].waitForExistence(timeout: 10))
+        app.buttons["openDemo"].tap()
+        for folder in ["影片，資料夾", "電影，資料夾", "科幻，資料夾"] {
+            XCTAssertTrue(app.buttons[folder].waitForExistence(timeout: 5)); app.buttons[folder].tap()
+        }
+        app.buttons["星際漫遊_SBS_180.mp4，檔案"].tap()
+        XCTAssertTrue(app.buttons["openVRTest"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["openVR"].isEnabled)
+        for (projection, layout) in [("等距柱狀 360°", "左右排列"), ("等距柱狀 180°", "上下排列")] {
+            app.descendants(matching: .any)["vrProjection"].firstMatch.tap()
+            app.buttons[projection].firstMatch.tap()
+            app.descendants(matching: .any)["vrLayout"].firstMatch.tap()
+            app.buttons[layout].firstMatch.tap()
+            app.buttons["openVRTest"].tap()
+            XCTAssertTrue(app.staticTexts["vrTestPattern"].waitForExistence(timeout: 20))
+            XCTAssertTrue(app.staticTexts["vrReady"].waitForExistence(timeout: 30))
+            XCTAssertEqual(app.staticTexts["vrReady"].label, projection)
+            XCTAssertEqual(app.staticTexts["vrLayoutReady"].label, layout)
+            XCTAssertFalse(app.staticTexts["vrError"].exists)
+            print("VR_VISUAL_READY", projection, layout)
+            Thread.sleep(forTimeInterval: 3) // Allow the rendered test pattern to settle for external visual capture.
+            app.buttons["向右轉"].tap()
+            app.buttons["方向歸零"].tap()
+            app.buttons["closeVR"].tap()
+            XCTAssertTrue(app.buttons["openVRTest"].waitForExistence(timeout: 10))
+        }
+        XCTAssertTrue(app.buttons["returnToBrowser"].waitForExistence(timeout: 5))
+        app.buttons["returnToBrowser"].tap()
+        XCTAssertTrue(app.buttons["星際漫遊_SBS_180.mp4，檔案"].waitForExistence(timeout: 5))
+    }
     @MainActor func testConnectionValidationAndKeyboardSubmit() throws {
         let app = XCUIApplication()
         app.launch()
@@ -72,8 +105,8 @@ final class VistaUITests: XCTestCase {
         expectation(for: finished, evaluatedWith: status)
         waitForExpectations(timeout: 20)
         // Slider adjustment/drag is not automated by this visionOS runtime; see acceptance notes.
-        XCTAssertTrue(app.buttons["返回檔案"].isHittable)
-        app.buttons["返回檔案"].tap()
+        XCTAssertTrue(app.buttons["returnToBrowser"].isHittable)
+        app.buttons["returnToBrowser"].tap()
         XCTAssertTrue(app.buttons["星際漫遊_SBS_180.mp4，檔案"].waitForExistence(timeout: 5))
         app.buttons["back"].tap()
         XCTAssertTrue(app.buttons["科幻，資料夾"].waitForExistence(timeout: 5))

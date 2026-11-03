@@ -1,10 +1,18 @@
 import SwiftUI
 
 @main struct VistaApp: App {
+    @State private var vr = VRPresentation()
     var body: some Scene {
-        WindowGroup { ConnectionView() }
+        WindowGroup {
+            ConnectionView().environment(vr).glassBackgroundEffect()
+                .opacity(vr.active ? 0 : 1).allowsHitTesting(!vr.active).accessibilityHidden(vr.active)
+                .persistentSystemOverlays(vr.active ? .hidden : .automatic)
+        }
+            .windowStyle(.plain)
             .defaultSize(width: 1000, height: 680)
             .windowResizability(.contentMinSize)
+        ImmersiveSpace(id: "VistaVR") { VRImmersiveView().environment(vr) }
+            .immersionStyle(selection: .constant(.full), in: .full)
     }
 }
 
@@ -146,10 +154,14 @@ struct BrowserView: View {
                 DirectoryColumn(model: model, path: model.current, isCurrent: true, rootName: shareName).id(model.current)
             }
         }
-        .task { model.start() }
-        .sheet(item: $model.playback) { selection in
-            PlaybackView(selection: selection, source: mediaSource, isDemo: isDemo) { model.playback = nil }
+        .opacity(model.playback == nil ? 1 : 0)
+        .allowsHitTesting(model.playback == nil).accessibilityHidden(model.playback != nil)
+        .overlay {
+            if let selection = model.playback {
+                PlaybackView(selection: selection, source: mediaSource, isDemo: isDemo) { model.playback = nil }
+            }
         }
+        .task { model.start() }
     }
 }
 
@@ -211,6 +223,9 @@ struct DirectoryColumn: View {
 }
 
 struct PlaybackView: View {
+    @Environment(VRPresentation.self) private var vr
+    @Environment(\.openImmersiveSpace) private var openVR
+    @Environment(\.dismissImmersiveSpace) private var dismissVR
     let selection: PlaybackSelection
     let source: (any MediaByteSource)?
     let isDemo: Bool
@@ -225,6 +240,7 @@ struct PlaybackView: View {
         VStack(spacing: 16) {
             HStack {
                 Button("返回檔案", systemImage: "chevron.left", action: close)
+                    .accessibilityLabel("返回檔案").accessibilityIdentifier("returnToBrowser")
                 Spacer()
                 Text("視訊播放器").font(.headline)
             }
@@ -255,6 +271,16 @@ struct PlaybackView: View {
                         Text("\(timeLabel(isScrubbing ? scrubTime : player.position)) / \(timeLabel(trackInfo.duration))")
                             .monospacedDigit().accessibilityIdentifier("playbackTime")
                     }
+                    VRSettingsView(presentation: vr)
+                    HStack {
+                        Button("進入 VR") { Task { await enterVR(testPattern: false) } }
+                            .disabled(player.frame == nil || vr.active || vr.opening).accessibilityIdentifier("openVR")
+                        if isDemo {
+                            Button("投影測試圖") { Task { await enterVR(testPattern: true) } }
+                                .disabled(vr.active || vr.opening).accessibilityIdentifier("openVRTest")
+                        }
+                    }
+                    if let message = vr.message { Text(message) }
                     if let trackInfo = player.trackInfo, !trackInfo.hasAudio { Text("影片無音軌").font(.caption) }
                     if let playbackMessage = player.message { Text(playbackMessage).accessibilityIdentifier("playbackStatus") }
                     HStack {
@@ -274,8 +300,12 @@ struct PlaybackView: View {
                     }
                 }.frame(maxWidth: .infinity).padding(.vertical, 16)
             }
-        }.padding(32).frame(width: 680, height: 620)
-        .onDisappear(perform: player.stop)
+        }.padding(24).frame(maxWidth: 680, maxHeight: .infinity)
+        .onAppear { vr.settings = VRSettings(); vr.message = nil }
+        .onDisappear {
+            player.stop()
+            if vr.active { Task { await dismissVR() } }
+        }
         .onChange(of: player.position) { _, position in
             if !isScrubbing { scrubTime = position }
         }
@@ -298,6 +328,18 @@ struct PlaybackView: View {
         return seconds >= 3600
             ? String(format: "%d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60)
             : String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    }
+    private func enterVR(testPattern: Bool) async {
+        guard !vr.active, !vr.opening else { return }
+        vr.opening = true; vr.message = nil
+        if testPattern { player.stop() }
+        vr.player = player; vr.testPattern = testPattern
+        switch await openVR(id: "VistaVR") {
+        case .opened: vr.active = true
+        case .userCancelled: vr.player = nil; vr.testPattern = false
+        default: vr.player = nil; vr.testPattern = false; vr.message = "無法開啟 VR 空間。"
+        }
+        vr.opening = false
     }
     private func startPlayback() {
         guard let source,
