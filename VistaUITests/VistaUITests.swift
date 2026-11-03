@@ -1,6 +1,24 @@
 import XCTest
 
 final class VistaUITests: XCTestCase {
+    @MainActor func testConnectionValidationAndKeyboardSubmit() throws {
+        let app = XCUIApplication()
+        app.launch()
+        let connect = app.buttons["connectButton"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 10))
+        XCTAssertTrue(connect.isEnabled)
+        connect.tap()
+        XCTAssertTrue(app.staticTexts["connectionMessage"].waitForExistence(timeout: 3))
+        // An invalid form must give feedback without making a network request.
+        app.terminate()
+        app.launch()
+        let password = app.secureTextFields["passwordField"]
+        XCTAssertTrue(password.waitForExistence(timeout: 10))
+        password.tap()
+        password.typeText("fixture-only\n")
+        XCTAssertTrue(app.staticTexts["connectionMessage"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.progressIndicators["connectionProgress"].exists)
+    }
     @MainActor func testTwoColumnsAndPlaybackReturn() throws {
         let app = XCUIApplication()
         app.launch()

@@ -36,32 +36,26 @@ struct ConnectionView: View {
                         Text("連接你的影片資料夾").font(.title2)
                         Text("透過 SMB 瀏覽網路分享中的 VR 影片。").foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 16) {
-                            field("伺服器", hint: "例如 nas.example.test", value: $server)
-                            field("分享名稱", hint: "例如 Videos", value: $share)
-                            TextField("使用者名稱", text: $username).textContentType(.username)
+                            field("伺服器", hint: "例如 nas.example.test", value: $server).accessibilityIdentifier("serverField")
+                            field("分享名稱", hint: "例如 Videos", value: $share).accessibilityIdentifier("shareField")
+                            TextField("使用者名稱", text: $username).textContentType(.username).accessibilityIdentifier("usernameField")
                                 .textInputAutocapitalization(.never).autocorrectionDisabled()
                             SecureField("密碼", text: $password).textContentType(.password)
+                                .accessibilityIdentifier("passwordField")
+                                .submitLabel(.go).onSubmit(connect)
                         }.textFieldStyle(.roundedBorder)
                         Text("帳密僅用於這次 SMB 連線，不會儲存。系統密碼建議是否可用，仍需裝置驗證。")
                             .font(.callout).foregroundStyle(.secondary)
+                        if connecting {
+                            ProgressView("正在連接伺服器…").accessibilityIdentifier("connectionProgress")
+                        }
                         if let message { Text(message).foregroundStyle(.orange).accessibilityIdentifier("connectionMessage") }
                         HStack {
-                            Button(connecting ? "連線中…" : "連線") {
-                                let submitted = input
-                                let secret = password
-                                password = ""; message = nil; connecting = true
-                                connectionTask = Task {
-                                    do {
-                                        let connected = try await SMBDirectoryProvider.connect(input: submitted, password: secret)
-                                        guard !Task.isCancelled else { await connected.disconnect(); connecting = false; return }
-                                        session = connected; isDemo = false
-                                        browser = BrowserModel(provider: connected)
-                                    } catch {
-                                        if !Task.isCancelled { message = "無法連線。請確認伺服器、分享名稱、帳密與網路後重試。" }
-                                    }
-                                    connecting = false
-                                }
-                            }.buttonStyle(.borderedProminent).disabled(!input.isValid || connecting)
+                            Button(connecting ? "連線中…" : "連線", action: connect)
+                                .buttonStyle(.borderedProminent).tint(.blue)
+                                .keyboardShortcut(.defaultAction)
+                                .accessibilityIdentifier("connectButton")
+                                .disabled(connecting)
                             if connecting {
                                 Button("取消") { connectionTask?.cancel(); message = "正在取消連線…" }
                             }
@@ -74,6 +68,27 @@ struct ConnectionView: View {
                 }
             }
         }.frame(minWidth: 800, minHeight: 560)
+    }
+    private func connect() {
+        guard !connecting else { return }
+        guard input.isValid else {
+            message = "請填寫伺服器、分享名稱及使用者名稱。伺服器只填主機名稱或 IPv4 位址，不含 smb:// 或資料夾路徑。"
+            return
+        }
+        let submitted = input
+        let secret = password
+        password = ""; message = nil; connecting = true
+        connectionTask = Task {
+            do {
+                let connected = try await SMBDirectoryProvider.connect(input: submitted, password: secret)
+                guard !Task.isCancelled else { await connected.disconnect(); connecting = false; return }
+                session = connected; isDemo = false
+                browser = BrowserModel(provider: connected)
+            } catch {
+                if !Task.isCancelled { message = "無法連線。請確認伺服器、分享名稱、帳密與網路後重試。" }
+            }
+            connecting = false
+        }
     }
     private func field(_ title: String, hint: String, value: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 5) {
