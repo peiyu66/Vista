@@ -4,6 +4,14 @@ import Testing
 @testable import VistaSMB
 
 struct HiddenEntriesTests {
+    @Test func preservesAvailableSMBMetadata() {
+        let date=Date(timeIntervalSince1970:1_700_000_000)
+        let entry=SMBDirectoryProvider.visibleEntry([.nameKey:"movie.mp4",.fileResourceTypeKey:URLFileResourceType.regular,.contentModificationDateKey:date,.creationDateKey:date,.fileSizeKey:NSNumber(value:123456)])
+        #expect(entry?.createdAt==date);#expect(entry?.modifiedAt==date);#expect(entry?.byteSize==123456)
+        let missing=SMBDirectoryProvider.visibleEntry([.nameKey:"movie.mp4",.fileResourceTypeKey:URLFileResourceType.regular])
+        #expect(missing?.modifiedAt==nil);#expect(missing?.byteSize==nil)
+    }
+
     @Test func smbMetadataFiltersHiddenFilesAndDirectories() {
         for type in [URLFileResourceType.directory, .regular] {
             for name in [".DS_Store", ".DS_STORE", ".cache", "._movie.mp4"] {
