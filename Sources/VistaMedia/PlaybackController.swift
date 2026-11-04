@@ -74,7 +74,7 @@ import VistaCore
                         guard let self, self.generation == id else { return }
                         self.frame = next; self.position = next.time; self.isPreparing = false
                         self.isPaused = control.isPaused
-                        self.message = self.isPaused ? "已暫停" : "硬體解碼播放中"
+                        self.message = self.isPaused ? "已暫停" : (PlaybackDecodingPolicy.simulatorSoftwareTest ? "模擬器軟體解碼測試中" : "硬體解碼播放中")
                     })
                 guard generation == id else { return }
                 position = trackInfo?.duration ?? position; message = "播放結束"

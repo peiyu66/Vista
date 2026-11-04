@@ -81,7 +81,12 @@ public struct DemoMediaSource: MediaByteSource {
         #else
         let bundle = Bundle.main
         #endif
-        guard let url = bundle.url(forResource: file.components.last == "格式標記示範.mp4" ? "SyntheticVR" : "Synthetic", withExtension: "mp4") else { throw MediaInspectionError.unavailable }
+        var resource = file.components.last == "格式標記示範.mp4" ? "SyntheticVR" : "Synthetic"
+        #if DEBUG && targetEnvironment(simulator) && VISTA_SIMULATOR_SOFTWARE_DECODE
+        if file.components.last == "H264 播放測試.mp4" { resource = "SyntheticSeek" }
+        if file.components.last == "HEVC 播放測試.mp4" { resource = "SyntheticHEVC" }
+        #endif
+        guard let url = bundle.url(forResource: resource, withExtension: "mp4") else { throw MediaInspectionError.unavailable }
         return try Data(contentsOf: url)
     }
     public func fileSize(for file: MediaFile) async throws -> UInt64 { UInt64(try bytes(for: file).count) }

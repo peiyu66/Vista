@@ -108,6 +108,7 @@ public struct VRPreferenceSource: Sendable {
     private struct Record: Codable {
         let revision: String
         let format: VRFormat
+        var overrides:VRFormatDimensions? = nil
     }
     private struct Archive: Codable {
         var version = 1
@@ -146,12 +147,23 @@ public struct VRPreferenceSource: Sendable {
         guard let record = archive.records[key], record.revision == (try digest(["revision", revision])) else { return nil }
         return record.format
     }
+    public func loadDimensions(source:VRPreferenceSource,file:MediaFile,revision:String) throws ->VRFormatDimensions? {
+        let key=try digest(source.components+file.components)
+        guard let record=archive.records[key],record.revision == (try digest(["revision",revision])) else{return nil}
+        return record.overrides ?? VRFormatDimensions(record.format)
+    }
+    public func saveDimensions(_ dimensions:VRFormatDimensions?,source:VRPreferenceSource,file:MediaFile,revision:String) throws {
+        try saveRecord(dimensions?.completedFormat,overrides:dimensions,source:source,file:file,revision:revision)
+    }
     public func save(_ format: VRFormat?, source: VRPreferenceSource, file: MediaFile, revision: String) throws {
+        try saveRecord(format,overrides:nil,source:source,file:file,revision:revision)
+    }
+    private func saveRecord(_ format:VRFormat?,overrides:VRFormatDimensions?,source:VRPreferenceSource,file:MediaFile,revision:String) throws {
         let key = try digest(source.components + file.components)
         var next = archive
         if let format {
             guard next.records[key] != nil || next.records.count < 5000 else { throw Failure.capacity }
-            next.records[key] = Record(revision: try digest(["revision", revision]), format: format)
+            next.records[key] = Record(revision: try digest(["revision", revision]), format: format, overrides:overrides)
         } else { next.records.removeValue(forKey: key) }
         let bytes = try JSONEncoder().encode(next)
         guard bytes.count <= 2_097_152 else { throw Failure.capacity }

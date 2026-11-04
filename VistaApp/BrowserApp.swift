@@ -21,6 +21,7 @@ enum BrowserWindowPreferences {
     }
 }
 @main struct VistaApp: App {
+    @State private var vr=VRPresentation()
     private let initialSize:CGSize
     init() {
         #if DEBUG
@@ -37,11 +38,13 @@ enum BrowserWindowPreferences {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--credential-self-test-write") || ProcessInfo.processInfo.arguments.contains("--credential-self-test-read") {
                 CredentialSelfTestView()
-            } else { ShortcutBrowserView().glassBackgroundEffect() }
+            } else { ShortcutBrowserView().glassBackgroundEffect().opacity(vr.active ? 0:1).allowsHitTesting(!vr.active).accessibilityHidden(vr.active) }
             #else
-            ShortcutBrowserView().glassBackgroundEffect()
+            ShortcutBrowserView().glassBackgroundEffect().opacity(vr.active ? 0:1).allowsHitTesting(!vr.active).accessibilityHidden(vr.active)
             #endif
-        }.windowStyle(.plain).defaultSize(initialSize).windowResizability(.contentMinSize)
+        }.environment(vr).windowStyle(.plain).defaultSize(initialSize).windowResizability(.contentMinSize)
+        ImmersiveSpace(id:"VistaVR") {VRImmersiveView().environment(vr)}
+            .immersionStyle(selection:.constant(.full),in:.full)
     }
 }
 #if DEBUG

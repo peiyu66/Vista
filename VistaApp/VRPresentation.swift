@@ -11,6 +11,43 @@ import Observation
     var message: String?
     let calibration = VRViewCalibration()
     var calibrationRequest = 0
+    var controlsVisible = true
+    var settingsVisible = false
+    var advancing = false
+    var canAdvance = false
+    var requiresFormatConfirmation = false
+    var fileTitle = ""
+    var onStop: (() -> Void)?
+    var onNext: (() -> Void)?
+    var onReplay: (() -> Void)?
+    var onFormatChanged: (() -> Void)?
+    var openRequest: UUID?
+    @ObservationIgnored private var hideTask: Task<Void, Never>?
+    func revealControls() {
+        controlsVisible = true
+        scheduleHide()
+    }
+    func scheduleHide() {
+        hideTask?.cancel()
+        guard active, message == nil, !testPattern, !settingsVisible, !requiresFormatConfirmation, !advancing,
+              let player, player.isPlaying, !player.isPaused, !player.isPreparing else { return }
+        hideTask = Task { [weak self] in
+            do { try await Task.sleep(for: .seconds(3)) } catch { return }
+            guard let self, !Task.isCancelled, self.active, !self.settingsVisible,
+                  !self.requiresFormatConfirmation, !self.advancing,
+                  self.player?.isPlaying == true, self.player?.isPaused == false else { return }
+            self.controlsVisible = false
+        }
+    }
+    func holdControls() { hideTask?.cancel(); controlsVisible = true }
+    func finishSession() {
+        let callback = onStop
+        onStop = nil; onNext = nil; onReplay = nil; onFormatChanged = nil
+        openRequest = nil; hideTask?.cancel(); hideTask = nil
+        player?.stop(); player = nil; active = false; opening = false; testPattern = false
+        controlsVisible = true; settingsVisible = false; advancing = false
+        callback?()
+    }
     var image: CGImage? {
         testPattern ? (settings.projection == .equidistantFisheye180 ? Self.fisheyePatterns[settings.layout] : Self.pattern) : player?.frame?.image
     }
@@ -134,6 +171,7 @@ struct VRImmersiveView: View {
             content.add(placement)
             content.add(controlsAnchor)
             placement.addChild(renderer.entity)
+            addTapTargets()
             applyPlacement()
             placeControls(attachments.entity(for: "controls"))
         } update: { _, attachments in
@@ -141,6 +179,9 @@ struct VRImmersiveView: View {
             placeControls(attachments.entity(for: "controls"))
         } attachments: {
             Attachment(id: "controls") {
+                if !presentation.testPattern {
+                    playerControls
+                } else {
                 VStack {
                     if presentation.testPattern {
                         Text("投影測試圖，非影片播放").accessibilityIdentifier("vrTestPattern")
@@ -181,8 +222,21 @@ struct VRImmersiveView: View {
                     }
                     Button("返回視窗") { Task { await dismiss(); presentation.active = false } }.accessibilityIdentifier("closeVR")
                 }.padding().glassBackgroundEffect()
+                }
             }
         }
+        .gesture(SpatialTapGesture().targetedToAnyEntity().onEnded { event in
+            if event.entity.name.hasPrefix("show-controls-") { presentation.revealControls() }
+        })
+        .onChange(of: presentation.player?.isPaused) { _, _ in presentation.revealControls() }
+        .onChange(of: presentation.player?.isPreparing) { _, _ in presentation.revealControls() }
+        .onChange(of: presentation.player?.isPlaying) { _, _ in presentation.revealControls() }
+        .onChange(of: renderer.error) { _, error in
+            if let error {presentation.message=error;presentation.holdControls()}
+        }
+        .onChange(of: presentation.message) {_,message in if message != nil {presentation.holdControls()}}
+        .onChange(of: presentation.settingsVisible) { _, _ in presentation.revealControls() }
+        .onAppear { presentation.revealControls() }
         .task(id: UpdateKey(image: presentation.image.map(ObjectIdentifier.init), settings: presentation.settings)) {
             renderer.submit(image: presentation.image, settings: presentation.settings)
         }
@@ -191,8 +245,76 @@ struct VRImmersiveView: View {
         }
         .onDisappear {
             presentation.calibration.cancel()
-            renderer.stop(); presentation.active = false; presentation.player = nil; presentation.testPattern = false
+            renderer.stop(); presentation.finishSession()
         }
+    }
+    @ViewBuilder private var playerControls: some View {
+        VStack(spacing: 12) {
+            Text(presentation.fileTitle).font(.caption).lineLimit(1).accessibilityIdentifier("immersiveFileTitle").accessibilityValue(renderer.ready ? "影像已呈現":"準備影像")
+            if PlaybackDecodingPolicy.simulatorSoftwareTest {
+                Text("模擬器軟體解碼測試").font(.caption2).foregroundStyle(.orange)
+            }
+            if let player = presentation.player {
+                HStack(spacing: 16) {
+                    Button { presentation.revealControls(); player.skip(by: -10) } label: { Image(systemName: "gobackward.10") }
+                        .accessibilityLabel("後退 10 秒").accessibilityIdentifier("immersiveBack")
+                        .disabled(player.isPreparing || player.trackInfo == nil)
+                    Button {
+                        if player.isPlaying { player.togglePause() } else { presentation.onReplay?() }
+                        presentation.revealControls()
+                    } label: { Image(systemName: player.isPlaying && !player.isPaused ? "pause.fill" : "play.fill") }
+                        .accessibilityLabel(player.isPlaying && !player.isPaused ? "暫停" : "播放")
+                        .accessibilityIdentifier("immersivePause")
+                        .disabled(player.isPreparing || presentation.advancing || presentation.requiresFormatConfirmation)
+                    Button { presentation.revealControls(); player.skip(by: 10) } label: { Image(systemName: "goforward.10") }
+                        .accessibilityLabel("前進 10 秒").accessibilityIdentifier("immersiveForward")
+                        .disabled(player.isPreparing || player.trackInfo == nil)
+                    Button { presentation.onNext?(); presentation.holdControls() } label: { Image(systemName: "forward.end.fill") }
+                        .accessibilityLabel("下一個影片").accessibilityIdentifier("immersiveNext")
+                        .disabled(!presentation.canAdvance || presentation.advancing)
+                    Button { presentation.settingsVisible.toggle(); presentation.revealControls() } label: { Image(systemName: "slider.horizontal.3") }
+                        .accessibilityLabel("影片格式設定").accessibilityIdentifier("immersiveSettings")
+                    Button { Task { player.stop(); await dismiss(); presentation.finishSession() } } label: { Image(systemName: "stop.fill") }
+                        .accessibilityLabel("停止並返回瀏覽").accessibilityIdentifier("immersiveStop")
+                }.buttonStyle(.borderless).font(.title3)
+                if player.isPreparing || presentation.advancing { ProgressView("準備影片…") }
+                if let error = renderer.error { Text(error).font(.caption).accessibilityIdentifier("vrError") }
+                if let message = presentation.message { Text(message).font(.caption).accessibilityIdentifier("immersiveMessage") }
+                if !player.isPlaying, let message = player.message { Text(message).font(.caption).accessibilityIdentifier("immersivePlaybackStatus") }
+            }
+            if presentation.settingsVisible || presentation.requiresFormatConfirmation {
+                Divider()
+                VRSettingsView(presentation: presentation) { presentation.onFormatChanged?(); presentation.holdControls() }
+                if presentation.requiresFormatConfirmation {
+                    Button("使用目前格式並播放") { presentation.onFormatChanged?(); presentation.onReplay?() }
+                        .accessibilityIdentifier("immersiveConfirmFormat")
+                }
+                HStack {
+                    Button("向左轉") { presentation.settings.yawDegrees -= 15 }
+                    Button("方向歸零", action: resetManualDirection)
+                    Button("向右轉") { presentation.settings.yawDegrees += 15 }
+                }
+                HStack {
+                    Button("向上轉") { presentation.settings.pitchDegrees += 15 }
+                    Button("向下轉") { presentation.settings.pitchDegrees -= 15 }
+                }
+                Button("重新置中") { presentation.calibration.requestRecenter(); presentation.calibrationRequest += 1 }
+                    .disabled(presentation.calibration.status == .capturing)
+            }
+        }.padding(16).frame(width: 430).glassBackgroundEffect()
+            .onHover { hovering in if hovering { presentation.holdControls() } else { presentation.scheduleHide() } }
+    }
+    private func addTapTargets() {
+        // Six thin collision surfaces surround the frozen viewing origin. They have no visible material,
+        // sit behind the controller, and do not use head-following or continuous pose sampling.
+        for axis in 0..<3 { for sign: Float in [-1, 1] {
+            let target = Entity(); target.name = "show-controls-\(axis)-\(sign)"
+            var size = SIMD3<Float>(repeating: 8); size[axis] = 0.01
+            target.components.set(CollisionComponent(shapes: [.generateBox(size: size)]))
+            target.components.set(InputTargetComponent(allowedInputTypes: .indirect))
+            var position = SIMD3<Float>.zero; position[axis] = sign * 4; target.position = position
+            placement.addChild(target)
+        } }
     }
     private func resetManualDirection() {
         presentation.settings.yawDegrees = 0; presentation.settings.pitchDegrees = 0; presentation.settings.rollDegrees = 0
@@ -202,7 +324,9 @@ struct VRImmersiveView: View {
         // Use the explicit frozen pose when available; the native once anchor is only a fallback.
         let parent: Entity = presentation.calibration.pose == nil ? controlsAnchor : placement
         if controls.parent != parent { parent.addChild(controls) }
-        controls.position = [0, -0.25, -1.5]
+        controls.position = presentation.testPattern ? [0, -0.25, -1.5] : [0.65, -0.18, -1.5]
+        controls.orientation = simd_quatf(angle: presentation.testPattern ? 0 : -atan2(0.65, 1.5), axis: [0, 1, 0])
+        controls.isEnabled = presentation.testPattern || presentation.controlsVisible
     }
     private func applyPlacement() {
         if let pose = presentation.calibration.pose {

@@ -160,6 +160,7 @@ import Observation
     var password=""
     var connectionName=""
     var selection: String?
+    var playback:BrowserPlayback?
     private var generation=0
     private var request: Task<Void,Never>?
     private var connectionTask: Task<Void,Never>?
@@ -264,7 +265,38 @@ import Observation
     func open(_ entry: FileEntry) {
         guard entries.contains(entry), let sourceID else {return}
         if entry.kind == .directory {browse(source:sourceID,path:components+[entry.name])}
-        else { selection=entry.id;notice="影片播放尚未接入。" }
+        else {
+            selection=entry.id
+            guard entry.kind == .video,let source else {notice="此檔案不是可播放的影片。";return}
+            let directory=DirectoryPath(mediaPath(components,source:source))
+            let mediaSource:any MediaByteSource
+            if source.isDemo {mediaSource=DemoMediaSource()}
+            else if let session=sessions[sessionKey(source.id,components)] {mediaSource=session}
+            else {notice="連線已失效，請重新開啟資料夾。";return}
+            notice=nil
+            playback=BrowserPlayback(selection:PlaybackSelection(directory:directory,file:entry),source:mediaSource,isDemo:source.isDemo,
+                preferenceSource:source.isDemo ? .demo:.smb(server:source.server,share:components.first ?? source.share,account:source.username))
+        }
+    }
+    func nextPlayback(after previous:PlaybackSelection) async throws ->PlaybackSelection? {
+        let token=generation
+        while nextOffset != nil || loading {
+            try Task.checkCancellation()
+            guard token==generation else {throw CancellationError()}
+            if !loading {loadMore()}
+            try await Task.sleep(for:.milliseconds(40))
+            if error != nil {throw URLError(.cannotLoadFromNetwork)}
+        }
+        while tagsLoading {try await Task.sleep(for:.milliseconds(40));try Task.checkCancellation();guard token==generation else{throw CancellationError()}}
+        guard token==generation,let index=entries.firstIndex(where:{$0.id==previous.file.id}) else{return nil}
+        guard let entry=entries.dropFirst(index+1).first(where:{$0.kind == .video}) else{return nil}
+        selection=entry.id
+        return PlaybackSelection(directory:previous.directory,file:entry)
+    }
+    func hasNextPlayback(after previous:PlaybackSelection)->Bool {
+        if nextOffset != nil || loading {return true}
+        guard let index=entries.firstIndex(where:{$0.id==previous.file.id}) else{return false}
+        return entries.dropFirst(index+1).contains{$0.kind == .video}
     }
     func loadMore() {
         guard !loading,let offset=nextOffset,let source else {return}
@@ -573,6 +605,14 @@ import Observation
 }
 private extension String {var nonempty:String? {isEmpty ? nil:self}}
 
+struct BrowserPlayback:Identifiable {
+    let id=UUID()
+    let selection:PlaybackSelection
+    let source:any MediaByteSource
+    let isDemo:Bool
+    let preferenceSource:VRPreferenceSource
+}
+
 struct ShortcutBrowserView: View {
     @ScaledMetric(relativeTo:.body) private var dateColumnWidth:CGFloat=220
     @ScaledMetric(relativeTo:.body) private var sizeColumnWidth:CGFloat=120
@@ -620,6 +660,15 @@ struct ShortcutBrowserView: View {
                 else { directory }
             }.frame(maxWidth:.infinity,maxHeight:.infinity)
         }.frame(minWidth:880,minHeight:620)
+        .opacity(model.playback == nil ? 1:0)
+        .allowsHitTesting(model.playback == nil).accessibilityHidden(model.playback != nil)
+        .overlay {
+            if let playback=model.playback {
+                PlaybackView(selection:playback.selection,source:playback.source,isDemo:playback.isDemo,
+                             preferenceSource:playback.preferenceSource,directImmersive:true,nextFile:model.nextPlayback,hasNext:model.hasNextPlayback) {model.playback=nil}
+                    .id(playback.id)
+            }
+        }
         .onGeometryChange(for:CGSize.self) {$0.size} action:{BrowserWindowPreferences.save($0)}
         .task{
             #if DEBUG
@@ -940,6 +989,7 @@ struct ShortcutBrowserView: View {
                                 }.padding(.horizontal,10).padding(.vertical,12).frame(maxWidth:.infinity,alignment:.leading)
                             }.buttonStyle(.plain)
                                 .background(model.selection==entry.id ? Color.accentColor.opacity(0.15):.clear,in:RoundedRectangle(cornerRadius:12))
+                                .accessibilityValue(model.selection==entry.id ? "已選取":"")
                                 .accessibilityIdentifier("entry-\(entry.name)")
                         }
                         if model.loading {ProgressView("載入中…").padding()}

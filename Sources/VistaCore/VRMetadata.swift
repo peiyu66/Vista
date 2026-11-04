@@ -2,11 +2,13 @@ import Foundation
 
 public enum VRMetadataResult: Equatable, Sendable {
     case recognized(VRFormat)
+    case partial(VRFormatDimensions)
     case missing, incomplete, conflicting, unsupported, invalid, unavailable, limitExceeded
     public var format: VRFormat? { if case let .recognized(value) = self { value } else { nil } }
     public var message: String {
         switch self {
         case .recognized: "已依影片格式標記設定"
+        case .partial: "已採用已知格式標記，其餘依檔名或預設"
         case .missing: "未找到格式標記，請手動選擇。"
         case .incomplete: "格式標記不完整，請手動選擇。"
         case .conflicting: "格式標記互相衝突，請手動選擇。"
@@ -149,9 +151,9 @@ private struct MovieParser {
         let stereo = extensions.filter { $0.type == "st3d" }, spherical = extensions.filter { $0.type == "sv3d" }
         guard !stereo.isEmpty || !spherical.isEmpty else { return .missing }
         guard stereo.count <= 1, spherical.count <= 1 else { return .conflicting }
-        guard let stereo = stereo.first, let spherical = spherical.first else { return .incomplete }
-        try full(stereo, minimum: 5)
         var settings = VRSettings()
+        if let stereo=stereo.first {
+        try full(stereo, minimum: 5)
         switch bytes[stereo.payload.lowerBound + 4] {
         case 0: settings.layout = .mono
         case 1: settings.layout = .overUnder
@@ -159,6 +161,8 @@ private struct MovieParser {
         case 4: settings.layout = .sideBySide; settings.swapEyes = true
         default: return .unsupported
         }
+        }
+        guard let spherical=spherical.first else {return .partial(.init(layout:settings.layout,swapEyes:settings.swapEyes))}
         let sphericalBoxes = try boxes(spherical.payload)
         let header = try one("svhd", in: sphericalBoxes)
         try full(header, minimum: 5)
@@ -176,6 +180,7 @@ private struct MovieParser {
         if bounds == [0,0,0,0] { settings.projection = .equirectangular360 }
         else if bounds == [0,0,1 << 30,1 << 30] { settings.projection = .equirectangular180 }
         else { return .unsupported }
+        if stereo.isEmpty {return .partial(.init(projection:settings.projection))}
         return .recognized(VRFormat(settings))
     }
 }
@@ -185,9 +190,88 @@ private struct MovieParser {
 public struct VRFormatChoice: Sendable {
     public var manual: VRFormat?
     public var metadata: VRMetadataResult?
+    public var manualDimensions:VRFormatDimensions?
+    public var filename:String?
+    public var resolved:VRResolvedDimensions {
+        VRDimensionResolver.resolve(manual:manualDimensions ?? manual.map(VRFormatDimensions.init) ?? .init(),
+            metadata:metadata?.dimensions ?? .init(),filename:filename ?? "")
+    }
+    public var hasManual:Bool {manual != nil || manualDimensions?.isEmpty == false}
     public init(manual: VRFormat? = nil, metadata: VRMetadataResult? = nil) {
         self.manual = manual; self.metadata = metadata
     }
-    public var format: VRFormat { manual ?? metadata?.format ?? VRFormat(VRSettings()) }
-    public var confirmed: Bool { manual != nil || metadata?.format != nil }
+    public var format: VRFormat {
+        guard filename != nil else {return manual ?? metadata?.format ?? VRFormat(VRSettings())}
+        return resolved.values.completedFormat
+    }
+    public var confirmed: Bool {filename == nil ? (manual != nil || metadata?.format != nil):(resolved.values.projection != nil && resolved.values.layout != nil)}
+}
+
+/// Independent dimensions for the next format-selection UI. Defaults are explicitly 180 degrees and SBS; contradictory filename evidence remains unresolved.
+public struct VRFormatDimensions: Codable, Equatable, Sendable {
+    public var projection: VRProjection?
+    public var layout: VRLayout?
+    public var swapEyes: Bool?
+    public var isEmpty:Bool {projection == nil && layout == nil && swapEyes == nil}
+    public init(_ format:VRFormat) {projection=format.projection;layout=format.layout;swapEyes=format.swapEyes}
+    public var completedFormat:VRFormat {
+        var value=VRSettings();value.projection=projection ?? .equirectangular180
+        value.layout=layout ?? .sideBySide;value.swapEyes=swapEyes ?? false
+        return VRFormat(value)
+    }
+    public init(projection:VRProjection?=nil,layout:VRLayout?=nil,swapEyes:Bool?=nil) {
+        self.projection=projection;self.layout=layout;self.swapEyes=swapEyes
+    }
+}
+public enum VRDimensionOrigin: Equatable, Sendable {case manual,metadata,filename,fallback,unresolved}
+public struct VRResolvedDimensions: Equatable, Sendable {
+    public let values:VRFormatDimensions
+    public let projectionOrigin:VRDimensionOrigin
+    public let layoutOrigin:VRDimensionOrigin
+    public let eyeOrderOrigin:VRDimensionOrigin
+}
+public struct VRFilenameHints: Equatable, Sendable {
+    public var values=VRFormatDimensions()
+    public var layoutConflict=false
+    public var projectionConflict=false
+    public static func parse(_ filename:String)->Self {
+        let stem=(filename as NSString).deletingPathExtension.precomposedStringWithCanonicalMapping.lowercased()
+        let tokens=Set(stem.split { !$0.isLetter && !$0.isNumber && $0 != "°" }.map(String.init))
+        var result=Self()
+        let side = !tokens.isDisjoint(with:["sbs","hsbs","左右"])
+        let over = !tokens.isDisjoint(with:["ou","tb","hou","htb","上下"])
+        let mono = !tokens.isDisjoint(with:["mono","2d","單眼"])
+        let layouts:[VRLayout]=[(side,VRLayout.sideBySide),(over,.overUnder),(mono,.mono)].compactMap{$0.0 ? $0.1:nil}
+        result.layoutConflict=layouts.count>1
+        if layouts.count==1 {result.values.layout=layouts[0]}
+        // Bare movie-title numbers are ambiguous. Require explicit VR/degree notation or a separate VR/layout token.
+        let context=tokens.contains("vr") || side || over
+        let p180 = !tokens.isDisjoint(with:["vr180","180vr","180°"]) || (context && tokens.contains("180"))
+        let p360 = !tokens.isDisjoint(with:["vr360","360vr","360°"]) || (context && tokens.contains("360"))
+        result.projectionConflict=p180 && p360
+        if p180 != p360 {result.values.projection=p180 ? .equirectangular180:.equirectangular360}
+        return result
+    }
+}
+public enum VRDimensionResolver {
+    public static func resolve(manual:VRFormatDimensions = .init(),metadata:VRFormatDimensions = .init(),filename:String)->VRResolvedDimensions {
+        let hint=VRFilenameHints.parse(filename)
+        func pick<T>(_ manual:T?,_ metadata:T?,_ hint:T?,fallback:T?)->(T?,VRDimensionOrigin) {
+            if let manual {return(manual,.manual)}
+            if let metadata {return(metadata,.metadata)}
+            if let hint {return(hint,.filename)}
+            return(fallback,fallback == nil ? .unresolved:.fallback)
+        }
+        let projection=pick(manual.projection,metadata.projection,hint.values.projection,fallback:hint.projectionConflict ? nil:.equirectangular180)
+        let layout=pick(manual.layout,metadata.layout,hint.values.layout,fallback:hint.layoutConflict ? nil:.sideBySide)
+        let eyes=pick(manual.swapEyes,metadata.swapEyes,nil,fallback:false)
+        return VRResolvedDimensions(values:.init(projection:projection.0,layout:layout.0,swapEyes:eyes.0),
+                                    projectionOrigin:projection.1,layoutOrigin:layout.1,eyeOrderOrigin:eyes.1)
+    }
+}
+
+public extension VRMetadataResult {
+    var dimensions:VRFormatDimensions {
+        switch self {case .recognized(let format):return .init(format);case .partial(let fields):return fields;default:return .init()}
+    }
 }

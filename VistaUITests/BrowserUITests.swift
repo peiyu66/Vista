@@ -10,6 +10,33 @@ final class VistaUITests:XCTestCase {
         expectation(for:done,evaluatedWith:path);waitForExpectations(timeout:timeout)
         XCTAssertFalse(app.staticTexts["tagSortStatus"].exists)
     }
+    @MainActor func testBrowserDirectImmersiveNextAndStopRestore() throws {
+        let app=fresh();app.buttons["emptyEdit"].tap();app.buttons["localDemoSource"].tap()
+        XCTAssertTrue(app.buttons["entry-播放測試"].waitForExistence(timeout:10));app.buttons["entry-播放測試"].tap()
+        app.buttons["addShortcut"].tap();app.buttons["editShortcuts"].tap()
+        app.buttons["entry-H264 播放測試.mp4"].tap()
+        XCTAssertTrue(app.buttons["immersiveStop"].waitForExistence(timeout:25),app.debugDescription)
+        XCTAssertEqual(app.staticTexts["immersiveFileTitle"].label,"H264 播放測試.mp4")
+        XCTAssertTrue(app.buttons["immersiveNext"].isEnabled)
+        app.buttons["immersiveSettings"].tap()
+        expectation(for:NSPredicate(format:"value == %@","影像已呈現"),evaluatedWith:app.staticTexts["immersiveFileTitle"])
+        waitForExpectations(timeout:15)
+        XCTAssertTrue(app.buttons["vrProjection"].waitForExistence(timeout:5))
+        app.buttons["immersivePause"].tap()
+        XCTAssertEqual(app.buttons["immersivePause"].label,"播放")
+        app.buttons["immersivePause"].tap()
+        app.buttons["immersiveForward"].tap()
+        app.buttons["immersiveBack"].tap()
+        app.buttons["immersiveNext"].tap()
+        let title=app.staticTexts["immersiveFileTitle"]
+        expectation(for:NSPredicate(format:"label == %@","HEVC 播放測試.mp4"),evaluatedWith:title)
+        waitForExpectations(timeout:20)
+        XCTAssertFalse(app.buttons["immersiveNext"].isEnabled)
+        app.buttons["immersiveStop"].tap()
+        XCTAssertTrue(app.buttons["entry-HEVC 播放測試.mp4"].waitForExistence(timeout:15))
+        XCTAssertEqual(app.buttons["entry-HEVC 播放測試.mp4"].value as? String,"已選取")
+        XCTAssertTrue(app.staticTexts["prototypePath"].label.contains("播放測試"))
+    }
     @MainActor func testFixedHeadersAndDisplayWindowRestoration() throws {
         let app=fresh()
         app.buttons["emptyEdit"].tap();app.buttons["localDemoSource"].tap()

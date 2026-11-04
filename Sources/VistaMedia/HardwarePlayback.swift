@@ -6,6 +6,21 @@ import CoreImage
 import VistaCore
 #endif
 
+/// Opt-in build policy: never enabled by a runtime preference or on a physical device.
+public enum PlaybackDecodingPolicy {
+    #if DEBUG && targetEnvironment(simulator) && VISTA_SIMULATOR_SOFTWARE_DECODE
+    public static let simulatorSoftwareTest = true
+    #else
+    public static let simulatorSoftwareTest = false
+    #endif
+    public static var decoderSpecification: CFDictionary {
+        if simulatorSoftwareTest {
+            return [kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder: false] as CFDictionary
+        }
+        return [kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder: true] as CFDictionary
+    }
+}
+
 public enum PlaybackFailure: Error, Equatable {
     case unsupportedContainer, unsupportedTrack, unsupportedCodec, hardwareUnavailable, readFailed, decodeFailed, audioFailed, seekUnavailable
     public var message: String {
@@ -158,6 +173,9 @@ public actor HardwarePlayback {
         case kCMVideoCodecType_HEVC: codecName = "HEVC"
         case kCMVideoCodecType_VP9: codecName = "VP9"
         default: throw PlaybackFailure.unsupportedCodec }
+        if PlaybackDecodingPolicy.simulatorSoftwareTest && codec != kCMVideoCodecType_H264 && codec != kCMVideoCodecType_HEVC {
+            throw PlaybackFailure.unsupportedCodec
+        }
         let dimensions = CMVideoFormatDescriptionGetDimensions(format)
         let duration = try await asset.load(.duration).seconds
         let transform = try await track.load(.preferredTransform)
@@ -175,7 +193,7 @@ public actor HardwarePlayback {
         try Task.checkCancellation()
         var session: VTDecompressionSession?
         let status = VTDecompressionSessionCreate(allocator: nil, formatDescription: format,
-            decoderSpecification: [kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder: true] as CFDictionary,
+            decoderSpecification: PlaybackDecodingPolicy.decoderSpecification,
             imageBufferAttributes: nil, outputCallback: nil, decompressionSessionOut: &session)
         guard status == noErr, let session else { throw PlaybackFailure.hardwareUnavailable }
         defer { VTDecompressionSessionInvalidate(session) }
@@ -319,9 +337,10 @@ public actor HardwarePlayback {
                 try await timeline.present(at: position) {}
             }
         }
-        return PlaybackReport(decodedFrames: rendered, hardwareVerified: true, audioSamples: await audio?.sampleCount ?? 0, decodingStartTime: firstSampleTime ?? 0, prerollFrames: prerollFrames)
+        return PlaybackReport(decodedFrames: rendered, hardwareVerified: !PlaybackDecodingPolicy.simulatorSoftwareTest, audioSamples: await audio?.sampleCount ?? 0, decodingStartTime: firstSampleTime ?? 0, prerollFrames: prerollFrames)
     }
     private func verifyHardware(_ session: VTDecompressionSession) throws {
+        if PlaybackDecodingPolicy.simulatorSoftwareTest { return }
         var value: CFTypeRef?
         let status = withUnsafeMutablePointer(to: &value) {
             VTSessionCopyProperty(session, key: kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder, allocator: nil, valueOut: $0)

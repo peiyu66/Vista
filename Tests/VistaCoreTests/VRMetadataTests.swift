@@ -68,8 +68,8 @@ struct VRMetadataTests {
     }
     @Test func absentPartialAndDuplicateTagsDoNotGuess() async throws {
         #expect(try await inspect(ftyp + movie(Data())) == .missing)
-        #expect(try await inspect(ftyp + movie(stereo(2))) == .incomplete)
-        #expect(try await inspect(ftyp + movie(spherical())) == .incomplete)
+        #expect(try await inspect(ftyp + movie(stereo(2))) == .partial(.init(layout:.sideBySide,swapEyes:false)))
+        #expect(try await inspect(ftyp + movie(spherical())) == .partial(.init(projection:.equirectangular360)))
         #expect(try await inspect(ftyp + movie(stereo(1) + stereo(2) + spherical())) == .conflicting)
         #expect(try await inspect(ftyp + movie(stereo(1) + spherical() + spherical())) == .conflicting)
         #expect(try await inspect(ftyp + movie(stereo(1) + spherical()) + movie(Data())) == .conflicting)

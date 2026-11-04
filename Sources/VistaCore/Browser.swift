@@ -123,7 +123,7 @@ public struct DirectoryState {
     public init() {}
 }
 
-public struct PlaybackSelection: Identifiable, Equatable {
+public struct PlaybackSelection: Identifiable, Equatable, Sendable {
     public let directory: DirectoryPath
     public let file: FileEntry
     public var id: String { directory.appending(file.name).display }
@@ -235,6 +235,14 @@ public struct DemoDirectoryProvider: DirectoryProvider {
             let all=sort.sorted(fixture)
             return DirectoryPage(entries:Array(all[offset..<end]),nextOffset:end < 5_000 ? end:nil)
         }
+        #if DEBUG && targetEnvironment(simulator) && VISTA_SIMULATOR_SOFTWARE_DECODE
+        if path.components == ["播放測試"] {
+            return DirectoryPage(entries:offset == 0 ? [FileEntry("H264 播放測試.mp4",.video),FileEntry("HEVC 播放測試.mp4",.video)]:[])
+        }
+        if path.components.isEmpty {
+            return DirectoryPage(entries:offset == 0 ? [FileEntry("播放測試",.directory),FileEntry("影片",.directory),FileEntry("大量影片",.directory),FileEntry("空資料夾",.directory),FileEntry("標籤示範",.directory),FileEntry("讀取失敗範例",.directory)]:[])
+        }
+        #endif
         let entries: [FileEntry]
         switch path.components {
         case []: entries = [FileEntry("影片", .directory), FileEntry("大量影片", .directory), FileEntry("空資料夾", .directory), FileEntry("標籤示範", .directory), FileEntry("讀取失敗範例", .directory)]
