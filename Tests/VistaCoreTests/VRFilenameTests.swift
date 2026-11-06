@@ -2,8 +2,8 @@ import Testing
 @testable import VistaCore
 struct VRFilenameTests {
     @Test func dimensionsResolveIndependently() {
-        let value=VRDimensionResolver.resolve(manual:.init(layout:.overUnder),metadata:.init(projection:.equirectangular360,swapEyes:true),filename:"sample_SBS_VR180.mp4")
-        #expect(value.values == .init(projection:.equirectangular360,layout:.overUnder,swapEyes:true))
+        let value=VRDimensionResolver.resolve(manual:.init(layout:.overUnder),metadata:.init(projection:.equirectangular360),filename:"sample_SBS_VR180.mp4")
+        #expect(value.values == .init(projection:.equirectangular360,layout:.overUnder))
         #expect(value.layoutOrigin == .manual && value.projectionOrigin == .metadata)
         let partial=VRDimensionResolver.resolve(metadata:.init(layout:.mono),filename:"sample_SBS_VR180.mp4")
         #expect(partial.values.layout == .mono && partial.values.projection == .equirectangular180)

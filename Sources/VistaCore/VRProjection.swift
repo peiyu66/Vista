@@ -20,14 +20,13 @@ public enum VRLayout: String, Codable, CaseIterable, Sendable {
 public struct VRSettings: Codable, Hashable, Sendable {
     public var projection: VRProjection = .equirectangular180
     public var layout: VRLayout = .mono
-    public var swapEyes = false
     public var yawDegrees: Double = 0
     public var pitchDegrees: Double = 0
     public var rollDegrees: Double = 0
     public init() {}
     public func crop(width: Int, height: Int, rightEye: Bool) -> CGRect? {
         guard width > 0, height > 0 else { return nil }
-        let second = rightEye != swapEyes
+        let second = rightEye
         switch layout {
         case .mono: return CGRect(x: 0, y: 0, width: width, height: height)
         case .sideBySide:
@@ -84,19 +83,19 @@ public struct VRMesh: Sendable {
 public struct VRFormat: Codable, Equatable, Sendable {
     public let projection: VRProjection
     public let layout: VRLayout
-    public let swapEyes: Bool
     public init(_ settings: VRSettings) {
-        projection = settings.projection; layout = settings.layout; swapEyes = settings.swapEyes
+        projection = settings.projection; layout = settings.layout
     }
     public var settings: VRSettings {
         var value = VRSettings()
-        value.projection = projection; value.layout = layout; value.swapEyes = swapEyes
+        value.projection = projection; value.layout = layout
         return value
     }
 }
 
 public struct VRPreferenceSource: Sendable {
     fileprivate let components: [String]
+    public static func local(id:UUID)->Self {Self(components:["local-v1",id.uuidString])}
     public static let demo = Self(components: ["demo-v1"])
     public static func smb(server: String, share: String, account: String) -> Self {
         Self(components: ["smb-v1", server.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), share, account])

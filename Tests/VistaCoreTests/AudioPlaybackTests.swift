@@ -15,6 +15,63 @@ private struct AudioFixtureSource: MediaByteSource {
 }
 @MainActor private final class AudioObservation { var frames = 0; var finished = false; var maximumSkew = 0.0 }
 struct AudioPlaybackTests {
+    @Test @MainActor func delayedVideoAfterFirstFrameDropsStaleFrameAndRecovers() async throws {
+        let asset=AVURLAsset(url:Bundle.module.url(forResource:"SyntheticAV",withExtension:"mp4")!)
+        let track=try #require(try await asset.loadTracks(withMediaType:.audio).first)
+        let clock=PlaybackAudioClock(muted:true)
+        let audio=try AudioPlayback(asset:asset,track:track,clock:clock)
+        let timeline=PlaybackTimeline()
+        timeline.attachAudio(clock,feed:{try await audio.pump(through:$0)})
+        do {
+            try await timeline.present(at:0) {}
+            try await audio.pump(through:1.5)
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while clock.time < 0.75 {
+                guard ContinuousClock.now < deadline else { throw PlaybackFailure.audioFailed.diagnosed(.audioClockStalled) }
+                try await audio.pump(through: clock.time + 0.5)
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            let displayed = try await timeline.present(at: 0.04) { Issue.record("Obsolete frame must not display") }
+            #expect(!displayed)
+            #expect(timeline.droppedVideoFrames == 1)
+            #expect(try await timeline.skipLateVideoFrame(at: 0.04))
+            #expect(timeline.droppedVideoFrames == 2)
+            var recovered = false
+            let current = clock.time
+            let resumed = try await timeline.present(at: current) { recovered = true }
+            #expect(resumed && recovered)
+            #expect(abs(clock.time - current) < 0.1)
+            print("SYNTHETIC_AUDIO_LEAD_RECOVERED_AFTER_FIRST_FRAME")
+        } catch {await audio.stop();timeline.detachAudio();throw error}
+        await audio.stop();timeline.detachAudio()
+    }
+    @Test func boundedCatchUpAndDiagnostics() throws {
+        var recovery = AudioVideoCatchUp()
+        let now = ContinuousClock.now
+        #expect(try !recovery.shouldDrop(audio: 10.499, video: 10, now: now))
+        #expect(try recovery.shouldDrop(audio: 10.5, video: 10, now: now))
+        #expect(try recovery.shouldDrop(audio: 10.4, video: 10, now: now))
+        #expect(try !recovery.shouldDrop(audio: 10.09, video: 10, now: now))
+        #expect(recovery.consecutiveDrops == 0)
+        for _ in 0..<120 { #expect(try recovery.shouldDrop(audio: 11, video: 10, now: now)) }
+        #expect(throws: PlaybackFailure.audioFailed.diagnosed(.audioLead, deltaMS: 1000)) {
+            try recovery.shouldDrop(audio: 11, video: 10, now: now)
+        }
+        recovery.reset()
+        #expect(try recovery.shouldDrop(audio: 11, video: 10, now: now))
+        #expect(throws: PlaybackFailure.audioFailed.diagnosed(.audioLead, deltaMS: 1000)) {
+            try recovery.shouldDrop(audio: 11, video: 10, now: now.advanced(by: .seconds(3)))
+        }
+        #expect(throws: PlaybackFailure.audioFailed.diagnosed(.audioClockInvalid)) {
+            try recovery.shouldDrop(audio: .nan, video: 10, now: now)
+        }
+        #expect(throws: PlaybackFailure.decodeFailed.diagnosed(.videoPTS)) {
+            try recovery.shouldDrop(audio: 10, video: .nan, now: now)
+        }
+        #expect(PlaybackFailure.hardwareUnavailable.diagnosed(.hardwareCheck, status: 0).category == .hardwareUnavailable)
+        #expect(PlaybackFailure.decodeFailed.diagnosed(.videoSubmit, status: -12909).message ==
+            "影片解碼失敗，已停止播放。\n[videoSubmit code=-12909]")
+    }
     @Test func unsupportedAudioLayoutsAreRejected() throws {
         for (channels, rate, accepted): (UInt32, Double, Bool) in [(1, 48_000, true), (2, 44_100, true), (6, 48_000, false), (2, 96_000, false)] {
             var description = AudioStreamBasicDescription(mSampleRate: rate, mFormatID: kAudioFormatLinearPCM,
@@ -44,7 +101,7 @@ struct AudioPlaybackTests {
             #expect(abs(clock.time - 2) < 0.1)
         } catch { await audio.stop(); timeline.detachAudio(); throw error }
         await audio.stop(); timeline.detachAudio()
-        #expect(throws: PlaybackFailure.audioFailed) { try clock.start() }
+        #expect(throws: PlaybackFailure.audioFailed.diagnosed(.audioStopped)) { try clock.start() }
     }
 
     @Test @MainActor func syntheticAACUsesAudioClockAndHardwareVideo() async throws {

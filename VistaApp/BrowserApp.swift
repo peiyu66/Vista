@@ -36,11 +36,21 @@ enum BrowserWindowPreferences {
     var body:some Scene {
         WindowGroup {
             #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("--credential-self-test-write") || ProcessInfo.processInfo.arguments.contains("--credential-self-test-read") {
+            if ProcessInfo.processInfo.arguments.contains("--packing-renderer-review") {
+                PackingRendererReview().frame(width:700,height:700)
+            } else if ProcessInfo.processInfo.arguments.contains("--controller-layout-review") {
+                VRImmersiveView().frame(width:600,height:1000)
+                    .dynamicTypeSize(ProcessInfo.processInfo.arguments.contains("--review-large-text") ? .xxxLarge:.large).onAppear {
+                    vr.canClearFormat=true;vr.onClearFormat={vr.settings.projection = .equirectangular180;vr.settings.layout = .sideBySide};vr.settingsVisible=true;vr.fileTitle="合成控制器版面檢視";vr.player=PlaybackController()
+                    if ProcessInfo.processInfo.arguments.contains("--review-fisheye") {vr.settings.projection = .equidistantFisheye180}
+                }
+            } else if ProcessInfo.processInfo.arguments.contains("--device-media-self-test") {
+                DeviceMediaSelfTestView()
+            } else if ProcessInfo.processInfo.arguments.contains("--credential-self-test-write") || ProcessInfo.processInfo.arguments.contains("--credential-self-test-read") {
                 CredentialSelfTestView()
-            } else { ShortcutBrowserView().glassBackgroundEffect().opacity(vr.active ? 0:1).allowsHitTesting(!vr.active).accessibilityHidden(vr.active) }
+            } else { ShortcutBrowserView().glassBackgroundEffect().opacity(vr.active ? 0:1).allowsHitTesting(!vr.active).accessibilityHidden(vr.active).persistentSystemOverlays(vr.active ? .hidden : .automatic) }
             #else
-            ShortcutBrowserView().glassBackgroundEffect().opacity(vr.active ? 0:1).allowsHitTesting(!vr.active).accessibilityHidden(vr.active)
+            ShortcutBrowserView().glassBackgroundEffect().opacity(vr.active ? 0:1).allowsHitTesting(!vr.active).accessibilityHidden(vr.active).persistentSystemOverlays(vr.active ? .hidden : .automatic)
             #endif
         }.environment(vr).windowStyle(.plain).defaultSize(initialSize).windowResizability(.contentMinSize)
         ImmersiveSpace(id:"VistaVR") {VRImmersiveView().environment(vr)}
@@ -66,6 +76,40 @@ private struct CredentialSelfTestView:View {
                 }
             } catch SMBCredentialStore.Failure.status(let status) {result="Keychain 測試失敗：\(status)"}
             catch {result="Keychain 測試失敗"}
+        }
+    }
+}
+#endif
+
+#if DEBUG
+/// Explicit synthetic-only device probe; never loads saved locations or credentials.
+private struct DeviceMediaSelfTestView: View {
+    @State private var status = "合成影片硬體解碼測試中…"
+    @State private var detectedCodec = ""
+    var body: some View {
+        Text(status).padding(40).task {
+            let destination = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("VistaSyntheticPlaybackReport.json")
+            var results: [[String: Any]] = []
+            func save(_ complete: Bool) {
+                let report: [String: Any] = ["complete": complete, "softwareTest": PlaybackDecodingPolicy.simulatorSoftwareTest, "results": results]
+                if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) {
+                    try? data.write(to: destination, options: .atomic)
+                }
+            }
+            save(false)
+            for (codec, name) in [("H.264", "H264 播放測試.mp4"), ("HEVC", "HEVC 播放測試.mp4")] {
+                do {
+                    detectedCodec = ""
+                    let report = try await HardwarePlayback().play(file: MediaFile(components: [name]), source: DemoMediaSource(), onInfo: { info in detectedCodec = info.codec }, onFrame: { _ in })
+                    results.append(["codec": codec, "frames": report.decodedFrames, "hardwareVerified": report.hardwareVerified, "audioSamples": report.audioSamples, "detectedCodec": detectedCodec, "success": detectedCodec == codec])
+                } catch {
+                    results.append(["codec": codec, "success": false, "failure": (error as? PlaybackFailure)?.message ?? "合成素材測試失敗"])
+                }
+                save(false)
+            }
+            save(true)
+            status = "合成影片測試完成；此測試不代表沉浸或雙眼立體驗收。"
         }
     }
 }

@@ -9,22 +9,26 @@ import AVFoundation
         guard (2...3).contains(CommandLine.arguments.count) else { throw CocoaError(.fileWriteInvalidFileName) }
         let url = URL(fileURLWithPath: CommandLine.arguments[1])
         guard !FileManager.default.fileExists(atPath: url.path) else { throw CocoaError(.fileWriteFileExists) }
-        guard CommandLine.arguments.count == 2 || ["--audio", "--seek", "--hevc"].contains(CommandLine.arguments[2]) else {
+        guard CommandLine.arguments.count == 2 || ["--audio", "--seek", "--hevc", "--controls", "--hevc-4k", "--h264-4k", "--hevc-8k"].contains(CommandLine.arguments[2]) else {
             throw CocoaError(.fileWriteInvalidFileName)
         }
-        let hevcFixture = CommandLine.arguments.last == "--hevc"
+        let ultra = CommandLine.arguments.last == "--hevc-8k"
+        let largeHEVC = ultra || CommandLine.arguments.last == "--hevc-4k"
+        let large = largeHEVC || CommandLine.arguments.last == "--h264-4k"
+        let width = ultra ? 7680 : large ? 3840 : 64, height = ultra ? 3840 : large ? 2160 : 64
+        let hevcFixture = largeHEVC || CommandLine.arguments.last == "--hevc"
         let seekFixture = CommandLine.arguments.count == 3 && CommandLine.arguments[2] == "--seek"
         let includeAudio = seekFixture || (CommandLine.arguments.count == 3 && CommandLine.arguments[2] == "--audio")
-        let frameCount = seekFixture ? 72 : 24
+        let frameCount = ultra ? 12 : CommandLine.arguments.last == "--controls" ? 360 : (seekFixture ? 72 : 24)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: hevcFixture ? AVVideoCodecType.hevc : AVVideoCodecType.h264, AVVideoWidthKey: 64, AVVideoHeightKey: 64,
+            AVVideoCodecKey: hevcFixture ? AVVideoCodecType.hevc : AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height,
             AVVideoCompressionPropertiesKey: [AVVideoMaxKeyFrameIntervalKey: seekFixture ? 12 : 240,
                                              AVVideoAllowFrameReorderingKey: true]
         ])
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: 64, kCVPixelBufferHeightKey as String: 64
+            kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height
         ])
         guard writer.canAdd(input) else { throw CocoaError(.fileWriteUnknown) }
         writer.add(input)
@@ -45,7 +49,7 @@ import AVFoundation
                 var buffer: CVPixelBuffer?
                 guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess, let buffer else { throw CocoaError(.fileWriteUnknown) }
                 CVPixelBufferLockBaseAddress(buffer, [])
-                memset(CVPixelBufferGetBaseAddress(buffer), Int32((index * 10) % 256), CVPixelBufferGetBytesPerRow(buffer) * 64)
+                memset(CVPixelBufferGetBaseAddress(buffer), Int32((index * 10) % 256), CVPixelBufferGetBytesPerRow(buffer) * height)
                 CVPixelBufferUnlockBaseAddress(buffer, [])
                 guard adaptor.append(buffer, withPresentationTime: CMTime(value: Int64(index), timescale: 12)) else { throw CocoaError(.fileWriteUnknown) }
             }

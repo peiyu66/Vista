@@ -31,7 +31,7 @@ struct HardwarePlaybackTests {
         control.task = task
         do { _ = try await task.value; Issue.record("Expected cancellation") }
         catch is CancellationError { #expect(control.frames == 1); print("SYNTHETIC_CANCELLED_AFTER_FRAMES", control.frames) }
-        catch PlaybackFailure.hardwareUnavailable { #expect(control.frames == 0); print("SYNTHETIC_CANCEL_HARDWARE_UNAVAILABLE") }
+        catch let failure as PlaybackFailure where failure.category == .hardwareUnavailable { #expect(control.frames == 0); print("SYNTHETIC_CANCEL_HARDWARE_UNAVAILABLE") }
         control.task = nil
     }
 
@@ -45,7 +45,7 @@ struct HardwarePlaybackTests {
             #expect(report.hardwareVerified)
             #expect(report.decodedFrames == 24)
             print("SYNTHETIC_HARDWARE_FRAMES", report.decodedFrames)
-        } catch PlaybackFailure.hardwareUnavailable {
+        } catch let failure as PlaybackFailure where failure.category == .hardwareUnavailable {
             print("SYNTHETIC_HARDWARE_UNAVAILABLE: no software fallback")
         }
         #expect(await source.reads > 0)

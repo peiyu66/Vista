@@ -5,15 +5,13 @@ import Testing
 @testable import VistaCore
 
 struct VRProjectionTests {
-    @Test func eyeRegionsAndSwapAreExplicit() {
+    @Test func standardEyeRegionsAreExplicit() {
         var settings = VRSettings()
         #expect(settings.crop(width: 400, height: 200, rightEye: true) == CGRect(x: 0, y: 0, width: 400, height: 200))
         settings.layout = .sideBySide
         #expect(settings.crop(width: 400, height: 200, rightEye: false) == CGRect(x: 0, y: 0, width: 200, height: 200))
         #expect(settings.crop(width: 400, height: 200, rightEye: true) == CGRect(x: 200, y: 0, width: 200, height: 200))
-        settings.swapEyes = true
-        #expect(settings.crop(width: 400, height: 200, rightEye: false) == CGRect(x: 200, y: 0, width: 200, height: 200))
-        settings.layout = .overUnder; settings.swapEyes = false
+        settings.layout = .overUnder
         #expect(settings.crop(width: 400, height: 200, rightEye: false) == CGRect(x: 0, y: 0, width: 400, height: 100))
         #expect(settings.crop(width: 400, height: 200, rightEye: true) == CGRect(x: 0, y: 100, width: 400, height: 100))
     }
@@ -63,7 +61,7 @@ struct VRProjectionTests {
         let source = VRPreferenceSource.smb(server: "PRIVATE-HOST", share: "PRIVATE-SHARE", account: "PRIVATE-ACCOUNT")
         let file = try MediaFile(components: ["PRIVATE-FOLDER", "PRIVATE-MOVIE.mp4"])
         var settings = VRSettings(); settings.projection = .equirectangular360
-        settings.layout = .overUnder; settings.swapEyes = true; settings.yawDegrees = 90
+        settings.layout = .overUnder; settings.yawDegrees = 90
         let store = try VRPreferenceStore(url: url)
         try store.save(VRFormat(settings), source: source, file: file, revision: "PRIVATE-REVISION")
         let reopened = try VRPreferenceStore(url: url)
@@ -75,6 +73,36 @@ struct VRProjectionTests {
         #expect(permissions?.intValue == 0o600)
         try reopened.save(nil, source: source, file: file, revision: "PRIVATE-REVISION")
         #expect(try VRPreferenceStore(url: url).load(source: source, file: file, revision: "PRIVATE-REVISION") == nil)
+    }
+    @Test func legacySwapIsIgnoredAndRemovedOnNextSave() throws {
+        let url = temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let file = try MediaFile(components: ["fixture.mp4"])
+        for layout in VRLayout.allCases {
+            let fields = VRFormatDimensions(projection: .equirectangular360, layout: layout)
+            try VRPreferenceStore(url: url).saveDimensions(fields, source: .demo, file: file, revision: "v1")
+            var archive = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+            var records = try #require(archive["records"] as? [String: [String: Any]])
+            for key in Array(records.keys) {
+                var record = records[key]!
+                for field in ["format", "overrides"] {
+                    var value = try #require(record[field] as? [String: Any])
+                    value["swapEyes"] = true
+                    record[field] = value
+                }
+                records[key] = record
+            }
+            archive["records"] = records
+            try JSONSerialization.data(withJSONObject: archive).write(to: url)
+            let reopened = try VRPreferenceStore(url: url)
+            let loaded = try #require(try reopened.loadDimensions(source: .demo, file: file, revision: "v1"))
+            #expect(loaded == fields)
+            let restored = try #require(try reopened.load(source: .demo, file: file, revision: "v1"))
+            #expect(restored == fields.completedFormat)
+            #expect(restored.settings.crop(width: 400, height: 200, rightEye: false)?.origin == .zero)
+            try reopened.saveDimensions(loaded, source: .demo, file: file, revision: "v1")
+            #expect(!(try String(contentsOf: url, encoding: .utf8)).contains("swapEyes"))
+        }
     }
     @Test func sourceRenameAndRevisionBoundaries() throws {
         let url = temporaryURL()

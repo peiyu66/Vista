@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 import Observation
 
 @MainActor @Observable final class ShortcutBrowserModel {
@@ -40,6 +41,7 @@ import Observation
         loading=true
         request=Task {
             if let session {await session.invalidateDirectory(DirectoryPath(mediaPath(path,source:source)))}
+            if source.kind == .local,let local=localProviders[source.id] {await local.invalidate()}
             guard !Task.isCancelled,token==generation else{return}
             #if DEBUG
             if testing {refreshFixtureRevision += 1}
@@ -56,7 +58,7 @@ import Observation
         if sourceID==id {tagsVisibilityChanged()}
     }
     private func detectTagSupport() {
-        guard let source,!source.isDemo,!source.providesFinderTags,
+        guard let source,source.kind == .smb,!source.providesFinderTags,
               capabilityTask==nil else{return}
         let token=generation,path=components,key=sessionKey(source.id,path)+"/"+path.dropFirst().joined(separator:"/")
         let samples=Array(entries.prefix(TagSupportEvidence.sampleLimit)).map {
@@ -165,6 +167,7 @@ import Observation
     private var request: Task<Void,Never>?
     private var connectionTask: Task<Void,Never>?
     private var sessions: [String:SMBDirectoryProvider]=[:]
+    private var localProviders:[UUID:LocalDirectoryProvider]=[:]
     private var normalContext: (UUID,[String],UUID?)?
     private let testing:Bool
     private var storageHealthy=true
@@ -178,15 +181,16 @@ import Observation
         #endif
     }
     var source: SavedSource? { saved.sources.first {$0.id==sourceID} }
-    var isHostRoot:Bool {source?.kind != .demoLocal && source != nil && components.isEmpty}
+    var isHostRoot:Bool {source?.isFolderSource == false && source != nil && components.isEmpty}
     func sessionKey(_ id:UUID,_ path:[String])->String {id.uuidString+"/"+(path.first ?? "")}
-    func mediaPath(_ path:[String],source:SavedSource)->[String] {source.kind == .demoLocal ? path:Array(path.dropFirst())}
+    func mediaPath(_ path:[String],source:SavedSource)->[String] {source.isFolderSource ? path:Array(path.dropFirst())}
     func openManualShare() {
         let name=manualShare.trimmingCharacters(in:.whitespacesAndNewlines)
         guard isHostRoot,SavedLocations.validComponent(name),let sourceID else{error="請輸入有效分享名稱。";return}
         browse(source:sourceID,path:[name])
     }
-    var currentTitle: String { components.last ?? source?.share.nonempty ?? source?.name ?? "資料夾" }
+    private var localFolderTitle:String?
+    var currentTitle: String { (source?.kind == .local ? localFolderTitle:nil) ?? components.last ?? source?.share.nonempty ?? source?.name ?? "資料夾" }
     var activeShortcut: FolderShortcut? { saved.shortcuts.first {$0.id==shortcutID && $0.sourceID==sourceID} }
     var belowShortcutRoot: Bool {
         guard !editing,let root=activeShortcut?.components else {return false}
@@ -204,7 +208,17 @@ import Observation
         do {
             if testFixture && resetFixture { try store.save(.emptyPrototype) }
             saved=try store.load()
+            if !testFixture {let clean=saved.removingDemos();if clean != saved {try store.save(clean)};saved=clean}
             #if DEBUG
+            if testFixture,resetFixture,ProcessInfo.processInfo.arguments.contains("--local-files-fixture") {
+                let folder=FileManager.default.urls(for:.documentDirectory,in:.userDomainMask)[0].appendingPathComponent("VistaLocalUITestFixture")
+                try FileManager.default.createDirectory(at:folder.appendingPathComponent("Child/Grandchild"),withIntermediateDirectories:true)
+                try Data([1,2,3]).write(to:folder.appendingPathComponent("visible.txt"))
+                try Data().write(to:folder.appendingPathComponent(".hidden"))
+                var local=SavedSource(kind:.local,name:"Local Test Folder")
+                local.localBookmark=try LocalDirectoryProvider.bookmark(for:folder)
+                saved=SavedLocations(sources:[local]);try store.save(saved)
+            }
             if testFixture,resetFixture,ProcessInfo.processInfo.arguments.contains("--source-settings-fixture") {
                 var source=SavedSource(kind:.smb,name:"測試分享",server:"test-nas.example.test",share:"Videos",username:"original-user")
                 if ProcessInfo.processInfo.arguments.contains("--legacy-tag-mac") {source.tagPolicy = .mac}
@@ -220,9 +234,37 @@ import Observation
             }
             #endif
         } catch {
-            saved = .emptyPrototype; storageHealthy=false; notice="無法讀取已保存的設定；原資料保留，本次不會覆寫。"
+            saved = testFixture ? .emptyPrototype : .empty; storageHealthy=false; notice="無法讀取已保存的設定；原資料保留，本次不會覆寫。"
         }
         restoreDisplayPreferences(testing:testFixture,reset:resetFixture || (testFixture && !ProcessInfo.processInfo.arguments.contains("--persist-display-test")))
+    }
+    private func localProvider(_ source:SavedSource)throws->LocalDirectoryProvider {
+        if let value=localProviders[source.id] {return value}
+        guard let bookmark=source.localBookmark else {throw LocalFolderFailure.permission}
+        let value=try LocalDirectoryProvider(bookmark:bookmark);localProviders[source.id]=value;return value
+    }
+    func importLocalFolder(_ url:URL,replacing id:UUID?=nil) {
+        guard editing,storageHealthy else{return}
+        do {
+            let bookmark=try LocalDirectoryProvider.bookmark(for:url)
+            var candidate=saved
+            if let id,let index=candidate.sources.firstIndex(where:{$0.id==id && $0.kind == .local}) {
+                guard let old=candidate.sources[index].localBookmark else {throw LocalFolderFailure.permission}
+                var stale=false
+                let previous=try URL(resolvingBookmarkData:old,options:[.withoutUI],relativeTo:nil,bookmarkDataIsStale:&stale)
+                guard previous.standardizedFileURL == url.standardizedFileURL else {
+                    notice="請選取原資料夾；其他資料夾請使用加入資料夾。";return
+                }
+                candidate.sources[index].localBookmark=bookmark
+                try store.save(candidate);saved=candidate;localProviders[id]=nil
+                browse(source:id,path:[])
+            } else {
+                var source=SavedSource(kind:.local,name:LocalDirectoryProvider.displayName(for:url))
+                source.localBookmark=bookmark;candidate.sources.append(source)
+                try store.save(candidate);saved=candidate;browse(source:source.id,path:[])
+            }
+            notice=nil
+        } catch {notice="無法取得資料夾存取權，請重新選取；原捷徑保留。"}
     }
     func start() {
         guard sourceID==nil, !editing else { return }
@@ -255,6 +297,7 @@ import Observation
         browse(source:item.id,path:[])
     }
     func browse(source id: UUID,path: [String]) {
+        localFolderTitle=nil
         guard path.allSatisfy(SavedLocations.validComponent) else { return }
         cancelListing(); sourceID=id;components=path;entries=[];nextOffset=0;error=nil;notice=nil;selection=nil
         parentEntries=[];parentOffset=belowShortcutRoot ? 0:nil;parentError=nil
@@ -270,15 +313,23 @@ import Observation
             guard entry.kind == .video,let source else {notice="此檔案不是可播放的影片。";return}
             let directory=DirectoryPath(mediaPath(components,source:source))
             let mediaSource:any MediaByteSource
-            if source.isDemo {mediaSource=DemoMediaSource()}
+            if source.kind == .local {
+                do {mediaSource=try localProvider(source)} catch {notice="請在編輯模式重新授權本機資料夾。";return}
+            } else if source.isDemo {mediaSource=DemoMediaSource()}
             else if let session=sessions[sessionKey(source.id,components)] {mediaSource=session}
             else {notice="連線已失效，請重新開啟資料夾。";return}
             notice=nil
             playback=BrowserPlayback(selection:PlaybackSelection(directory:directory,file:entry),source:mediaSource,isDemo:source.isDemo,
-                preferenceSource:source.isDemo ? .demo:.smb(server:source.server,share:components.first ?? source.share,account:source.username))
+                preferenceSource:source.kind == .local ? .local(id:source.id):source.isDemo ? .demo:.smb(server:source.server,share:components.first ?? source.share,account:source.username))
         }
     }
     func nextPlayback(after previous:PlaybackSelection) async throws ->PlaybackSelection? {
+        try await adjacentPlayback(from:previous,backward:false)
+    }
+    func previousPlayback(before previous:PlaybackSelection) async throws ->PlaybackSelection? {
+        try await adjacentPlayback(from:previous,backward:true)
+    }
+    private func adjacentPlayback(from previous:PlaybackSelection,backward:Bool) async throws ->PlaybackSelection? {
         let token=generation
         while nextOffset != nil || loading {
             try Task.checkCancellation()
@@ -288,15 +339,18 @@ import Observation
             if error != nil {throw URLError(.cannotLoadFromNetwork)}
         }
         while tagsLoading {try await Task.sleep(for:.milliseconds(40));try Task.checkCancellation();guard token==generation else{throw CancellationError()}}
-        guard token==generation,let index=entries.firstIndex(where:{$0.id==previous.file.id}) else{return nil}
-        guard let entry=entries.dropFirst(index+1).first(where:{$0.kind == .video}) else{return nil}
+        try Task.checkCancellation()
+        guard token==generation else{throw CancellationError()}
+        guard let entry=OrderedVideoNavigation.adjacent(in:entries,currentID:previous.file.id,backward:backward) else{return nil}
         selection=entry.id
         return PlaybackSelection(directory:previous.directory,file:entry)
     }
     func hasNextPlayback(after previous:PlaybackSelection)->Bool {
         if nextOffset != nil || loading {return true}
-        guard let index=entries.firstIndex(where:{$0.id==previous.file.id}) else{return false}
-        return entries.dropFirst(index+1).contains{$0.kind == .video}
+        return OrderedVideoNavigation.adjacent(in:entries,currentID:previous.file.id,backward:false) != nil
+    }
+    func hasPreviousPlayback(before previous:PlaybackSelection)->Bool {
+        return OrderedVideoNavigation.adjacent(in:entries,currentID:previous.file.id,backward:true) != nil
     }
     func loadMore() {
         guard !loading,let offset=nextOffset,let source else {return}
@@ -304,6 +358,7 @@ import Observation
         request=Task {
             do {
                 let page:DirectoryPage
+                var resolvedLocalTitle:String?
                 if testing,ProcessInfo.processInfo.arguments.contains("--refresh-directory-fixture") {
                     let revision=refreshFixtureRevision
                     if revision>0 {try? await Task.sleep(for:.milliseconds(500))}
@@ -315,7 +370,11 @@ import Observation
                     guard let secret=try credentials.load(for:source.credentialID ?? source.id),
                           secret == "synthetic-new" || (secret == "synthetic-old" && !ProcessInfo.processInfo.arguments.contains("--auth-expired")) else {throw SMBCredentialStore.Failure.unavailable}
                     page=DirectoryPage(entries:[FileEntry("合成登入成功",.directory)])
-                } else if source.kind != .demoLocal && path.isEmpty {
+                } else if source.kind == .local {
+                    let provider=try localProvider(source)
+                    page=try await provider.page(at:DirectoryPath(path),offset:offset,sort:visibleSort)
+                    resolvedLocalTitle=(try? await provider.displayName(at:DirectoryPath(path))) ?? path.last ?? source.name
+                } else if !source.isFolderSource && path.isEmpty {
                     let names:[String]
                     if source.isDemo || testing {
                         if testing,ProcessInfo.processInfo.arguments.contains("--host-list-error") {throw URLError(.cannotLoadFromNetwork)}
@@ -341,6 +400,7 @@ import Observation
                     page=try await session.page(at:DirectoryPath(mediaPath(path,source:source)),offset:offset,sort:sort.field == .tags ? DirectorySort():sort)
                 }
                 guard !Task.isCancelled,token==generation else {return}
+                if source.kind == .local {localFolderTitle=resolvedLocalTitle}
                 var seen=Set(entries.map(\.id))
                 entries += page.entries.filter {!$0.isHidden && SavedLocations.validComponent($0.name) && seen.insert($0.id).inserted}
                 nextOffset=page.nextOffset.flatMap {$0>offset ? $0:nil};loading=false
@@ -355,7 +415,7 @@ import Observation
             } catch {
                 guard !Task.isCancelled,token==generation else {return}
                 if !source.isDemo,let failed=sessions.removeValue(forKey:sessionKey(source.id,path)) {Task {await failed.disconnect()}}
-                loading=false;self.error=path.isEmpty && source.kind != .demoLocal ? "無法列出分享；可手動指定已知分享，或確認帳號權限。":source.isDemo ? "無法讀取此示範資料夾。" : "無法開啟資料夾。請確認伺服器、網路及登入資訊。"
+                loading=false;self.error=source.kind == .local ? "無法讀取本機資料夾；請在編輯模式重新授權，或確認檔案已下載。":path.isEmpty && !source.isFolderSource ? "無法列出分享；可手動指定已知分享，或確認帳號權限。":source.isDemo ? "無法讀取此示範資料夾。" : "無法開啟資料夾。請確認伺服器、網路及登入資訊。"
                 if belowShortcutRoot && parentOffset == 0 {loadParent()}
             }
         }
@@ -469,7 +529,8 @@ import Observation
         parentRequest=Task {
             do {
                 let page:DirectoryPage
-                if source.isDemo || (testing && ProcessInfo.processInfo.arguments.contains("--host-navigation-fixture")) {page=try await DemoDirectoryProvider().page(at:DirectoryPath(mediaPath(path,source:source)),offset:offset,sort:sort.field == .tags ? DirectorySort():sort)}
+                if source.kind == .local {page=try await localProvider(source).page(at:DirectoryPath(path),offset:offset,sort:visibleSort)}
+                else if source.isDemo || (testing && ProcessInfo.processInfo.arguments.contains("--host-navigation-fixture")) {page=try await DemoDirectoryProvider().page(at:DirectoryPath(mediaPath(path,source:source)),offset:offset,sort:sort.field == .tags ? DirectorySort():sort)}
                 else if let session=sessions[sessionKey(source.id,path)] {page=try await session.page(at:DirectoryPath(mediaPath(path,source:source)),offset:offset,sort:sort.field == .tags ? DirectorySort():sort)}
                 else {throw SMBCredentialStore.Failure.unavailable}
                 guard !Task.isCancelled,token==generation,!editing else{return}
@@ -486,15 +547,29 @@ import Observation
         guard belowShortcutRoot,entry.kind == .directory,parentEntries.contains(entry),let sourceID else{return}
         browse(source:sourceID,path:Array(components.dropLast())+[entry.name])
     }
+    func insertShortcut(_ id:UUID,at index:Int) {
+        guard editing,storageHealthy else{return}
+        var candidate=saved;candidate.insertShortcut(id,at:index)
+        do {try store.save(candidate);saved=candidate}
+        catch {notice="無法保存捷徑順序；原順序保留。"}
+    }
     func reorder(_ id:UUID,to target:UUID) {guard editing else{return};saved.reorderShortcut(id,to:target);persist()}
     func addShortcut() {
         guard editing,let source,!isHostRoot,!loading,error==nil,!alreadySaved else {return}
-        let name=components.last ?? source.share.nonempty ?? source.name
+        let name=source.kind == .local ? (localFolderTitle ?? components.last ?? source.name) : (components.last ?? source.share.nonempty ?? source.name)
         saved.shortcuts.append(FolderShortcut(sourceID:source.id,components:components,name:name));persist()
+    }
+    func renameLocalSource(_ id:UUID,to name:String) {
+        guard editing,storageHealthy else {notice="無法保存設定；原名稱保留。";return}
+        do {
+            let candidate=try saved.renamingLocalSource(id,to:name)
+            try store.save(candidate);saved=candidate;notice=nil
+        } catch {notice="無法保存顯示名稱，原名稱保留。"}
     }
     func rename(_ id:UUID,to name:String) {
         guard editing,SavedLocations.validName(name),let index=saved.shortcuts.firstIndex(where:{$0.id==id}) else {return}
-        saved.shortcuts[index].name=name.trimmingCharacters(in:.whitespacesAndNewlines);persist()
+        var candidate=saved;candidate.shortcuts[index].name=name.trimmingCharacters(in:.whitespacesAndNewlines)
+        do {try store.save(candidate);saved=candidate} catch {notice="無法保存捷徑名稱；原名稱保留。"}
     }
     func remove(_ id:UUID) {
         guard editing else {return}
@@ -580,13 +655,13 @@ import Observation
     }
     func sourceShortcutCount(_ id:UUID)->Int {saved.shortcuts.filter{$0.sourceID==id}.count}
     func removeSource(_ requested:SavedSource,including shortcuts:Set<UUID>) {
-        guard editing,let source=saved.sources.first(where:{$0.id==requested.id && $0.kind == .smb}),storageHealthy else{return}
+        guard editing,let source=saved.sources.first(where:{$0.id==requested.id && !$0.isDemo}),storageHealthy else{return}
         do {
             let candidate=try saved.removingSource(source.id,includingShortcutIDs:shortcuts)
             try store.save(candidate)
-            do {try credentials.remove(for:source.credentialID ?? source.id)}
+            do {if source.kind == .smb {try credentials.remove(for:source.credentialID ?? source.id)}}
             catch {try store.save(saved);throw error}
-            saved=candidate
+            saved=candidate;localProviders[source.id]=nil
             if normalContext?.0==source.id {normalContext=nil}
             connectionTask?.cancel();connecting=false;password="";showingConnection=false
             if sourceID==source.id {cancelListing();sourceID=nil;shortcutID=nil;components=[];entries=[];parentEntries=[];normalContext=nil}
@@ -620,14 +695,29 @@ struct ShortcutBrowserView: View {
     @State private var discovery=SMBDiscovery()
     @State private var browsingNetwork=false
     @State private var removingSource:SavedSource?
+    @State private var selectingLocalFolder=false
+    @State private var localReauthorizationID:UUID?
     @FocusState private var connectionFocus:ConnectionField?
     private enum ConnectionField {case username}
     @State private var shortcutFrames:[UUID:CGRect]=[:]
+    @State private var shortcutInsertion:(id:UUID,index:Int)?
+    @State private var shortcutDrag:(id:UUID,point:CGPoint)?
+    @State private var autoTicks=0
+    @State private var lastDrop = -1
+    @State private var sidebarPosition=ScrollPosition(y:0)
+    @State private var sidebarViewport=CGSize.zero
+    @State private var sidebarGeometry=CGSize.zero // width stores offset; height stores content height
     @State private var model:ShortcutBrowserModel
     init() {
         #if DEBUG
         let args=ProcessInfo.processInfo.arguments
         let initial=ShortcutBrowserModel(testFixture:args.contains("--shortcut-ui-tests"),resetFixture:args.contains("--reset-shortcut-fixture"))
+        if args.contains("--shortcut-ui-tests") && args.contains("--review-edit-sources") {initial.editing=true}
+        if args.contains("--shortcut-ui-tests") && args.contains("--long-shortcuts") {
+            initial.saved = .emptyPrototype
+            initial.saved.shortcuts=(1...40).map{FolderShortcut(sourceID:initial.saved.sources[0].id,components:["影片"],name:String(format:"Folder %02d",$0))}
+            initial.editing=true
+        }
         if args.contains("--shortcut-ui-tests") && args.contains("--columns-preview") {
             initial.saved = .emptyPrototype
             let shortcut=FolderShortcut(sourceID:initial.saved.sources[0].id,components:["影片","電影","科幻"],name:"科幻")
@@ -650,6 +740,13 @@ struct ShortcutBrowserView: View {
         _model=State(initialValue:ShortcutBrowserModel())
         #endif
     }
+    private var directImmersivePlayback:Bool {
+        #if DEBUG
+        return !ProcessInfo.processInfo.arguments.contains("--flat-preview-test")
+        #else
+        return true
+        #endif
+    }
     var body:some View {
         HStack(spacing:0) {
             sidebar.frame(width:300).disabled(removingSource != nil)
@@ -665,9 +762,15 @@ struct ShortcutBrowserView: View {
         .overlay {
             if let playback=model.playback {
                 PlaybackView(selection:playback.selection,source:playback.source,isDemo:playback.isDemo,
-                             preferenceSource:playback.preferenceSource,directImmersive:true,nextFile:model.nextPlayback,hasNext:model.hasNextPlayback) {model.playback=nil}
+                             preferenceSource:playback.preferenceSource,directImmersive:directImmersivePlayback,nextFile:model.nextPlayback,hasNext:model.hasNextPlayback,
+                             previousFile:model.previousPlayback,hasPrevious:model.hasPreviousPlayback) {model.playback=nil}
                     .id(playback.id)
             }
+        }
+        .fileImporter(isPresented:$selectingLocalFolder,allowedContentTypes:[.folder],allowsMultipleSelection:false) { result in
+            if case .success(let urls)=result,let url=urls.first {model.importLocalFolder(url,replacing:localReauthorizationID)}
+            else if case .failure(let error)=result,(error as NSError).code != NSUserCancelledError {model.notice="無法開啟資料夾選擇器，請重試。"}
+            localReauthorizationID=nil
         }
         .onGeometryChange(for:CGSize.self) {$0.size} action:{BrowserWindowPreferences.save($0)}
         .task{
@@ -696,9 +799,9 @@ struct ShortcutBrowserView: View {
         let affected=model.saved.shortcuts.filter{$0.sourceID==source.id}
         return VStack(alignment:.leading,spacing:18) {
             Text("移除 \(source.name)？").font(.title2.bold())
-            Text("只移除 Vista 保存的連線、登入資訊及下列捷徑，不會刪除伺服器檔案。").foregroundStyle(.secondary)
+            Text(source.kind == .local ? "只移除 Vista 保存的資料夾授權及下列捷徑，不會刪除檔案。":"只移除 Vista 保存的連線、登入資訊及下列捷徑，不會刪除伺服器檔案。").foregroundStyle(.secondary)
             if affected.isEmpty {
-                Text("沒有捷徑指向此主機。").foregroundStyle(.secondary)
+                Text("沒有捷徑指向此來源。").foregroundStyle(.secondary)
                 Spacer()
             } else {
                 Text("受影響的捷徑（\(affected.count)）").font(.headline)
@@ -722,6 +825,11 @@ struct ShortcutBrowserView: View {
             }
         }.padding(32)
     }
+    private var appVersionText:String {
+        let version=Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "?"
+        let build=Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "?"
+        return "\(version) (\(build))"
+    }
     private var sidebar:some View {
         VStack(alignment:.leading,spacing:0) {
             HStack {
@@ -740,20 +848,38 @@ struct ShortcutBrowserView: View {
                 VStack(alignment:.leading,spacing:12) {
                     if model.editing {
                         Text("來源").font(.caption).foregroundStyle(.secondary)
-                        ForEach(model.saved.sources) {source in
+                        ForEach(model.saved.sources.sorted { ($0.isFolderSource ? 0:1) < ($1.isFolderSource ? 0:1) }) {source in
                             HStack(spacing:4) {
+                            if source.kind == .local {
+                                LocalSourceNameRow(source:source,selected:model.sourceID==source.id && !model.showingConnection,browse:{model.selectSource(source)},rename:{model.renameLocalSource(source.id,to:$0)})
+                            } else {
                             Button {model.selectSource(source)} label:{
-                                Label(source.name,systemImage:source.kind == .demoLocal ? "internaldrive":"externaldrive.connected.to.line.below")
+                                Label(source.name,systemImage:source.isFolderSource ? "internaldrive":"externaldrive.connected.to.line.below")
                                     .frame(maxWidth:.infinity,alignment:.leading).padding(10)
-                            }.buttonStyle(.plain)
-                                .background(model.sourceID==source.id && !model.showingConnection ? Color.accentColor.opacity(0.16):.clear,in:RoundedRectangle(cornerRadius:12))
-                                .accessibilityIdentifier(source.kind == .demoLocal ? "localDemoSource":source.kind == .demoSMB ? "smbDemoSource":"savedSMBSource")
+                                    .background(model.sourceID==source.id && !model.showingConnection ? BrowserBluePalette.selection.opacity(BrowserBluePalette.enabled ? 0.28:0.16):.clear,in:Capsule())
+                                    .padding(2)
+                                    .contentShape(.interaction,Capsule()).contentShape(.hoverEffect,Capsule())
+                            }.buttonStyle(ColumnHeaderButtonStyle())
+                                .accessibilityIdentifier(source.kind == .demoLocal ? "localDemoSource":source.kind == .demoSMB ? "smbDemoSource":source.kind == .local ? "savedLocalSource":"savedSMBSource")
+                            }
+                            if source.kind == .local {
+                                Menu {
+                                    Button("重新授權資料夾") {localReauthorizationID=source.id;selectingLocalFolder=true}
+                                    Button("移除",role:.destructive) {removingSource=source}
+                                } label:{Image(systemName:"ellipsis")}
+                                .accessibilityLabel("設定 \(source.name)").accessibilityIdentifier("localSourceSettings")
+                            }
                             if source.kind == .smb {
                                 Button {model.beginConnection(source)} label:{Image(systemName:"slider.horizontal.3")}
                                     .buttonStyle(.plain).padding(8).accessibilityLabel("設定 \(source.name)").accessibilityIdentifier("sourceSettings-\(source.name)")
 
                             }
                             }
+                        }
+                        Button("授權本機資料夾",systemImage:"folder.badge.plus") {localReauthorizationID=nil;selectingLocalFolder=true}
+                            .accessibilityIdentifier("chooseLocalFolder").padding(.vertical,6)
+                        if !model.saved.sources.contains(where:{$0.kind == .local}) {
+                            Text("首次選取並授權後，即可在 Vista 內瀏覽及加入捷徑。").font(.caption).foregroundStyle(.secondary)
                         }
                         Button("連接 SMB",systemImage:"plus.circle") {model.beginConnection()}
                             .accessibilityIdentifier("connectSMB").padding(.vertical,6)
@@ -767,29 +893,99 @@ struct ShortcutBrowserView: View {
                     }
                     ForEach(Array(model.saved.shortcuts.enumerated()),id:\.element.id) {index,item in
                         if model.editing {
-                            ShortcutEditRow(item:item,rename:{model.rename(item.id,to:$0)},remove:{model.remove(item.id)},move:{y in
-                                guard let target=shortcutFrames.min(by:{abs($0.value.midY-y)<abs($1.value.midY-y)})?.key else{return}
-                                model.reorder(item.id,to:target)
-                            })
+                            ShortcutEditRow(item:item,rename:{model.rename(item.id,to:$0)},remove:{model.remove(item.id)},preview:{point in
+                                shortcutDrag=(item.id,point);refreshShortcutInsertion()
+                            },move:{point in
+                                shortcutDrag=(item.id,point);refreshShortcutInsertion()
+                                if let insertion=shortcutInsertion {lastDrop=insertion.index;model.insertShortcut(insertion.id,at:insertion.index)}
+                                clearShortcutDrag()
+                            },cancel:clearShortcutDrag)
+                            .overlay(alignment:.top) {
+                                if insertionBefore == item.id { insertionLine.offset(y:-6) }
+                            }
+                            .overlay(alignment:.bottom) {
+                                if insertionAtEnd && model.saved.shortcuts.last?.id == item.id { insertionLine.offset(y:6) }
+                            }
+                            .overlay(alignment:.topLeading) {
+                                if ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests") {
+                                    Text("前落點").font(.system(size:1)).frame(width:40,height:4).opacity(0.01)
+                                        .accessibilityIdentifier("drop-before-\(item.name)")
+                                }
+                            }
+                            .overlay(alignment:.bottomLeading) {
+                                if ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests") {
+                                    Text("落點").font(.system(size:1)).frame(width:40,height:4).opacity(0.01)
+                                        .accessibilityIdentifier("drop-after-\(item.name)").offset(y:8)
+                                }
+                            }
                             .background(GeometryReader {geometry in
-                                Color.clear.preference(key:ShortcutFrameKey.self,value:[item.id:geometry.frame(in:.named("shortcutList"))])
+                                Color.clear.preference(key:ShortcutFrameKey.self,value:[item.id:geometry.frame(in:.named("shortcutViewport"))])
                             })
                         } else {
                             Button {model.selectShortcut(item)} label:{
                                 Label(item.name,systemImage:"folder").lineLimit(2)
                                     .frame(maxWidth:.infinity,alignment:.leading).padding(13)
                             }.buttonStyle(.plain)
-                                .background(model.shortcutID==item.id ? Color.accentColor.opacity(0.2):.clear,in:RoundedRectangle(cornerRadius:12))
+                                .background(model.shortcutID==item.id ? BrowserBluePalette.selection.opacity(BrowserBluePalette.enabled ? 0.28:0.2):.clear,in:Capsule().inset(by:2)).buttonStyle(ColumnHeaderButtonStyle())
                                 .accessibilityIdentifier("shortcut-\(item.name)")
                         }
                     }
                     }
-                }.padding(.horizontal,18).padding(.bottom,18)
-                    .coordinateSpace(name:"shortcutList")
-                    .onPreferenceChange(ShortcutFrameKey.self){shortcutFrames=$0}
+                }.padding(.horizontal,18).padding(.top,12).padding(.bottom,18)
+                    .onPreferenceChange(ShortcutFrameKey.self){shortcutFrames=$0;refreshShortcutInsertion()}
             }
+            .coordinateSpace(name:"shortcutViewport")
+            .scrollPosition($sidebarPosition)
+            .onGeometryChange(for:CGSize.self){$0.size} action:{sidebarViewport=$0}
+            .onScrollGeometryChange(for:CGSize.self){CGSize(width:$0.contentOffset.y,height:$0.contentSize.height)} action:{_,value in sidebarGeometry=value}
+            .accessibilityIdentifier("shortcutSidebarScroll")
+            .overlay(alignment:.bottomLeading) {
+                if ProcessInfo.processInfo.arguments.contains("--long-shortcuts") {
+                    Text("下緣").font(.system(size:1)).frame(width:40,height:8).opacity(0.01).padding(.bottom,3).accessibilityIdentifier("shortcutBottomEdge")
+                }
+            }
+            .overlay(alignment:.topLeading) {
+                if ProcessInfo.processInfo.arguments.contains("--long-shortcuts") {
+                    Text("上緣").font(.system(size:1)).frame(width:40,height:8).opacity(0.01).padding(.top,3).accessibilityIdentifier("shortcutTopEdge")
+                }
+            }
+            .task(id:shortcutDrag?.id) {
+                while !Task.isCancelled,let drag=shortcutDrag,model.editing {
+                    let next=ShortcutAutoScroll.nextOffset(pointer:drag.point,viewport:sidebarViewport,offset:sidebarGeometry.width,contentHeight:sidebarGeometry.height,elapsed:0.05)
+                    if abs(next-sidebarGeometry.width)>0.1 {autoTicks += 1;sidebarPosition.scrollTo(y:next)}
+                    do {try await Task.sleep(for:.milliseconds(50))} catch {break}
+                }
+            }
+            .onChange(of:model.editing){_,_ in clearShortcutDrag()}
+            .onDisappear{clearShortcutDrag()}
             Spacer(minLength:0)
+            if ProcessInfo.processInfo.arguments.contains("--long-shortcuts") {
+                Text("ticks=\(autoTicks);drop=\(lastDrop);active=\(shortcutDrag != nil);order="+model.saved.shortcuts.map(\.name).joined(separator:","))
+                    .font(.system(size:1)).frame(height:1).accessibilityIdentifier("shortcutDragTestState")
+            }
+            Text(appVersionText).font(.caption2).foregroundStyle(.secondary)
+                .frame(maxWidth:.infinity,alignment:.leading)
+                .padding(.leading,model.belowShortcutRoot ? 30 : model.editing ? 28 : 31).padding(.trailing,22).padding(.top,8).padding(.bottom,14)
+                .accessibilityLabel("Vista 版本").accessibilityValue(appVersionText)
+                .accessibilityIdentifier("browserAppVersion")
         }.background(.black.opacity(0.08))
+    }
+    private func clearShortcutDrag() {shortcutDrag=nil;shortcutInsertion=nil}
+    private func refreshShortcutInsertion() {
+        guard let drag=shortcutDrag,model.editing,drag.point.y>=0,drag.point.y<=sidebarViewport.height else {shortcutInsertion=nil;return}
+        let slot=ShortcutInsertion.index(dragged:drag.id,ordered:model.saved.shortcuts.map(\.id),frames:shortcutFrames,point:drag.point)
+        shortcutInsertion=slot.map{(drag.id,$0)}
+    }
+    private var insertionBefore:UUID? {
+        guard let insertion=shortcutInsertion else{return nil}
+        let remaining=model.saved.shortcuts.filter{$0.id != insertion.id}
+        return insertion.index < remaining.count ? remaining[insertion.index].id:nil
+    }
+    private var insertionAtEnd:Bool {shortcutInsertion != nil && insertionBefore == nil}
+    private var insertionLine:some View {
+        Capsule().fill(BrowserBluePalette.emphasis).frame(height:3)
+            .allowsHitTesting(false).accessibilityLabel("捷徑插入位置")
+            .accessibilityIdentifier("shortcutInsertionIndicator")
     }
     private var parentListing:some View {
         LazyVStack(spacing:4) {
@@ -798,7 +994,7 @@ struct ShortcutBrowserView: View {
                     Label(entry.name,systemImage:entry.kind == .directory ? "folder":"doc")
                         .lineLimit(2).frame(maxWidth:.infinity,alignment:.leading).padding(12)
                 }.buttonStyle(.plain)
-                    .background(entry.name==model.components.last ? Color.accentColor.opacity(0.2):.clear,in:RoundedRectangle(cornerRadius:12))
+                    .background(entry.name==model.components.last ? BrowserBluePalette.selection.opacity(BrowserBluePalette.enabled ? 0.28:0.2):.clear,in:Capsule().inset(by:2)).buttonStyle(ColumnHeaderButtonStyle())
                     .accessibilityIdentifier("parent-\(entry.name)")
             }
             if model.parentLoading {ProgressView("載入中…")}
@@ -857,10 +1053,10 @@ struct ShortcutBrowserView: View {
         return HStack(spacing:0) {
             Button {model.sortBy(field)} label:{
                 HStack(spacing:5) {
-                    Text(title).lineLimit(1)
-                    if model.visibleSort.field == field {Image(systemName:model.visibleSort.ascending ? "arrow.up":"arrow.down")}
-                }.font(.subheadline.bold()).padding(.trailing,field == .size ? 12:0).padding(.leading,field == .tags ? 8:0).frame(maxWidth:.infinity,minHeight:60,alignment:field == .size ? .trailing:.leading).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityIdentifier("sort-"+field.rawValue)
+                    Text(title).lineLimit(1).accessibilityIdentifier("column-title-"+field.rawValue)
+                    if model.visibleSort.field == field {Image(systemName:model.visibleSort.ascending ? "arrow.up":"arrow.down").accessibilityIdentifier("column-arrow-"+field.rawValue)}
+                }.accessibilityElement(children:.contain).accessibilityIdentifier("column-heading-"+field.rawValue).font(.subheadline.bold()).padding(.leading,field == .name ? 40:0).frame(maxWidth:.infinity,alignment:field == .name ? .leading:.center).frame(height:60).contentShape(.interaction,Capsule()).contentShape(.hoverEffect,Capsule())
+            }.buttonStyle(ColumnHeaderButtonStyle()).padding(.leading,field == .name ? -10:0).accessibilityIdentifier("sort-"+field.rawValue)
                 .accessibilityValue(model.visibleSort.field == field ? (model.visibleSort.ascending ? "升冪":"降冪"):"未排序")
             if field != .size {
                 ColumnResizeHandle(title:title,width:currentWidth,onResize:{resize(field,to:$0)},onFit:{fit(field)})
@@ -876,9 +1072,9 @@ struct ShortcutBrowserView: View {
         }
     }
     #if DEBUG
-    private func testWindowWidth(_ value:CGFloat) {
+    private func testWindowWidth(_ value:CGFloat,height:CGFloat=720) {
         guard let scene=UIApplication.shared.connectedScenes.compactMap({$0 as? UIWindowScene}).first else{return}
-        scene.requestGeometryUpdate(.Vision(size:CGSize(width:value,height:720)))
+        scene.requestGeometryUpdate(.Vision(size:CGSize(width:value,height:height)))
     }
     #endif
     private var directory:some View {
@@ -897,6 +1093,10 @@ struct ShortcutBrowserView: View {
                     if ProcessInfo.processInfo.arguments.contains("--window-resize-test") && ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests") {
                         Button("窄窗"){testWindowWidth(880)}.accessibilityIdentifier("testNarrowWindow")
                         Button("寬窗"){testWindowWidth(1400)}.accessibilityIdentifier("testWideWindow")
+                        if ProcessInfo.processInfo.arguments.contains("--sidebar-inset-test") {
+                            Button("低窗"){testWindowWidth(1100,height:620)}.accessibilityIdentifier("testShortWindow")
+                            Button("高窗"){testWindowWidth(1100,height:900)}.accessibilityIdentifier("testTallWindow")
+                        }
                     }
                     #endif
                     if !model.editing {
@@ -970,8 +1170,8 @@ struct ShortcutBrowserView: View {
                                 HStack(spacing:8) {
                                     HStack(spacing:8) {
                                     Image(systemName:entry.kind == .directory ? "folder.fill":entry.kind == .video ? "film":"doc")
-                                        .foregroundStyle(entry.kind == .directory ? .blue:.secondary).font(.body).frame(width:22)
-                                    Text(entry.name).font(.body).lineLimit(2).truncationMode(.middle).frame(maxWidth:.infinity,alignment:.leading)
+                                        .foregroundStyle(entry.kind == .directory ? BrowserBluePalette.folder:Color.secondary).font(.body).frame(width:22)
+                                    Text(entry.name).font(.body).lineLimit(2).truncationMode(.middle).frame(maxWidth:.infinity,alignment:.leading).accessibilityIdentifier("entry-name-"+entry.name)
                                     }.frame(width:model.editing ? nil:width(.name,available:geometry.size.width-16),alignment:.leading)
                                     if !model.editing && model.showModified {
                                         Text(BrowserDateText.string(entry.modifiedAt)).font(.body).lineLimit(1).foregroundStyle(.secondary).frame(width:width(.modified,available:geometry.size.width-16),alignment:.leading).accessibilityIdentifier("modified-"+entry.name)
@@ -988,7 +1188,7 @@ struct ShortcutBrowserView: View {
                                     Image(systemName:"chevron.right").font(.caption).foregroundStyle(.tertiary).opacity(entry.kind == .directory ? 1:0).frame(width:12)
                                 }.padding(.horizontal,10).padding(.vertical,12).frame(maxWidth:.infinity,alignment:.leading)
                             }.buttonStyle(.plain)
-                                .background(model.selection==entry.id ? Color.accentColor.opacity(0.15):.clear,in:RoundedRectangle(cornerRadius:12))
+                                .background(model.selection==entry.id ? BrowserBluePalette.selection.opacity(BrowserBluePalette.enabled ? 0.24:0.15):.clear,in:Capsule().inset(by:2)).buttonStyle(ColumnHeaderButtonStyle())
                                 .accessibilityValue(model.selection==entry.id ? "已選取":"")
                                 .accessibilityIdentifier("entry-\(entry.name)")
                         }
@@ -1086,31 +1286,88 @@ struct ShortcutBrowserView: View {
         }
     }
 }
+private struct InlineSavedNameField:View {
+    let name:String,title:String,identifier:String,cancelIdentifier:String
+    var rename:(String)->Void
+    @State private var draft=""
+    @State private var original=""
+    @State private var editing=false
+    @FocusState private var focused:Bool
+    var body:some View {
+        HStack(spacing:8) {
+            if editing {
+            TextField(title,text:$draft).textFieldStyle(.plain)
+                .padding(10)
+                .background(.white.opacity(0.025),in:Capsule())
+                .clipShape(Capsule())
+                .contentShape(.interaction,Capsule()).contentShape(.hoverEffect,Capsule())
+                .focused($focused).accessibilityIdentifier(identifier)
+                .onChange(of:draft){_,value in
+                    if focused,SavedLocations.validName(value.trimmingCharacters(in:.whitespacesAndNewlines)) {rename(value)}
+                }
+                .onSubmit{focused=false}
+                .onAppear{focused=true}
+            } else {
+                Button {original=name;draft=name;editing=true} label:{
+                    Text(name).frame(maxWidth:.infinity,alignment:.leading).padding(10)
+                        .background(.white.opacity(0.025),in:Capsule()).padding(2)
+                }.buttonStyle(ColumnHeaderButtonStyle())
+                    .accessibilityLabel(title).accessibilityValue(name).accessibilityIdentifier(identifier)
+            }
+            if focused {
+                Button {let restore=original;focused=false;draft=restore;rename(restore)} label:{Image(systemName:"xmark").font(.system(size:14,weight:.regular)).frame(width:18,height:18).padding(8).contentShape(Rectangle())}
+                    .buttonStyle(.plain).accessibilityLabel("取消改名").accessibilityIdentifier(cancelIdentifier)
+            }
+        }
+        .onAppear{draft=name;original=name}
+        .onChange(of:focused){_,value in
+            if value {original=name} else {draft=name;editing=false}
+        }
+        .onChange(of:name){_,value in if !focused {draft=value}}
+    }
+}
+
+private struct LocalSourceNameRow:View {
+    let source:SavedSource
+    let selected:Bool
+    var browse:()->Void
+    var rename:(String)->Void
+    var body:some View {
+        HStack(spacing:8) {
+            Button(action:browse){Image(systemName:"internaldrive").padding(10)}
+                .buttonStyle(ColumnHeaderButtonStyle()).accessibilityLabel("瀏覽 \(source.name)").accessibilityIdentifier("savedLocalSource")
+            InlineSavedNameField(name:source.name,title:"來源名稱",identifier:"localSourceName",cancelIdentifier:"cancelLocalSourceName",rename:rename)
+        }.background(selected ? BrowserBluePalette.selection.opacity(BrowserBluePalette.enabled ? 0.28:0.16):.clear,in:Capsule()).padding(2)
+    }
+}
+
 private struct ShortcutEditRow:View {
     let item:FolderShortcut
     var rename:(String)->Void
     var remove:()->Void
-    var move:(CGFloat)->Void
+    var preview:(CGPoint)->Void
+    var move:(CGPoint)->Void
+    var cancel:()->Void
     @GestureState private var dragging=false
-    @State private var draft=""
+    @State private var receivedPress=false
     var body:some View {
         HStack(spacing:8) {
-            Image(systemName:"line.3.horizontal").foregroundStyle(.secondary)
+            Image(systemName:"line.3.horizontal")
                 .padding(10).contentShape(Rectangle())
-                .foregroundStyle(dragging ? Color.accentColor:Color.secondary)
-                .gesture(DragGesture(minimumDistance:8,coordinateSpace:.named("shortcutList"))
+                .foregroundStyle(dragging ? BrowserBluePalette.emphasis:Color.secondary)
+                .gesture(DragGesture(minimumDistance:0,coordinateSpace:.named("shortcutViewport"))
                     .updating($dragging){_,state,_ in state=true}
-                    .onEnded{move($0.location.y)})
+                    .onChanged{receivedPress=true;preview($0.location)}
+                    .onEnded{move($0.location)})
                 .accessibilityLabel("拖拉排序 \(item.name)").accessibilityIdentifier("drag-\(item.name)")
-            TextField("捷徑名稱",text:$draft).textFieldStyle(.plain)
-                .padding(.vertical,9).padding(.horizontal,6)
-                .background(.white.opacity(0.025),in:RoundedRectangle(cornerRadius:7))
-                .onSubmit{rename(draft)}.onChange(of:draft){_,value in rename(value)}
-                .accessibilityIdentifier("rename-\(item.name)")
-            Button(action:remove){Image(systemName:"minus.circle").foregroundStyle(.secondary)}
-                .buttonStyle(.plain).padding(8).accessibilityLabel("移除 \(item.name)")
+                .accessibilityValue((dragging ? "已按住":"未按住") + (ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests") && receivedPress ? "；已收到按住":""))
+            InlineSavedNameField(name:item.name,title:"捷徑名稱",identifier:"rename-\(item.name)",cancelIdentifier:"cancelShortcutName",rename:rename)
+            Button(action:remove){Image(systemName:"minus.circle").foregroundStyle(.secondary).frame(width:18,height:18).padding(8).contentShape(Rectangle())}
+                .buttonStyle(.plain).accessibilityLabel("移除 \(item.name)")
                 .accessibilityIdentifier("remove-\(item.name)")
-        }.padding(.vertical,5).onAppear{draft=item.name}
+        }.padding(.vertical,5)
+            .onChange(of:dragging){_,active in if !active {cancel()}}
+            .onDisappear{cancel()}
     }
 }
 private struct ShortcutFrameKey:PreferenceKey {
@@ -1165,7 +1422,9 @@ private final class ResizeGripView:UIView,UIGestureRecognizerDelegate {
         let doubleTap=UITapGestureRecognizer(target:self,action:#selector(fitContent))
         doubleTap.numberOfTapsRequired=2;addGestureRecognizer(doubleTap)
         accessibilityCustomActions=[UIAccessibilityCustomAction(name:"符合內容",target:self,selector:#selector(accessibleFit))]
-        hoverStyle=UIHoverStyle(effect:UIHoverHighlightEffect())
+        // Keep the 60×60 gesture target; only the visible hover outline is a slim vertical capsule.
+        hoverStyle=UIHoverStyle(effect:UIHoverHighlightEffect(),
+            shape:.capsule.inset(by:UIEdgeInsets(top:6,left:16,bottom:6,right:16)))
     }
     required init?(coder:NSCoder) {fatalError("init(coder:) has not been implemented")}
     override func layoutSubviews() {super.layoutSubviews();line.frame=CGRect(x:bounds.midX-1,y:bounds.midY-14,width:2,height:28)}
@@ -1220,5 +1479,11 @@ private struct FinderTagInitials:View {
                     }.padding(20)
                 }.frame(maxWidth:360,maxHeight:360)
             }
+    }
+}
+
+private struct ColumnHeaderButtonStyle:ButtonStyle {
+    func makeBody(configuration:Configuration)->some View {
+        configuration.label.opacity(configuration.isPressed ? 0.65:1).contentShape(.interaction,Capsule()).contentShape(.hoverEffect,Capsule()).hoverEffect(.highlight)
     }
 }

@@ -43,3 +43,16 @@ TestMedia/
 # Project-generated VP9 container probes
 !Tests/VistaCoreTests/Resources/SyntheticVP9.mp4
 !Tests/VistaCoreTests/Resources/SyntheticVP9.mkv
+
+# Project-generated thirty-second controller interaction fixture
+!Tests/VistaCoreTests/Resources/SyntheticControls.mp4
+
+# Project-generated 4K HEVC reorder-memory regression fixture
+!Tests/VistaCoreTests/Resources/Synthetic4KHEVC.mp4
+
+!Tests/VistaCoreTests/Resources/OpenGOPHEVC.mp4
+!Tests/VistaCoreTests/Resources/CalibrationSBS180.mp4
+!Tests/VistaCoreTests/Resources/CalibrationOU180.mp4
+!Tests/VistaCoreTests/Resources/CalibrationSBS360.mp4
+!Tests/VistaCoreTests/Resources/CalibrationOU360.mp4
+!Tests/VistaCoreTests/Resources/Synthetic4KH264.mp4

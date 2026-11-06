@@ -82,9 +82,12 @@ public struct DemoMediaSource: MediaByteSource {
         let bundle = Bundle.main
         #endif
         var resource = file.components.last == "格式標記示範.mp4" ? "SyntheticVR" : "Synthetic"
-        #if DEBUG && targetEnvironment(simulator) && VISTA_SIMULATOR_SOFTWARE_DECODE
+        #if DEBUG
         if file.components.last == "H264 播放測試.mp4" { resource = "SyntheticSeek" }
         if file.components.last == "HEVC 播放測試.mp4" { resource = "SyntheticHEVC" }
+        if file.components.last == "控制器互動測試.mp4" { resource = "SyntheticControls" }
+        let calibration=["L-R SBS 180.mp4":"CalibrationSBS180","L-R OU 180.mp4":"CalibrationOU180","L-R SBS 360.mp4":"CalibrationSBS360","L-R OU 360.mp4":"CalibrationOU360"]
+        if let name=file.components.last,let mapped=calibration[name] {resource=mapped}
         #endif
         guard let url = bundle.url(forResource: resource, withExtension: "mp4") else { throw MediaInspectionError.unavailable }
         return try Data(contentsOf: url)

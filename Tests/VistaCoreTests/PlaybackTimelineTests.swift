@@ -16,7 +16,7 @@ struct PlaybackTimelineTests {
         try await Task.sleep(for: .milliseconds(50))
         #expect(observed.frames == 0)
         timeline.resume()
-        try await task.value
+        _ = try await task.value
         #expect(observed.frames == 1)
     }
     @Test @MainActor func pausedWallTimeDoesNotAdvancePresentation() async throws {
@@ -31,7 +31,7 @@ struct PlaybackTimelineTests {
         let resumed = ContinuousClock.now
         timeline.resume()
         timeline.resume()
-        try await task.value
+        _ = try await task.value
         #expect(resumed.duration(to: .now) >= .milliseconds(100))
         #expect(observed.frames == 2)
     }
@@ -46,7 +46,7 @@ struct PlaybackTimelineTests {
         #expect(observed.frames == 1)
         let resumed = ContinuousClock.now
         timeline.resume()
-        try await task.value
+        _ = try await task.value
         #expect(resumed.duration(to: .now) >= .milliseconds(150))
         #expect(observed.frames == 2)
     }
@@ -78,7 +78,7 @@ struct PlaybackTimelineTests {
         while observed.frames == 0 && !observed.finished { try await Task.sleep(for: .milliseconds(5)) }
         if observed.finished {
             do { _ = try await task.value; Issue.record("Expected a paused first frame") }
-            catch PlaybackFailure.hardwareUnavailable { print("PAUSE_TEST_HARDWARE_UNAVAILABLE") }
+            catch let failure as PlaybackFailure where failure.category == .hardwareUnavailable { print("PAUSE_TEST_HARDWARE_UNAVAILABLE") }
             return
         }
         try await Task.sleep(for: .milliseconds(250))

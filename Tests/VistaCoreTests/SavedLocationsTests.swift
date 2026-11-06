@@ -121,3 +121,65 @@ struct SavedLocationsTests {
         #expect(try Data(contentsOf:store.url)==bytes)
     }
 }
+
+struct LocalSourceDisplayNameTests {
+ @Test func renamePreservesAuthorizationLinksAndOtherSourcesAcrossCoding() throws {
+  var local=SavedSource(kind:.local,name:"Original Folder");local.localBookmark=Data([1,2,3])
+  let other=SavedSource(kind:.smb,name:"NAS",server:"nas.example.test",username:"viewer")
+  var original=SavedLocations(sources:[local,other])
+  original.shortcuts=[FolderShortcut(sourceID:local.id,components:["Child"],name:"Child")]
+  original.lastShortcutID=original.shortcuts[0].id
+  let changed=try original.renamingLocalSource(local.id,to:"  我的影片  ")
+  let restored=try JSONDecoder().decode(SavedLocations.self,from:JSONEncoder().encode(changed))
+  #expect(restored.sources[0].name=="我的影片")
+  var restoredLocal=restored.sources[0];restoredLocal.name=local.name
+  #expect(restoredLocal==local)
+  #expect(restored.sources[1]==other)
+  #expect(restored.shortcuts==original.shortcuts)
+  #expect(restored.lastShortcutID==original.lastShortcutID)
+  #expect(original.sources[0].name=="Original Folder")
+  #expect(throws:SavedLocationError.self){try original.renamingLocalSource(local.id,to:"  ")}
+  #expect(throws:SavedLocationError.self){try original.renamingLocalSource(other.id,to:"Changed")}
+ }
+}
+
+struct ShortcutInsertionTests {
+    @Test func boundariesAndCancellationMatchCommittedOrder() throws {
+        let source=SavedSource(kind:.local,name:"Local")
+        let items=(0..<4).map{FolderShortcut(sourceID:source.id,components:["\($0)"],name:"\($0)")}
+        let ids=items.map(\.id)
+        let frames=Dictionary(uniqueKeysWithValues:ids.enumerated().map{($0.element,CGRect(x:18,y:100+$0.offset*60,width:300,height:48))})
+        func slot(_ y:Double,_ x:Double=100)->Int? {ShortcutInsertion.index(dragged:ids[2],ordered:ids,frames:frames,point:CGPoint(x:x,y:y))}
+        #expect(slot(75)==0);#expect(slot(190)==2);#expect(slot(350)==3)
+        #expect(slot(30)==nil);#expect(slot(200,400)==nil)
+        #expect(slot(400)==nil)
+        var value=SavedLocations(sources:[source]);value.shortcuts=items
+        value.insertShortcut(ids[2],at:0);#expect(value.shortcuts.map(\.id)==[ids[2],ids[0],ids[1],ids[3]])
+        value.insertShortcut(ids[2],at:3);#expect(value.shortcuts.map(\.id)==[ids[0],ids[1],ids[3],ids[2]])
+        value.insertShortcut(ids[2],at:1);#expect(value.shortcuts.map(\.id)==[ids[0],ids[2],ids[1],ids[3]])
+        let before=value;value.insertShortcut(ids[2],at:4);#expect(value==before)
+        let data=try JSONEncoder().encode(value);#expect(try JSONDecoder().decode(SavedLocations.self,from:data)==value)
+    }
+    @Test func singleItemAndMissingGeometry() {
+        let id=UUID(),frame=CGRect(x:0,y:0,width:200,height:48)
+        #expect(ShortcutInsertion.index(dragged:id,ordered:[id],frames:[id:frame],point:CGPoint(x:20,y:20))==0)
+        #expect(ShortcutInsertion.index(dragged:id,ordered:[id,UUID()],frames:[id:frame],point:CGPoint(x:20,y:20))==nil)
+    }
+}
+
+@Suite struct ShortcutAutoScrollTests {
+    @Test func edgesBoundsAndOutsideCancel() {
+        let size=CGSize(width:300,height:600)
+        func next(_ x:CGFloat,_ y:CGFloat,_ offset:CGFloat=100,_ height:CGFloat=2400)->CGFloat {
+            ShortcutAutoScroll.nextOffset(pointer:CGPoint(x:x,y:y),viewport:size,offset:offset,contentHeight:height,elapsed:0.05)
+        }
+        #expect(next(20,590)>100)
+        #expect(next(20,10)<100)
+        #expect(next(20,300)==100)
+        #expect(next(-20,590)==100)
+        #expect(next(20,700)==100)
+        #expect(next(20,0,0)==0)
+        #expect(next(20,600,1800)==1800)
+        #expect(next(20,590,0,400)==0)
+    }
+}

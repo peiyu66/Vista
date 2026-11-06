@@ -15,6 +15,7 @@ private final class AudioObservers: @unchecked Sendable {
     private let synchronizer = AVSampleBufferRenderSynchronizer()
     private let observers = AudioObservers()
     private var stopped = false
+    private var stopReason = PlaybackDiagnosticStage.audioStopped
     private var started = false
     private var sessionActive = false
     private let startTime: CMTime
@@ -24,18 +25,19 @@ private final class AudioObservers: @unchecked Sendable {
         synchronizer.addRenderer(renderer)
         synchronizer.delaysRateChangeUntilHasSufficientMediaData = false
         synchronizer.setRate(0, time: startTime)
-        observe(.AVSampleBufferAudioRendererWasFlushedAutomatically, object: renderer)
-        observe(.AVSampleBufferAudioRendererOutputConfigurationDidChange, object: renderer)
+        observe(.AVSampleBufferAudioRendererWasFlushedAutomatically, object: renderer, reason: .audioFlushed)
+        observe(.AVSampleBufferAudioRendererOutputConfigurationDidChange, object: renderer, reason: .audioConfiguration)
         #if os(visionOS)
-        observe(AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance())
+        observe(AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance(), reason: .audioInterruption)
         #endif
     }
-    private func observe(_ name: Notification.Name, object: AnyObject) {
+    private func observe(_ name: Notification.Name, object: AnyObject, reason: PlaybackDiagnosticStage) {
         observers.tokens.append(NotificationCenter.default.addObserver(forName: name, object: object, queue: nil) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.stop() }
+            Task { @MainActor [weak self] in self?.stop(reason: reason) }
         })
     }
     var time: Double { synchronizer.currentTime().seconds }
+    var hasStarted:Bool {started && !stopped}
     func enqueue(_ sample: AudioSample) throws -> Bool {
         try check()
         guard renderer.isReadyForMoreMediaData else { return false }
@@ -44,7 +46,8 @@ private final class AudioObservers: @unchecked Sendable {
         return true
     }
     func check() throws {
-        guard !stopped, renderer.status != .failed else { throw PlaybackFailure.audioFailed }
+        guard !stopped else { throw PlaybackFailure.audioFailed.diagnosed(stopReason) }
+        guard renderer.status != .failed else { throw PlaybackFailure.audioFailed.diagnosed(.audioRenderer, status: (renderer.error as NSError?)?.code) }
     }
     func start() throws {
         try check()
@@ -55,14 +58,16 @@ private final class AudioObservers: @unchecked Sendable {
             try session.setCategory(.playback, mode: .moviePlayback)
             try session.setActive(true)
             sessionActive = true
-        } catch { throw PlaybackFailure.audioFailed }
+        } catch { throw PlaybackFailure.audioFailed.diagnosed(.audioSession, status: (error as NSError).code) }
         #endif
         started = true
         synchronizer.setRate(1, time: startTime)
     }
     func pause() { if started { synchronizer.rate = 0 } }
     func resume() { if started && !stopped { synchronizer.rate = 1 } }
-    func stop() {
+    func stop(reason: PlaybackDiagnosticStage = .audioStopped) {
+        guard !stopped else { return }
+        stopReason = reason
         stopped = true
         observers.clear()
         synchronizer.rate = 0
@@ -86,7 +91,8 @@ actor AudioPlayback {
     private(set) var sampleCount = 0
     init(asset: AVAsset, track: AVAssetTrack, clock: PlaybackAudioClock, startAt: Double = 0) throws {
         self.clock = clock
-        reader = try AVAssetReader(asset: asset)
+        do { reader = try AVAssetReader(asset: asset) }
+        catch { throw PlaybackFailure.audioFailed.diagnosed(.audioReaderCreate, status: (error as NSError).code) }
         reader.timeRange = CMTimeRange(start: CMTime(seconds: startAt, preferredTimescale: 60_000), duration: .positiveInfinity)
         output = AVAssetReaderTrackOutput(track: track, outputSettings: [
             AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 16,
@@ -94,9 +100,9 @@ actor AudioPlayback {
             AVLinearPCMIsNonInterleaved: false
         ])
         output.alwaysCopiesSampleData = false
-        guard reader.canAdd(output) else { throw PlaybackFailure.audioFailed }
+        guard reader.canAdd(output) else { throw PlaybackFailure.audioFailed.diagnosed(.audioReaderAdd) }
         reader.add(output)
-        guard reader.startReading() else { throw PlaybackFailure.audioFailed }
+        guard reader.startReading() else { throw PlaybackFailure.audioFailed.diagnosed(.audioReaderStart, status: (reader.error as NSError?)?.code) }
     }
     static func supported(_ format: CMAudioFormatDescription) -> Bool {
         guard let info = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee else { return false }
@@ -112,7 +118,7 @@ actor AudioPlayback {
             try Task.checkCancellation()
             if pending == nil {
                 guard let buffer = output.copyNextSampleBuffer() else {
-                    guard reader.status == .completed else { throw PlaybackFailure.audioFailed }
+                    guard reader.status == .completed else { throw PlaybackFailure.audioFailed.diagnosed(.audioReaderEnd, status: (reader.error as NSError?)?.code) }
                     reachedEnd = true
                     break
                 }
@@ -123,9 +129,9 @@ actor AudioPlayback {
                       start + 0.001 >= previousEnd, bytes > 0, bytes <= 192_000,
                       let format = CMSampleBufferGetFormatDescription(buffer),
                       CMFormatDescriptionGetMediaSubType(format) == kAudioFormatLinearPCM,
-                      Self.supported(format) else { throw PlaybackFailure.audioFailed }
+                      Self.supported(format) else { throw PlaybackFailure.audioFailed.diagnosed(.audioPacket) }
                 if let decodedFormat, !CMFormatDescriptionEqual(decodedFormat, otherFormatDescription: format) {
-                    throw PlaybackFailure.audioFailed
+                    throw PlaybackFailure.audioFailed.diagnosed(.audioFormatChanged)
                 }
                 decodedFormat = format
                 previousEnd = start + duration

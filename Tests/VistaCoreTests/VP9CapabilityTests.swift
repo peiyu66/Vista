@@ -32,11 +32,11 @@ struct VP9CapabilityTests {
             #expect(report.hardwareVerified)
             #expect(report.decodedFrames == 24)
             print("VP9_ACTUAL_HARDWARE_VERIFIED", report.decodedFrames)
-        } catch PlaybackFailure.hardwareUnavailable {
+        } catch let failure as PlaybackFailure where failure.category == .hardwareUnavailable {
             #expect(observed.frames == 0)
             #expect(observed.recognized)
             print("VP9_HARDWARE_UNAVAILABLE: no software fallback")
-        } catch PlaybackFailure.readFailed {
+        } catch let failure as PlaybackFailure where failure.category == .readFailed {
             #expect(observed.frames == 0)
             print("VP9_SYSTEM_CONTAINER_UNAVAILABLE: no decoder fallback")
         }

@@ -60,15 +60,15 @@ struct VRMetadataTests {
     @Test func recognizedProjectionAndStereoModes() async throws {
         for (bounds, projection) in [([UInt32](repeating: 0, count: 4), VRProjection.equirectangular360),
                                       ([0,0,1 << 30,1 << 30], .equirectangular180)] {
-            for (mode, layout, swap) in [(UInt8(0), VRLayout.mono, false), (1, .overUnder, false), (2, .sideBySide, false), (4, .sideBySide, true)] {
-                var settings = VRSettings(); settings.projection = projection; settings.layout = layout; settings.swapEyes = swap
+            for (mode, layout) in [(UInt8(0), VRLayout.mono), (1, .overUnder), (2, .sideBySide)] {
+                var settings = VRSettings(); settings.projection = projection; settings.layout = layout
                 #expect(try await inspect(ftyp + movie(stereo(mode) + spherical(bounds: bounds))) == .recognized(VRFormat(settings)))
             }
         }
     }
     @Test func absentPartialAndDuplicateTagsDoNotGuess() async throws {
         #expect(try await inspect(ftyp + movie(Data())) == .missing)
-        #expect(try await inspect(ftyp + movie(stereo(2))) == .partial(.init(layout:.sideBySide,swapEyes:false)))
+        #expect(try await inspect(ftyp + movie(stereo(2))) == .partial(.init(layout:.sideBySide)))
         #expect(try await inspect(ftyp + movie(spherical())) == .partial(.init(projection:.equirectangular360)))
         #expect(try await inspect(ftyp + movie(stereo(1) + stereo(2) + spherical())) == .conflicting)
         #expect(try await inspect(ftyp + movie(stereo(1) + spherical() + spherical())) == .conflicting)
@@ -77,7 +77,7 @@ struct VRMetadataTests {
         #expect(try await inspect(ftyp + box("mdat", stereo(2) + spherical()) + movie(Data())) == .missing)
     }
     @Test func unsupportedConventionsDoNotBecomeSuccessfulDetection() async throws {
-        for tags in [stereo(3) + spherical(), stereo(255) + spherical(), stereo(2) + spherical(mapping: "mshp"),
+        for tags in [stereo(4), stereo(4) + spherical(), stereo(3) + spherical(), stereo(255) + spherical(), stereo(2) + spherical(mapping: "mshp"),
                      stereo(2) + spherical(bounds: [1,0,0,0]), stereo(2) + spherical(pose: 65536),
                      box("st3d", word(1 << 24) + Data([2])) + spherical()] {
             #expect(try await inspect(ftyp + movie(tags)) == .unsupported)
@@ -144,6 +144,6 @@ struct VRMetadataTests {
             let report = try await HardwarePlayback().play(file: file, source: DemoMediaSource(), onInfo: { _ in }, onFrame: { _ in })
             #expect(report.hardwareVerified); #expect(report.decodedFrames == 24)
             print("TAGGED_SYNTHETIC_HARDWARE_FRAMES", report.decodedFrames)
-        } catch PlaybackFailure.hardwareUnavailable { print("TAGGED_SYNTHETIC_HARDWARE_UNAVAILABLE") }
+        } catch let failure as PlaybackFailure where failure.category == .hardwareUnavailable { print("TAGGED_SYNTHETIC_HARDWARE_UNAVAILABLE") }
     }
 }

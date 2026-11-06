@@ -68,15 +68,14 @@ struct VRFisheyeTests {
             let right = try #require(settings.crop(width: image.width, height: image.height, rightEye: true))
             #expect(left.width == (layout == .mono ? 1024 : 512) && left.height == 512)
             #expect(right.width == (layout == .mono ? 1024 : 512) && right.height == 512)
-            settings.swapEyes = true
-            #expect(settings.crop(width: image.width, height: image.height, rightEye: false) == right)
+            #expect((left == right) == (layout == .mono))
         }
     }
     @Test @MainActor func fishEyeManualFormatPersistsAndOldFormatsStillDecode() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathComponent("format.json")
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         let store = try VRPreferenceStore(url: url), file = try MediaFile(components: ["fixture.mp4"])
-        var settings = VRSettings(); settings.projection = .equidistantFisheye180; settings.layout = .sideBySide; settings.swapEyes = true
+        var settings = VRSettings(); settings.projection = .equidistantFisheye180; settings.layout = .sideBySide
         try store.save(VRFormat(settings), source: .demo, file: file, revision: "v1")
         let restored = try VRPreferenceStore(url: url).load(source: .demo, file: file, revision: "v1")
         #expect(restored == VRFormat(settings))

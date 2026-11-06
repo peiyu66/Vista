@@ -25,7 +25,7 @@ private actor SeekFixtureSource: MediaByteSource {
     private var shouldBlock = false
     private(set) var isBlocked = false
     private(set) var sizeCalls = 0
-    init() throws { data = try Data(contentsOf: Bundle.module.url(forResource: "SyntheticSeek", withExtension: "mp4")!) }
+    init(resource:String = "SyntheticSeek") throws { data = try Data(contentsOf: Bundle.module.url(forResource: resource, withExtension: "mp4")!) }
     func armGate() { shouldBlock = true }
     func release() { gate?.resume(); gate = nil; isBlocked = false }
     func fileSize(for file: MediaFile) async throws -> UInt64 {
@@ -129,6 +129,7 @@ struct SeekControllerTests {
         defer { controller.stop() }
         try await waitFor { !controller.isPreparing }
         controller.togglePause()
+        let retainedImage=controller.frame?.image
         await source.armGate()
         controller.seek(to: 4.2)
         try await waitFor { await source.isBlocked }
@@ -138,7 +139,7 @@ struct SeekControllerTests {
         try await Task.sleep(for: .milliseconds(100))
         #expect(await source.sizeCalls == calls)
         #expect(controller.position == 3.2)
-        #expect(controller.frame == nil)
+        #expect(controller.frame?.image === retainedImage)
         await source.release()
         try await waitFor { !controller.isPreparing }
         #expect(controller.isPaused)
@@ -146,6 +147,37 @@ struct SeekControllerTests {
         #expect((3.2...3.4).contains(controller.position))
         #expect(await source.sizeCalls == calls + 1)
     }
+    @Test @MainActor func slowReadStopAndReplacementWaitForRelease() async throws {
+        let source = try SeekFixtureSource()
+        let controller = PlaybackController(engine: HardwarePlayback(muteAudioForTesting: true))
+        controller.play(file: try MediaFile(components: ["synthetic.mp4"]), source: source)
+        defer { controller.stop() }
+        try await waitFor { !controller.isPreparing }
+        controller.togglePause()
+        await source.armGate()
+        controller.seek(to: 4.2)
+        try await waitFor { await source.isBlocked }
+        let calls = await source.sizeCalls
+        controller.stop()
+        #expect(!controller.isPlaying && controller.frame == nil)
+        controller.play(file: try MediaFile(components: ["synthetic.mp4"]), source: source)
+        try await Task.sleep(for: .milliseconds(500))
+        #expect(await source.isBlocked)
+        #expect(await source.sizeCalls == calls)
+        #expect(controller.frame == nil)
+        let released = ContinuousClock.now
+        await source.release()
+        try await waitFor { !controller.isPreparing }
+        #expect(controller.frame != nil && controller.isPlaying)
+        #expect(await source.sizeCalls == calls + 1)
+        let latency = released.duration(to: .now)
+        #expect(latency < .seconds(5))
+        print("SLOW_READ_RELEASE_TO_REPLACEMENT", latency)
+        controller.stop()
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(controller.frame == nil && !controller.isPlaying)
+    }
+
     @Test func invalidSeekDoesNotReadMedia() async throws {
         let source = try SeekFixtureSource()
         for target in [-1.0, Double.nan, .infinity] {
@@ -155,5 +187,31 @@ struct SeekControllerTests {
             }
         }
         #expect(await source.sizeCalls == 0)
+    }
+}
+
+struct ScrubRegressionTests {
+    @Test(arguments:["SyntheticSeek","SyntheticHEVC"]) @MainActor
+    func fractionalScrubsRemainPausedAndStopClearsFrames(resource:String) async throws {
+        let controller=PlaybackController(engine:HardwarePlayback(muteAudioForTesting:true))
+        controller.play(file:try MediaFile(components:["synthetic.mp4"]),source:try SeekFixtureSource(resource:resource))
+        defer {controller.stop()}
+        try await waitFor {!controller.isPreparing}
+        #expect(controller.isPlaying && controller.frame != nil)
+        let duration=try #require(controller.trackInfo?.duration)
+        controller.togglePause()
+        for fraction in [0.731,0.123,0.943,0.501] {
+            let target=duration*fraction
+            controller.seek(to:target)
+            try await waitFor {!controller.isPreparing}
+            #expect(controller.isPlaying && controller.isPaused)
+            #expect(controller.frame != nil && controller.position>=target)
+            #expect(controller.position-target<0.15)
+        }
+        controller.seek(to:duration*0.32)
+        controller.stop()
+        try await Task.sleep(for:.milliseconds(150))
+        #expect(controller.frame == nil && !controller.isPlaying && !controller.isPreparing)
+        #expect(controller.message=="已停止")
     }
 }

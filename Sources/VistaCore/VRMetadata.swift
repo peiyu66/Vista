@@ -158,11 +158,11 @@ private struct MovieParser {
         case 0: settings.layout = .mono
         case 1: settings.layout = .overUnder
         case 2: settings.layout = .sideBySide
-        case 4: settings.layout = .sideBySide; settings.swapEyes = true
+        case 4: return .unsupported // Reversed eye order is not supported.
         default: return .unsupported
         }
         }
-        guard let spherical=spherical.first else {return .partial(.init(layout:settings.layout,swapEyes:settings.swapEyes))}
+        guard let spherical=spherical.first else {return .partial(.init(layout:settings.layout))}
         let sphericalBoxes = try boxes(spherical.payload)
         let header = try one("svhd", in: sphericalBoxes)
         try full(header, minimum: 5)
@@ -211,16 +211,15 @@ public struct VRFormatChoice: Sendable {
 public struct VRFormatDimensions: Codable, Equatable, Sendable {
     public var projection: VRProjection?
     public var layout: VRLayout?
-    public var swapEyes: Bool?
-    public var isEmpty:Bool {projection == nil && layout == nil && swapEyes == nil}
-    public init(_ format:VRFormat) {projection=format.projection;layout=format.layout;swapEyes=format.swapEyes}
+    public var isEmpty:Bool {projection == nil && layout == nil}
+    public init(_ format:VRFormat) {projection=format.projection;layout=format.layout}
     public var completedFormat:VRFormat {
         var value=VRSettings();value.projection=projection ?? .equirectangular180
-        value.layout=layout ?? .sideBySide;value.swapEyes=swapEyes ?? false
+        value.layout=layout ?? .sideBySide
         return VRFormat(value)
     }
-    public init(projection:VRProjection?=nil,layout:VRLayout?=nil,swapEyes:Bool?=nil) {
-        self.projection=projection;self.layout=layout;self.swapEyes=swapEyes
+    public init(projection:VRProjection?=nil,layout:VRLayout?=nil) {
+        self.projection=projection;self.layout=layout
     }
 }
 public enum VRDimensionOrigin: Equatable, Sendable {case manual,metadata,filename,fallback,unresolved}
@@ -228,7 +227,6 @@ public struct VRResolvedDimensions: Equatable, Sendable {
     public let values:VRFormatDimensions
     public let projectionOrigin:VRDimensionOrigin
     public let layoutOrigin:VRDimensionOrigin
-    public let eyeOrderOrigin:VRDimensionOrigin
 }
 public struct VRFilenameHints: Equatable, Sendable {
     public var values=VRFormatDimensions()
@@ -264,9 +262,8 @@ public enum VRDimensionResolver {
         }
         let projection=pick(manual.projection,metadata.projection,hint.values.projection,fallback:hint.projectionConflict ? nil:.equirectangular180)
         let layout=pick(manual.layout,metadata.layout,hint.values.layout,fallback:hint.layoutConflict ? nil:.sideBySide)
-        let eyes=pick(manual.swapEyes,metadata.swapEyes,nil,fallback:false)
-        return VRResolvedDimensions(values:.init(projection:projection.0,layout:layout.0,swapEyes:eyes.0),
-                                    projectionOrigin:projection.1,layoutOrigin:layout.1,eyeOrderOrigin:eyes.1)
+        return VRResolvedDimensions(values:.init(projection:projection.0,layout:layout.0),
+                                    projectionOrigin:projection.1,layoutOrigin:layout.1)
     }
 }
 

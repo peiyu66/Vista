@@ -235,12 +235,15 @@ public struct DemoDirectoryProvider: DirectoryProvider {
             let all=sort.sorted(fixture)
             return DirectoryPage(entries:Array(all[offset..<end]),nextOffset:end < 5_000 ? end:nil)
         }
-        #if DEBUG && targetEnvironment(simulator) && VISTA_SIMULATOR_SOFTWARE_DECODE
+        #if DEBUG
+        if path.components == ["立體校準"] {
+            return DirectoryPage(entries:offset == 0 ? ["L-R SBS 180.mp4","L-R OU 180.mp4","L-R SBS 360.mp4","L-R OU 360.mp4"].map {FileEntry($0,.video)}:[])
+        }
         if path.components == ["播放測試"] {
-            return DirectoryPage(entries:offset == 0 ? [FileEntry("H264 播放測試.mp4",.video),FileEntry("HEVC 播放測試.mp4",.video)]:[])
+            return DirectoryPage(entries:offset == 0 ? [FileEntry("H264 播放測試.mp4",.video),FileEntry("HEVC 播放測試.mp4",.video),FileEntry("控制器互動測試.mp4",.video)]:[])
         }
         if path.components.isEmpty {
-            return DirectoryPage(entries:offset == 0 ? [FileEntry("播放測試",.directory),FileEntry("影片",.directory),FileEntry("大量影片",.directory),FileEntry("空資料夾",.directory),FileEntry("標籤示範",.directory),FileEntry("讀取失敗範例",.directory)]:[])
+            return DirectoryPage(entries:offset == 0 ? [FileEntry("立體校準",.directory),FileEntry("播放測試",.directory),FileEntry("影片",.directory),FileEntry("大量影片",.directory),FileEntry("空資料夾",.directory),FileEntry("標籤示範",.directory),FileEntry("讀取失敗範例",.directory)]:[])
         }
         #endif
         let entries: [FileEntry]
@@ -332,5 +335,14 @@ public enum FinderTagParser {
             let tag=FinderTag(name:String(name),color:color);if !tags.contains(tag){tags.append(tag)}
         }
         return .loaded(tags)
+    }
+}
+
+/// Selects only videos from the browser's existing order; never wraps at an edge.
+public enum OrderedVideoNavigation {
+    public static func adjacent(in entries:[FileEntry], currentID:String, backward:Bool)->FileEntry? {
+        guard let index=entries.firstIndex(where:{$0.id==currentID}) else{return nil}
+        if backward { return entries[..<index].reversed().first{$0.kind == .video} }
+        return entries.dropFirst(index+1).first{$0.kind == .video}
     }
 }

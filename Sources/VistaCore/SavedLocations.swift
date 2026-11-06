@@ -1,7 +1,7 @@
 import Foundation
 
 public struct SavedSource: Codable, Identifiable, Equatable, Sendable {
-    public enum Kind: String, Codable, Sendable { case smb, demoLocal, demoSMB }
+    public enum Kind: String, Codable, Sendable { case smb, local, demoLocal, demoSMB }
     public var id: UUID
     public var kind: Kind
     public var name: String
@@ -9,6 +9,7 @@ public struct SavedSource: Codable, Identifiable, Equatable, Sendable {
     public var share: String
     public var hostRoot: Bool?
     public var credentialID: UUID?
+    public var localBookmark: Data?
     public var tagPolicy:TagSupportPolicy?
     public var tagEvidenceEndpoint:String?
     public var providesFinderTags:Bool {
@@ -16,9 +17,10 @@ public struct SavedSource: Codable, Identifiable, Equatable, Sendable {
     }
     public var username: String
     public init(id: UUID = UUID(), kind: Kind, name: String, server: String = "", share: String = "", username: String = "") {
-        self.id=id; self.kind=kind; self.name=name; self.server=server; self.share=share; self.username=username; self.hostRoot=(kind != .demoLocal && share.isEmpty)
+        self.id=id; self.kind=kind; self.name=name; self.server=server; self.share=share; self.username=username; self.hostRoot=((kind == .smb || kind == .demoSMB) && share.isEmpty)
     }
-    public var isDemo: Bool { kind != .smb }
+    public var isDemo: Bool { kind == .demoLocal || kind == .demoSMB }
+    public var isFolderSource: Bool {kind == .local || kind == .demoLocal}
 }
 public struct FolderShortcut: Codable, Identifiable, Equatable, Sendable {
     public var id: UUID
@@ -35,13 +37,22 @@ public struct SavedLocations: Codable, Equatable, Sendable {
     public var shortcuts: [FolderShortcut] = []
     public var lastShortcutID: UUID?
     public init(sources: [SavedSource]) { self.sources=sources }
+    public static let empty = Self(sources: [])
+    public func removingDemos() -> Self {
+        var value=self
+        let demoIDs=Set(value.sources.filter(\.isDemo).map(\.id))
+        value.sources.removeAll {demoIDs.contains($0.id)}
+        value.shortcuts.removeAll {demoIDs.contains($0.sourceID)}
+        if let id=value.lastShortcutID,!value.shortcuts.contains(where:{$0.id==id}) {value.lastShortcutID=nil}
+        return value
+    }
     public static var emptyPrototype: Self {
         Self(sources: [SavedSource(kind: .demoLocal, name: "本機（示範）"), SavedSource(kind: .demoSMB, name: "範例 NAS（示範）", server: "nas.example.test", share: "")])
     }
     public func migratedHosts()->Self {
         var result=self
         for index in result.sources.indices {result.sources[index].tagPolicy=nil}
-        for index in result.sources.indices where result.sources[index].kind != .demoLocal && result.sources[index].hostRoot != true {
+        for index in result.sources.indices where !result.sources[index].isFolderSource && result.sources[index].hostRoot != true {
             let id=result.sources[index].id,share=result.sources[index].share
             if !share.isEmpty {
                 for shortcutIndex in result.shortcuts.indices where result.shortcuts[shortcutIndex].sourceID==id {
@@ -59,6 +70,9 @@ public struct SavedLocations: Codable, Equatable, Sendable {
         let ids=Set(sources.map(\.id))
         for source in sources {
             guard (source.tagEvidenceEndpoint?.count ?? 0)<=253, Self.validName(source.name), source.username.count <= 256 else { throw SavedLocationError.invalid }
+            if source.kind == .local {
+                guard let bookmark=source.localBookmark,!bookmark.isEmpty,bookmark.count<=65_536 else {throw SavedLocationError.invalid}
+            }
             if source.kind == .smb {
                 guard ConnectionInput(server:source.server, share:source.hostRoot == true ? "placeholder":source.share, username:source.username).isValid else { throw SavedLocationError.invalid }
             }
@@ -78,8 +92,15 @@ public struct SavedLocations: Codable, Equatable, Sendable {
         !value.contains("/") && !value.contains("\\") &&
         !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
     }
+    public func renamingLocalSource(_ id:UUID,to name:String) throws ->Self {
+        let name=name.trimmingCharacters(in:.whitespacesAndNewlines)
+        guard Self.validName(name),let index=sources.firstIndex(where:{$0.id==id && $0.kind == .local}) else {throw SavedLocationError.invalid}
+        var candidate=self
+        candidate.sources[index].name=name
+        return try candidate.validated()
+    }
     public func removingSource(_ id:UUID,includingShortcutIDs:Set<UUID>) throws ->Self {
-        guard sources.contains(where:{$0.id==id && $0.kind == .smb}),Set(shortcuts.filter{$0.sourceID==id}.map(\.id))==includingShortcutIDs else {throw SavedLocationError.invalid}
+        guard sources.contains(where:{$0.id==id && !$0.isDemo}),Set(shortcuts.filter{$0.sourceID==id}.map(\.id))==includingShortcutIDs else {throw SavedLocationError.invalid}
         var candidate=self
         candidate.sources.removeAll{$0.id==id}
         candidate.shortcuts.removeAll{$0.sourceID==id}
@@ -100,7 +121,7 @@ public struct SavedLocationStore: Sendable {
     public let url: URL
     public init(url: URL) { self.url=url }
     public func load() throws -> SavedLocations {
-        guard FileManager.default.fileExists(atPath:url.path) else { return .emptyPrototype }
+        guard FileManager.default.fileExists(atPath:url.path) else { return .empty }
         guard let size=try url.resourceValues(forKeys:[.fileSizeKey]).fileSize, size <= 1_048_576 else { throw SavedLocationError.invalid }
         return try JSONDecoder().decode(SavedLocations.self,from:Data(contentsOf:url)).validated().migratedHosts().validated()
     }
@@ -137,5 +158,37 @@ public enum TagSupportEvidence {
     public static func finderInfo(_ data:Data)->Bool {
         guard data.count==60,Array(data.prefix(8))==[0x41,0x46,0x50,0,0,0,1,0] else{return false}
         return data.dropFirst(16).prefix(32).contains(where:{$0 != 0})
+    }
+}
+
+/// Destination is an insertion slot in the list after excluding the dragged item.
+public enum ShortcutInsertion {
+    public static func index(dragged:UUID,ordered:[UUID],frames:[UUID:CGRect],point:CGPoint)->Int? {
+        guard ordered.contains(dragged),let first=ordered.first.flatMap({frames[$0]}),
+              let last=ordered.last.flatMap({frames[$0]}),
+              point.x >= first.minX,point.x <= first.maxX,
+              point.y >= first.minY-32,point.y <= last.maxY+32 else{return nil}
+        let remaining=ordered.filter{$0 != dragged}
+        guard remaining.allSatisfy({frames[$0] != nil}) else{return nil}
+        return remaining.firstIndex(where:{point.y <= frames[$0]!.midY}) ?? remaining.count
+    }
+}
+extension SavedLocations {
+    public mutating func insertShortcut(_ id:UUID,at index:Int) {
+        guard let old=shortcuts.firstIndex(where:{$0.id==id}),index>=0,index<shortcuts.count else{return}
+        let item=shortcuts.remove(at:old);shortcuts.insert(item,at:index)
+    }
+}
+
+public enum ShortcutAutoScroll {
+    public static func nextOffset(pointer:CGPoint,viewport:CGSize,offset:CGFloat,contentHeight:CGFloat,elapsed:Double)->CGFloat {
+        let maximum=max(0,contentHeight-viewport.height),current=min(maximum,max(0,offset))
+        guard viewport.height>96,pointer.x>=0,pointer.x<=viewport.width,pointer.y >= -16,pointer.y<=viewport.height+16,elapsed.isFinite,elapsed>0 else{return current}
+        let edge:CGFloat=44
+        let intensity:CGFloat
+        if pointer.y<edge {intensity = -min(1,max(0,(edge-pointer.y)/edge))}
+        else if pointer.y>viewport.height-edge {intensity=min(1,max(0,(pointer.y-(viewport.height-edge))/edge))}
+        else {intensity=0}
+        return min(maximum,max(0,current+intensity*180*CGFloat(min(elapsed,0.1))))
     }
 }
