@@ -56,3 +56,6 @@ TestMedia/
 !Tests/VistaCoreTests/Resources/CalibrationSBS360.mp4
 !Tests/VistaCoreTests/Resources/CalibrationOU360.mp4
 !Tests/VistaCoreTests/Resources/Synthetic4KH264.mp4
+
+# Project-generated SDR BT.709 fisheye switching fixture
+!Tests/VistaCoreTests/Resources/FisheyeSDR.mp4

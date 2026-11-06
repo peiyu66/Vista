@@ -7,6 +7,11 @@ final class VistaUITests:XCTestCase {
         "影像已呈現"
         #endif
     }
+    private func requireDiagnosticUI() throws {
+        #if !(DEBUG && VISTA_DIAGNOSTIC_UI)
+        throw XCTSkip("Opt in to VISTA_DIAGNOSTIC_UI for both App and UI test targets.")
+        #endif
+    }
     @MainActor func fresh(narrow:Bool=false,extra:[String]=[]) -> XCUIApplication {
         let app=XCUIApplication();app.launchArguments=["--shortcut-ui-tests","--reset-shortcut-fixture"]+(narrow ? ["--narrow-list"]:[])+extra;app.launch()
         XCTAssertTrue(app.buttons["emptyEdit"].waitForExistence(timeout:10));return app
@@ -192,6 +197,9 @@ final class VistaUITests:XCTestCase {
         app.buttons["immersiveStop"].tap()
     }
     @MainActor func testPerformanceDiagnosticWindowAndStop() throws {
+        #if !(DEBUG && VISTA_DIAGNOSTIC_UI && VISTA_SIMULATOR_SOFTWARE_DECODE) || VISTA_NATIVE_PLAYER_EXPERIMENT
+        throw XCTSkip("This legacy decoder diagnostic requires its explicit simulator configuration.")
+        #endif
         let app=fresh();app.buttons["emptyEdit"].tap();app.buttons["localDemoSource"].tap()
         XCTAssertTrue(app.buttons["entry-播放測試"].waitForExistence(timeout:10));app.buttons["entry-播放測試"].tap()
         app.buttons["addShortcut"].tap();app.buttons["editShortcuts"].tap()
@@ -239,7 +247,22 @@ final class VistaUITests:XCTestCase {
         XCTAssertTrue(app.buttons["immersiveSettings"].waitForExistence(timeout:25));app.buttons["immersiveSettings"].tap()
         return app
     }
+    @MainActor func testFisheyeGPUCandidateSwitchAndStop() throws {
+        try requireDiagnosticUI()
+        let app=openSystemFixture(extra:["--fisheye-sdr-fixture"])
+        let route=app.staticTexts["systemVideoCandidate"]
+        app.buttons["projection-equirectangular180"].tap()
+        expectation(for:NSPredicate(format:"label CONTAINS %@","送入 renderer"),evaluatedWith:route);waitForExpectations(timeout:15)
+        app.buttons["projection-equidistantFisheye180"].tap()
+        expectation(for:NSPredicate(format:"label CONTAINS %@","SDR GPU 重用貼圖"),evaluatedWith:route);waitForExpectations(timeout:15)
+        XCTAssertFalse(app.staticTexts["vrError"].exists)
+        app.buttons["projection-equirectangular180"].tap()
+        expectation(for:NSPredicate(format:"label CONTAINS %@","送入 renderer"),evaluatedWith:route);waitForExpectations(timeout:15)
+        app.buttons["immersiveStop"].tap()
+        XCTAssertTrue(app.buttons["entry-控制器互動測試.mp4"].waitForExistence(timeout:15))
+    }
     @MainActor func testSystemProbePackingAndFallback() throws {
+        try requireDiagnosticUI()
         let app=openSystemFixture(extra:["--system-renderer-probe"])
         app.buttons["projection-equirectangular180"].tap()
         XCTAssertEqual(app.buttons["immersiveForward"].label,"前進 30 秒")
@@ -265,6 +288,7 @@ final class VistaUITests:XCTestCase {
     @MainActor func testSystemSBS360Observation() throws {try calibrationObservation(extra:[],file:"L-R SBS 360.mp4")}
     @MainActor func testSystemOU360Observation() throws {try calibrationObservation(extra:[],file:"L-R OU 360.mp4")}
     @MainActor func testSystemFlatPreviewThenImmersive() throws {
+        try requireDiagnosticUI()
         let app=fresh(extra:["--flat-preview-test"])
         app.buttons["emptyEdit"].tap();app.buttons["localDemoSource"].tap()
         XCTAssertTrue(app.buttons["entry-立體校準"].waitForExistence(timeout:10));app.buttons["entry-立體校準"].tap()
@@ -287,6 +311,7 @@ final class VistaUITests:XCTestCase {
     @MainActor func testSystemFlatAPMPObservation() throws {try calibrationObservation(extra:["--system-renderer-flat"])}
     @MainActor func testSystemFlatRawObservation() throws {try calibrationObservation(extra:["--system-renderer-flat","--system-renderer-raw"])}
     @MainActor private func calibrationObservation(extra:[String],file:String="L-R SBS 180.mp4") throws {
+        try requireDiagnosticUI()
         let app=fresh(extra:["--system-renderer-probe"]+extra);app.buttons["emptyEdit"].tap();app.buttons["localDemoSource"].tap()
         XCTAssertTrue(app.buttons["entry-立體校準"].waitForExistence(timeout:10));app.buttons["entry-立體校準"].tap()
         app.buttons["addShortcut"].tap();app.buttons["editShortcuts"].tap()
@@ -319,6 +344,7 @@ final class VistaUITests:XCTestCase {
         XCTAssertTrue(app.buttons["entry-控制器互動測試.mp4"].waitForExistence(timeout:15))
     }
     @MainActor func testSystemCandidateRepeatedSeekAndStop() throws {
+        try requireDiagnosticUI()
         let app=fresh();app.buttons["emptyEdit"].tap();app.buttons["localDemoSource"].tap()
         XCTAssertTrue(app.buttons["entry-播放測試"].waitForExistence(timeout:10));app.buttons["entry-播放測試"].tap()
         app.buttons["addShortcut"].tap();app.buttons["editShortcuts"].tap()
@@ -499,6 +525,9 @@ final class VistaUITests:XCTestCase {
         app.buttons["immersiveStop"].tap()
     }
     @MainActor func testProjectionExplanationSpaceDoesNotJump() throws {
+        #if VISTA_DIAGNOSTIC_UI
+        throw XCTSkip("Production-interface check excludes diagnostic UI.")
+        #endif
         for large in [false,true] {
             let app=XCUIApplication();app.launchArguments=["--controller-layout-review"]+(large ? ["--review-large-text"]:[]);app.launch()
             let target=app.buttons["recenterVideo"]

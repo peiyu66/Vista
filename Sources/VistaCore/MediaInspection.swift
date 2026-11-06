@@ -85,7 +85,9 @@ public struct DemoMediaSource: MediaByteSource {
         #if DEBUG
         if file.components.last == "H264 播放測試.mp4" { resource = "SyntheticSeek" }
         if file.components.last == "HEVC 播放測試.mp4" { resource = "SyntheticHEVC" }
-        if file.components.last == "控制器互動測試.mp4" { resource = "SyntheticControls" }
+        if file.components.last == "控制器互動測試.mp4" {
+            resource = ProcessInfo.processInfo.arguments.contains("--fisheye-sdr-fixture") ? "FisheyeSDR" : "SyntheticControls"
+        }
         let calibration=["L-R SBS 180.mp4":"CalibrationSBS180","L-R OU 180.mp4":"CalibrationOU180","L-R SBS 360.mp4":"CalibrationSBS360","L-R OU 360.mp4":"CalibrationOU360"]
         if let name=file.components.last,let mapped=calibration[name] {resource=mapped}
         #endif

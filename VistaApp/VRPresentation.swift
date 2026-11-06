@@ -158,84 +158,6 @@ struct VRSettingsView: View {
     }
 }
 
-@MainActor @Observable final class VRRenderer {
-    let entity = ModelEntity()
-    var error: String?
-    var ready = false
-    var logValues:[PlaybackLogField:Double]=[:]
-    private var material: ShaderGraphMaterial?
-    private struct GeometryKey: Equatable { let projection: VRProjection; let width: Int; let height: Int }
-    private var geometry: GeometryKey?
-    @ObservationIgnored private var pending: (CGImage?, VRSettings, PlaybackMetrics?)?
-    @ObservationIgnored private var worker: Task<Void, Never>?
-    @ObservationIgnored private var generation = 0
-    @ObservationIgnored private var latestSettings: VRSettings?
-    func submit(image: CGImage?, settings: VRSettings, metrics:PlaybackMetrics? = nil) {
-        if image != nil {
-            metrics?.mark(.submitted)
-            if let prior=pending?.0,let image,prior !== image {pending?.2?.mark(.coalesced);logValues[.coalesced,default:0]+=1}
-        }
-        if image == nil || settings != latestSettings { generation += 1 }
-        latestSettings = settings
-        pending = (image, settings, metrics)
-        if image == nil { entity.isEnabled = false; ready = false }
-        guard worker == nil else { return }
-        worker = Task {
-            while let next = pending, !Task.isCancelled {
-                pending = nil
-                await update(image: next.0, settings: next.1, metrics:next.2, generation: generation)
-            }
-            worker = nil
-            if let next = pending { submit(image: next.0, settings: next.1,metrics:next.2) }
-        }
-    }
-    func stop() {
-        generation += 1; pending = nil; worker?.cancel()
-        entity.isEnabled = false; ready = false
-    }
-    private func update(image: CGImage?, settings: VRSettings, metrics:PlaybackMetrics?, generation expected: Int) async {
-        guard let image else { entity.isEnabled = false; ready = false; return }
-        do {
-            if material == nil {
-                guard let url = Bundle.main.url(forResource: "StereoscopicMaterial", withExtension: "usda") else { throw CocoaError(.fileReadNoSuchFile) }
-                material = try await ShaderGraphMaterial(named: "/Root/Material", from: url)
-            }
-            try Task.checkCancellation()
-            guard let leftRect = settings.crop(width: image.width, height: image.height, rightEye: false),
-                  let rightRect = settings.crop(width: image.width, height: image.height, rightEye: true),
-                  let left = image.cropping(to: leftRect), let right = image.cropping(to: rightRect),
-                  var material else { throw CocoaError(.coderInvalidValue) }
-            let textureStart=ProcessInfo.processInfo.systemUptime
-            let leftTexture = try await TextureResource(image: left, options: .init(semantic: .color))
-            let rightTexture = settings.layout == .mono ? leftTexture : try await TextureResource(image: right, options: .init(semantic: .color))
-            metrics?.record(.texture,seconds:ProcessInfo.processInfo.systemUptime-textureStart)
-            logValues[.textureMS,default:0]+=(ProcessInfo.processInfo.systemUptime-textureStart)*1000
-            logValues[.textureCount,default:0]+=1
-            try Task.checkCancellation()
-            guard expected == generation else { metrics?.mark(.stale);return }
-            try material.setParameter(name: "LeftTexture", value: .textureResource(leftTexture))
-            try material.setParameter(name: "RightTexture", value: .textureResource(rightTexture))
-            let key = GeometryKey(projection: settings.projection, width: left.width, height: left.height)
-            if geometry != key || entity.model == nil {
-                guard let data = VRMesh(projection: settings.projection, eyeWidth: left.width, eyeHeight: left.height) else {
-                    throw CocoaError(.coderInvalidValue)
-                }
-                var descriptor = MeshDescriptor(name: "Vista panorama")
-                descriptor.positions = MeshBuffers.Positions(data.positions)
-                descriptor.normals = MeshBuffers.Normals(data.normals)
-                descriptor.textureCoordinates = MeshBuffers.TextureCoordinates(data.uv)
-                descriptor.primitives = .triangles(data.indices)
-                entity.model = ModelComponent(mesh: try MeshResource.generate(from: [descriptor]), materials: [material])
-                geometry = key
-            } else { entity.model?.materials = [material] }
-            entity.orientation = VRInitialPose.manualRotation(yaw: settings.yawDegrees, pitch: settings.pitchDegrees, roll: settings.rollDegrees)
-            entity.isEnabled = true; ready = true; error = nil
-            metrics?.mark(.uploaded);logValues[.uploaded,default:0]+=1
-        } catch is CancellationError { metrics?.mark(.stale) }
-        catch { guard expected == generation else { return }; entity.isEnabled = false; ready = false; self.error = "無法建立 VR 投影。請返回視窗重試。" }
-    }
-}
-
 struct VRImmersiveView: View {
     @Environment(VRPresentation.self) private var presentation
     @Environment(\.dismissImmersiveSpace) private var dismiss
@@ -425,12 +347,7 @@ struct VRImmersiveView: View {
                     systemRenderer.submit(frame,settings:presentation.settings)
                 } else {
                     systemRenderer.stop()
-                    if let image=frame.makeImage(context:systemRenderer.context) {
-                        renderer.submit(image:image,settings:presentation.settings,metrics:presentation.player?.metrics)
-                    } else {
-                        presentation.message="相容呈現轉換失敗，已停止 [videoImage]"
-                        presentation.player?.stop();presentation.holdControls()
-                    }
+                    renderer.submit(frame:frame,settings:presentation.settings,metrics:presentation.player?.metrics)
                 }
             } else {
                 systemRenderer.stop()
@@ -486,6 +403,7 @@ struct VRImmersiveView: View {
         let label="B 系統呈現候選"
         #endif
         if let error=systemRenderer.error {return label+"："+error}
+        if presentation.settings.projection == .equidistantFisheye180,renderer.ready { return label+"：魚眼投影，"+renderer.route }
         if let frame=presentation.player?.pixelFrame {
             if #available(visionOS 26.0,*) {
                 if let reason=SystemVideoSamples.fallbackReason(frame,settings:presentation.settings) {return label+"相容回退："+reason+"（原雙貼圖）"}
@@ -876,7 +794,10 @@ struct VRImmersiveView: View {
     @ObservationIgnored private var generation=0
     @ObservationIgnored private var current:(UUID,VRSettings)?
     @ObservationIgnored private var needsFlush=true
+    @ObservationIgnored private var isStopped=true
     func stop() {
+        guard !isStopped else{return}
+        isStopped=true
         generation += 1;pending=nil;needsFlush=true;ready=false;entity.isEnabled=false
         probeTask?.cancel();probeTask=nil;probe="";inputProbe=""
         statusTask?.cancel();statusTask=nil
@@ -886,6 +807,7 @@ struct VRImmersiveView: View {
     @available(visionOS 26.0,*)
     func submit(_ frame:DecodedVideoFrame,settings:VRSettings) {
         guard failedSession != frame.session else{return}
+        isStopped=false
         if current?.0 != frame.session || current?.1 != settings {
             generation += 1;needsFlush=true;current=(frame.session,settings)
             probeTask?.cancel();probeTask=nil;probe="";inputProbe=""
