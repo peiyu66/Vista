@@ -103,7 +103,7 @@ struct AnonymousIOSnapshot:Equatable {
  private var item:AVPlayerItem?
  private var asset:AVURLAsset?
  private var bridge:ResourceBridge?
- private var running=false
+ private var running=false,prepared=false
  private var active=false,sourceFailed=false,paused=false,seeking=false
  private var seekGeneration=UUID(),frameSession=UUID()
  private var lastProgress=0.0
@@ -134,8 +134,21 @@ struct AnonymousIOSnapshot:Equatable {
   #endif
   return v
  }
+ public private(set) var selectedSpeed=1
+ public var speedStatus:PlaybackSpeedStatus {
+  let effectiveRate=item?.timebase.map {CMTimebaseGetEffectiveRate($0)} ?? 0
+  return PlaybackSpeedStatus(selected:selectedSpeed,effectiveRate:effectiveRate,ready:active && item?.status == .readyToPlay,
+   supportsFastForward:item?.canPlayFastForward ?? false,paused:paused,waiting:player?.timeControlStatus == .waitingToPlayAtSpecifiedRate)
+ }
+ public var isPlaybackPaused:Bool {paused}
+ @discardableResult public func setSpeed(_ requested:Int)->Bool {
+  guard active,let player,speedStatus.accepts(requested) else{return false}
+  selectedSpeed=requested;player.defaultRate=Float(requested)
+  if !paused && !seeking {player.play()}
+  return true
+ }
  public func pause(){paused=true;player?.pause()}
- public func resume(){paused=false;lastProgress=ProcessInfo.processInfo.systemUptime;player?.play()}
+ public func resume(){paused=false;lastProgress=ProcessInfo.processInfo.systemUptime;if !seeking {player?.play()}}
  public func seek(to target:Double,maximumBackward:Double=1,maximumForward:Double=0)async throws {
   guard target.isFinite,target>=0,let player,let item,active else{throw Failure.unsupported}
   let ranges=item.loadedTimeRanges.map(\.timeRangeValue).compactMap { range -> Range<Double>? in
@@ -179,16 +192,17 @@ struct AnonymousIOSnapshot:Equatable {
   guard active else{throw CancellationError()}
   if sourceFailed {throw Failure.source}
   if item?.status == .failed {throw Failure.player}
-  if !paused && ProcessInfo.processInfo.systemUptime-lastProgress>stallLimit {throw Failure.stalled}
+  if (!paused || !prepared) && ProcessInfo.processInfo.systemUptime-lastProgress>stallLimit {throw Failure.stalled}
  }
  public func play(file:MediaFile,source:any MediaByteSource,startAt:Double=0,startPaused:Bool=false,
   onInfo:@escaping @MainActor (VideoTrackInfo)->Void,
   onState:@escaping @MainActor (State)->Void,
-  onFrame:@escaping @MainActor (DecodedVideoFrame)->Void)async throws {
+  onFrame:@escaping @MainActor (DecodedVideoFrame)->Void,
+  onSpeed:@escaping @MainActor (PlaybackSpeedStatus)->Void = {_ in})async throws {
   guard !running else{throw Failure.unsupported}
   let ext=(file.components.last! as NSString).pathExtension.lowercased()
   guard ["mp4","m4v","mov"].contains(ext) else{throw Failure.unsupported}
-  running=true;active=true;sourceFailed=false;paused=false;seeking=false;frameSession=UUID()
+  running=true;prepared=false;active=true;sourceFailed=false;paused=startPaused;seeking=false;selectedSpeed=1;frameSession=UUID()
   lastProgress=ProcessInfo.processInfo.systemUptime;frames=0;waits=0;maxClockDifference=0;diagnosticUpdate=0;onState(.preparing)
   do {
    requestMetrics.begin("開片",now:ProcessInfo.processInfo.systemUptime)
@@ -217,7 +231,7 @@ struct AnonymousIOSnapshot:Equatable {
    let media=AVPlayerItem(asset:urlAsset);item=media
    let output=AVPlayerItemVideoOutput(pixelBufferAttributes:nil)
    media.add(output)
-   let native=AVPlayer(playerItem:media);player=native;native.isMuted=muted
+   let native=AVPlayer(playerItem:media);player=native;native.isMuted=muted;native.defaultRate=1
    while media.status == .unknown {try check();try await Task.sleep(for:.milliseconds(10))}
    try check()
    let tracks=try await urlAsset.loadTracks(withMediaType:.video)
@@ -233,11 +247,14 @@ struct AnonymousIOSnapshot:Equatable {
    let clock=NativeDisplayClock();displayClock=clock;clock.start()
    #endif
    if startAt>0 {try await seek(to:min(startAt,duration))}
-   paused=startPaused
+   prepared=true
    if paused {native.pause()}else{native.play()}
    var state:State = .preparing
+   var reportedSpeed:PlaybackSpeedStatus?
    while true {
     try check()
+    let speed=speedStatus
+    if reportedSpeed != speed {reportedSpeed=speed;onSpeed(speed)}
     let next:State=seeking ? .seeking:paused ? .paused:native.timeControlStatus == .waitingToPlayAtSpecifiedRate ? .waiting:.playing
     if next != state {if next == .waiting {waits += 1};state=next;onState(next)}
     let now=ProcessInfo.processInfo.systemUptime

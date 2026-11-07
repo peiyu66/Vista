@@ -117,13 +117,16 @@ struct PlaybackView: View {
                     }
                     if let message = vr.message { Text(message) }
                     if let trackInfo = player.trackInfo, !trackInfo.hasAudio { Text("影片無音軌").font(.caption) }
+                    Text(player.speedStatus.text).font(.caption.monospacedDigit()).accessibilityIdentifier("flatPlaybackSpeed")
+                    if player.speedStatus.ready,!player.speedStatus.supportsFastForward {Text("此影片最高 2×").font(.caption2)}
+                    if let message=player.speedMessage {Text(message).font(.caption)}
                     if let playbackMessage = player.message { Text(playbackMessage).accessibilityIdentifier("playbackStatus") }
                     HStack {
                         if player.trackInfo != nil {
-                            Button("後退 30 秒", systemImage: "gobackward.30") { player.skip(by: -PlaybackProgress.skipInterval) }
-                                .labelStyle(.iconOnly).accessibilityIdentifier("skipBackward")
-                            Button("前進 30 秒", systemImage: "goforward.30") { player.skip(by: PlaybackProgress.skipInterval) }
-                                .labelStyle(.iconOnly).accessibilityIdentifier("skipForward")
+                            Button("恢復 1 倍速") { player.resetSpeed() }
+                                .disabled(!player.canResetSpeed).accessibilityIdentifier("skipBackward")
+                            Button("加速 1 倍", systemImage: "forward.fill") { player.increaseSpeed() }
+                                .disabled(!player.canIncreaseSpeed).labelStyle(.iconOnly).accessibilityIdentifier("skipForward")
                         }
                         if player.isPlaying {
                             Button(player.isPaused ? "繼續" : "暫停", action: player.togglePause)

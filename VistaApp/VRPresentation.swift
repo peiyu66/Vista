@@ -2,6 +2,7 @@ import ImageIO
 import SwiftUI
 import RealityKit
 import Observation
+import Combine
 import AVFoundation
 import CoreImage
 
@@ -9,6 +10,7 @@ private struct ControllerBackgroundTarget:Component {}
 
 @MainActor @Observable final class VRPresentation {
     var settings = VRSettings()
+    var videoSettings: VRSettings { calibration.videoSettings(for: settings) }
     var player: PlaybackController?
     var testPattern = false
     var active = false
@@ -196,13 +198,19 @@ struct VRImmersiveView: View {
     private struct UpdateKey: Hashable { let image: ObjectIdentifier?; let settings: VRSettings; let pixel:ObjectIdentifier? }
     var body: some View {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--controller-layout-review") { playerControls }
+        if ProcessInfo.processInfo.arguments.contains("--controller-layout-review") {
+            playerControls.task(id: presentation.calibrationRequest) {
+                // Synthetic-only fixture: exercises the same capture/reset flow without device tracking.
+                let provider = ControllerReviewPose(upward: ProcessInfo.processInfo.arguments.contains("--review-auto-pitch"))
+                if await presentation.calibration.capture(using: provider) { resetManualDirection() }
+            }
+        }
         else { immersiveBody }
         #else
         immersiveBody
         #endif
     }
-    private var immersiveBody:some View {
+    private var interactiveContent:some View {
         RealityView { content, attachments in
             content.add(placement)
             content.add(controlsAnchor)
@@ -239,23 +247,23 @@ struct VRImmersiveView: View {
                     else { ProgressView("準備投影…") }
                     Text(presentation.settings.layout.title).accessibilityIdentifier("vrLayoutReady")
                     HStack {
-                        Button("向左轉") { presentation.settings.yawDegrees -= 15 }
-                        Button("方向歸零") { resetManualDirection() }
-                        Button("向右轉") { presentation.settings.yawDegrees += 15 }
+                        Button("向左轉") { adjustManualDirection(yaw: -15) }
+                        Button("方向歸零") { resetDirectionFromControls() }
+                        Button("向右轉") { adjustManualDirection(yaw: 15) }
                     }
                     .accessibilityIdentifier("recenterVideo").accessibilityHint("以目前觀看方向重新置中影片")
-                    .disabled(presentation.calibration.status == .capturing)
+                    .disabled(!canAdjustManualDirection)
                     HStack {
-                        Button("向上轉") { presentation.settings.pitchDegrees += 15 }
-                        Button("向下轉") { presentation.settings.pitchDegrees -= 15 }
-                        Button("左傾") { presentation.settings.rollDegrees += 15 }
-                        Button("右傾") { presentation.settings.rollDegrees -= 15 }
+                        Button("向上轉") { adjustManualDirection(pitch: 15) }
+                        Button("向下轉") { adjustManualDirection(pitch: -15) }
+                        Button("左傾") { adjustManualDirection(roll: 15) }
+                        Button("右傾") { adjustManualDirection(roll: -15) }
                     }.accessibilityIdentifier("recenterVideo").accessibilityHint("以目前觀看方向重新置中影片")
-                    .disabled(presentation.calibration.status == .capturing)
+                    .disabled(!canAdjustManualDirection)
                     Button("重新置中") {
                         presentation.calibration.requestRecenter(); presentation.calibrationRequest += 1
                     }.accessibilityIdentifier("recenterVideo").accessibilityHint("以目前觀看方向重新置中影片")
-                    .disabled(presentation.calibration.status == .capturing)
+                    .disabled(!canAdjustManualDirection)
                         .accessibilityIdentifier("recenterVR")
                         .accessibilityValue(presentation.calibration.status == .ready ? "已取得初始方向" : "尚未取得初始方向")
                     if !presentation.testPattern, let player = presentation.player {
@@ -266,20 +274,23 @@ struct VRImmersiveView: View {
                 }
             }
         }
-        .gesture(SpatialTapGesture(count:3).targetedToEntity(where:.has(ControllerBackgroundTarget.self))
-            .exclusively(before:SpatialTapGesture(count:2).targetedToEntity(where:.has(ControllerBackgroundTarget.self))
-                .exclusively(before:SpatialTapGesture(count:1).targetedToEntity(where:.has(ControllerBackgroundTarget.self))))
+        // Keep all background commands exclusive. The system owns press/tap timing.
+        .gesture(LongPressGesture(minimumDuration:0.5, maximumDistance:10).targetedToEntity(where:.has(ControllerBackgroundTarget.self))
+            .exclusively(before:SpatialTapGesture(count:2).targetedToEntity(where:.has(ControllerBackgroundTarget.self)))
+            .exclusively(before:SpatialTapGesture(count:1).targetedToEntity(where:.has(ControllerBackgroundTarget.self)))
             .onEnded { result in
-                let count:Int;let entity:Entity
+                let input:VRBackgroundInteraction.Event;let entity:Entity
                 switch result {
-                case .first(let event):count=3;entity=event.entity
-                case .second(.first(let event)):count=2;entity=event.entity
-                case .second(.second(let event)):count=1;entity=event.entity
+                case .first(.first(let event)):
+                    guard event.gestureValue else{return}
+                    input = .longPress;entity=event.entity
+                case .first(.second(let event)):input = .tap(count:2);entity=event.entity
+                case .second(let event):input = .tap(count:1);entity=event.entity
                 }
-                switch VRBackgroundInteraction.action(taps:count,isBackground:entity.name.hasPrefix("show-controls-"),active:presentation.active,
+                switch VRBackgroundInteraction.action(event:input,isBackground:entity.name.hasPrefix("show-controls-"),active:presentation.active,
                     testPattern:presentation.testPattern,moving:presentation.movingControls,scrubbing:presentation.scrubbing) {
                 case .none:break
-                case .toggle:presentation.toggleControlsFromBackground()
+                case .toggle:cancelControllerResetSample();presentation.toggleControlsFromBackground()
                 case .reset:resetControllerPosition()
                 case .recenterVideo:resetVideoDirection()
                 }
@@ -291,6 +302,7 @@ struct VRImmersiveView: View {
                 guard let controls=controlEntity else{return}
                 let pointer=value.convert(value.location3D,from:.local,to:parent)
                 if !draggingControls {
+                    cancelControllerResetSample()
                     draggingControls=true
                     controlVisual.localGrab=controls.convert(position:pointer,from:parent)
                     controlVisual.dragPointer=pointer
@@ -308,6 +320,10 @@ struct VRImmersiveView: View {
                 faceViewerAfterDrag()
                 presentation.scheduleHide()
             })
+    }
+    // Bound SwiftUI type inference without changing the view or modifier order.
+    private var observedContent:some View {
+        interactiveContent
         .onChange(of: presentation.player?.isPaused) { _, _ in presentation.revealControls() }
         .onChange(of: presentation.player?.isPreparing) { _, preparing in
             if preparing == false,presentation.navigationVisibility != nil {presentation.endControllerNavigation()}
@@ -328,33 +344,43 @@ struct VRImmersiveView: View {
             presentation.holdControls()
         }
         .onChange(of: presentation.message) {_,message in if message != nil {presentation.endControllerNavigation(showError:true);presentation.holdControls()}}
-        .onChange(of: presentation.settings) { _, _ in updateControllerReference() }
+        .onChange(of: presentation.settings) { _, _ in cancelControllerResetSample();updateControllerReference() }
+        .onChange(of: presentation.calibrationRequest) { _, _ in cancelControllerResetSample() }
+        .onChange(of: presentation.player.map(ObjectIdentifier.init)) { _, _ in cancelControllerResetSample() }
+        .onChange(of: presentation.advancing) { _, value in if value {cancelControllerResetSample()} }
+        .onChange(of: presentation.scrubbing) { _, value in if value {cancelControllerResetSample()} }
         .onChange(of: presentation.settingsVisible) { _, _ in presentation.revealControls() }
         .onAppear { presentation.revealControls() }
+    }
+    private var immersiveBody:some View {
+        observedContent
         .task {
             while !Task.isCancelled {
                 if let player=presentation.player,player.isPlaying || player.isPreparing {
-                    player.persistDiagnostics(projection:VRProjection.allCases.firstIndex(of:presentation.settings.projection) ?? 0,layout:VRLayout.allCases.firstIndex(of:presentation.settings.layout) ?? 0,route:presentation.settings.projection == .equidistantFisheye180 ? 1:0,rendererValues:renderer.logValues)
+                    let projection=VRProjection.allCases.firstIndex(of:presentation.settings.projection) ?? 0
+                    let layout=VRLayout.allCases.firstIndex(of:presentation.settings.layout) ?? 0
+                    let route=presentation.settings.projection == .equidistantFisheye180 ? 1:0
+                    player.persistDiagnostics(projection:projection,layout:layout,route:route,rendererValues:renderer.logValues)
                 }
                 do {try await Task.sleep(for:.seconds(1))}catch{return}
             }
         }
-        .task(id: UpdateKey(image: presentation.image.map(ObjectIdentifier.init), settings: presentation.settings,pixel:presentation.player?.pixelFrame.map(ObjectIdentifier.init))) {
+        .task(id: UpdateKey(image: presentation.image.map(ObjectIdentifier.init), settings: presentation.videoSettings,pixel:presentation.player?.pixelFrame.map(ObjectIdentifier.init))) {
             #if VISTA_SYSTEM_VIDEO_EXPERIMENT
             if !presentation.testPattern,let frame=presentation.player?.pixelFrame {
-                if #available(visionOS 26.0,*),SystemVideoSamples.supports(frame,settings:presentation.settings) {
+                if #available(visionOS 26.0,*),SystemVideoSamples.supports(frame,settings:presentation.videoSettings) {
                     renderer.stop()
-                    systemRenderer.submit(frame,settings:presentation.settings)
+                    systemRenderer.submit(frame,settings:presentation.videoSettings)
                 } else {
                     systemRenderer.stop()
-                    renderer.submit(frame:frame,settings:presentation.settings,metrics:presentation.player?.metrics)
+                    renderer.submit(frame:frame,settings:presentation.videoSettings,metrics:presentation.player?.metrics)
                 }
             } else {
                 systemRenderer.stop()
-                renderer.submit(image:presentation.image,settings:presentation.settings,metrics:presentation.player?.metrics)
+                renderer.submit(image:presentation.image,settings:presentation.videoSettings,metrics:presentation.player?.metrics)
             }
             #else
-            renderer.submit(image: presentation.image, settings: presentation.settings,metrics:presentation.player?.metrics)
+            renderer.submit(image: presentation.image, settings: presentation.videoSettings,metrics:presentation.player?.metrics)
             #endif
         }
         .task {
@@ -372,16 +398,21 @@ struct VRImmersiveView: View {
             }
         }
         .task(id: presentation.calibrationRequest) {
+            cancelControllerResetSample()
             if await presentation.calibration.capture(using: DeviceInitialPose()) { resetManualDirection();updateControllerReference() }
         }
         .onChange(of: scenePhase) { _, phase in
+            if phase != .active {cancelControllerResetSample()}
             if phase == .background {
                 presentation.player?.pauseForBackground()
                 presentation.holdControls()
             }
         }
         .onDisappear {
+            cancelControllerResetSample()
             presentation.calibration.cancel()
+            controlVisual.resetTrace.cancel()
+            controlVisual.resetFrameSubscription?.cancel();controlVisual.resetFrameSubscription=nil
             controlVisual.fadeTask?.cancel();controlVisual.fadeTask=nil
             controlVisual.facingTask?.cancel();controlVisual.facingTask=nil
             controlVisual.poseTask?.cancel();controlVisual.poseTask=nil
@@ -450,9 +481,9 @@ struct VRImmersiveView: View {
                     Button { presentation.onPrevious?(); presentation.holdControls() } label: { Image(systemName: "backward.end.fill") }
                         .accessibilityLabel("上一個影片").accessibilityIdentifier("immersivePrevious")
                         .disabled(!presentation.canGoBack || presentation.advancing)
-                    Button { presentation.revealControls(); player.skip(by: -PlaybackProgress.skipInterval) } label: { Image(systemName: "gobackward.30") }
-                        .accessibilityLabel("後退 30 秒").accessibilityIdentifier("immersiveBack")
-                        .disabled(player.isPreparing || presentation.advancing || player.trackInfo == nil)
+                    Button { presentation.revealControls(); player.resetSpeed() } label: { Text("1×").monospacedDigit() }
+                        .accessibilityLabel("恢復 1 倍速").accessibilityIdentifier("immersiveBack")
+                        .disabled(!player.canResetSpeed || presentation.advancing || presentation.requiresFormatConfirmation)
                     Button {
                         if player.isPlaying { player.togglePause() } else { presentation.onReplay?() }
                         presentation.revealControls()
@@ -460,15 +491,21 @@ struct VRImmersiveView: View {
                         .accessibilityLabel(player.isPlaying && !player.isPaused ? "暫停" : "播放")
                         .accessibilityIdentifier("immersivePause")
                         .disabled(player.isPreparing || presentation.advancing || presentation.requiresFormatConfirmation)
-                    Button { presentation.revealControls(); player.skip(by: PlaybackProgress.skipInterval) } label: { Image(systemName: "goforward.30") }
-                        .accessibilityLabel("前進 30 秒").accessibilityIdentifier("immersiveForward")
-                        .disabled(player.isPreparing || presentation.advancing || player.trackInfo == nil)
+                    Button { presentation.revealControls(); player.increaseSpeed() } label: { Image(systemName:"forward.fill") }
+                        .accessibilityLabel("加速 1 倍").accessibilityIdentifier("immersiveForward")
+                        .accessibilityHint("最高 3 倍速，依影片支援能力開放")
+                        .disabled(!player.canIncreaseSpeed || presentation.advancing || presentation.requiresFormatConfirmation)
                     Button { presentation.onNext?(); presentation.holdControls() } label: { Image(systemName: "forward.end.fill") }
                         .accessibilityLabel("下一個影片").accessibilityIdentifier("immersiveNext")
                         .disabled(!presentation.canAdvance || presentation.advancing)
                     Button { presentation.settingsVisible.toggle(); presentation.revealControls() } label: { Image(systemName: "slider.horizontal.3") }
                         .accessibilityLabel("影片格式設定").accessibilityIdentifier("immersiveSettings")
                 }.buttonStyle(.borderless).font(.title3).disabled(presentation.stopping || presentation.scrubbing)
+                Text(player.speedStatus.text).font(.caption.monospacedDigit()).accessibilityIdentifier("playbackSpeed")
+                if player.speedStatus.ready,!player.speedStatus.supportsFastForward {
+                    Text("此影片最高 2×").font(.caption2).foregroundStyle(.secondary).accessibilityIdentifier("playbackSpeedLimit")
+                }
+                if let message=player.speedMessage {Text(message).font(.caption).accessibilityIdentifier("playbackSpeedMessage")}
                 #if DEBUG && VISTA_DIAGNOSTIC_UI
                 Button("效能診斷") {presentation.diagnosticsVisible.toggle();presentation.holdControls();if !presentation.diagnosticsVisible {presentation.scheduleHide()}}
                     .accessibilityIdentifier("playbackDiagnostics")
@@ -496,38 +533,38 @@ struct VRImmersiveView: View {
                         .accessibilityIdentifier("immersiveConfirmFormat")
                 }
                 VStack(spacing:4) {
-                    Text("水平手動調整 \(VRManualAngleDisplay.text(presentation.settings.yawDegrees))")
+                    Text("水平 \(VRManualAngleDisplay.text(presentation.videoSettings.yawDegrees))")
                         .accessibilityIdentifier("manualHorizontalAngle")
                     Text("← −15°　│　0°　│　+15° →").foregroundStyle(.secondary)
                 }.font(.caption).padding(.leading,56)
                 HStack(spacing:8) {
                     VStack(spacing:8) {
                         Text("垂直")
-                        Text(VRManualAngleDisplay.text(presentation.settings.pitchDegrees))
+                        Text(VRManualAngleDisplay.text(presentation.videoSettings.pitchDegrees))
                             .accessibilityIdentifier("manualVerticalAngle")
                         Text("上\n+15°\n│\n0°\n│\n−15°\n下").foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
                     }.font(.caption).multilineTextAlignment(.center).frame(width:48).fixedSize(horizontal:false,vertical:true)
                     ZStack {
-                    ringControl("重設影片方向", angle: -90, outer: true, identifier: "recenterVideo", hint: "以目前觀看方向重新置中影片，成功後清除手動轉向；也可三擊影片背景", action:resetVideoDirection).disabled(presentation.calibration.status == .capturing)
+                    ringControl("重設影片方向", angle: -90, outer: true, identifier: "recenterVideo", hint: "以目前觀看方向重新置中影片，成功後清除自動補償與手動轉向；也可長按影片背景", action:resetVideoDirection).disabled(!canAdjustManualDirection)
                     ringControl("重設\n影片格式", angle: -165, outer: true, identifier: "clearVRFormat", hint: "清除此片保存格式，不重設方向或控制器位置") {
                         presentation.onClearFormat?(); presentation.holdControls()
                     }.disabled(!presentation.canClearFormat || presentation.advancing)
                     ringControl("重設\n控制器\n位置", angle: -15, outer: true, identifier: "resetControllerPosition", hint: "也可雙擊影片背景", action: resetControllerPosition)
-                    ringControl("arrowtriangle.up.fill", angle: -90, outer: false, identifier: "directionUp", hint: "向上轉，每次15度") { presentation.settings.pitchDegrees += 15 }
-                    ringControl("arrowtriangle.left.fill", angle: -180, outer: false, identifier: "directionLeft", hint: "向左轉，每次15度") { presentation.settings.yawDegrees -= 15 }
-                    ringControl("arrowtriangle.right.fill", angle: 0, outer: false, identifier: "directionRight", hint: "向右轉，每次15度") { presentation.settings.yawDegrees += 15 }
-                    ringControl("arrowtriangle.down.fill", angle: 90, outer: false, identifier: "directionDown", hint: "向下轉，每次15度") { presentation.settings.pitchDegrees -= 15 }
-                    Button(action:resetManualDirection) {
+                    ringControl("arrowtriangle.up.fill", angle: -90, outer: false, identifier: "directionUp", hint: "向上轉，每次15度") { adjustManualDirection(pitch: 15) }.disabled(!canAdjustManualDirection)
+                    ringControl("arrowtriangle.left.fill", angle: -180, outer: false, identifier: "directionLeft", hint: "向左轉，每次15度") { adjustManualDirection(yaw: -15) }.disabled(!canAdjustManualDirection)
+                    ringControl("arrowtriangle.right.fill", angle: 0, outer: false, identifier: "directionRight", hint: "向右轉，每次15度") { adjustManualDirection(yaw: 15) }.disabled(!canAdjustManualDirection)
+                    ringControl("arrowtriangle.down.fill", angle: 90, outer: false, identifier: "directionDown", hint: "向下轉，每次15度") { adjustManualDirection(pitch: -15) }.disabled(!canAdjustManualDirection)
+                    Button(action:resetDirectionFromControls) {
                         Text("歸零").font(.caption).frame(width:54,height:54)
-                    }.buttonStyle(CenterRingFeedbackStyle())
+                    }.buttonStyle(CenterRingFeedbackStyle()).disabled(!canAdjustManualDirection)
                         .accessibilityLabel("方向歸零").accessibilityIdentifier("directionZero")
-                        .accessibilityValue("yaw=\(Int(presentation.settings.yawDegrees)),pitch=\(Int(presentation.settings.pitchDegrees)),roll=\(Int(presentation.settings.rollDegrees))")
-                        .accessibilityHint("清除手動轉向，不重新採樣觀看方向").position(x:190,y:180)
+                        .accessibilityValue("yaw=\(VRManualAngleDisplay.normalized(presentation.videoSettings.yawDegrees)),pitch=\(VRManualAngleDisplay.normalized(presentation.videoSettings.pitchDegrees)),roll=\(VRManualAngleDisplay.normalized(presentation.videoSettings.rollDegrees))")
+                        .accessibilityHint("清除自動補償與手動轉向，不重新採樣觀看方向").position(x:190,y:180)
                     }.frame(width:380,height:286)
                 }
-                Text("角度相對本次取樣基準；0° 為未調整，每格 15°")
+                Text("角度含自動補償與手動調整，相對本次取樣；每格 15°")
                     .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
-                Text("看向影片背景：單擊顯示／隱藏；雙擊重設控制器位置；三擊重設影片方向")
+                Text("看向影片背景：單擊顯示／隱藏；雙擊重設控制器位置；長按重設影片方向")
                     .fixedSize(horizontal:false,vertical:true)
                     .font(.caption).foregroundStyle(.secondary)
                     .accessibilityIdentifier("resetControllerGestureHint")
@@ -592,7 +629,7 @@ struct VRImmersiveView: View {
             }).disabled(!enabled)
                 .accessibilityLabel("播放進度")
                 .accessibilityIdentifier("playbackSeek")
-                .accessibilityHint("放開以跳轉，也可使用前後30秒按鈕。")
+                .accessibilityHint("拖曳後放開以跳轉。")
             Text(PlaybackProgress.time(duration)).accessibilityIdentifier("playbackDuration")
         }.font(.caption.monospacedDigit())
     }
@@ -614,17 +651,63 @@ struct VRImmersiveView: View {
         }
     }
     private func resetVideoDirection() {
-        guard !presentation.movingControls,!presentation.scrubbing,presentation.calibration.status != .capturing else{return}
+        guard !presentation.movingControls,!presentation.scrubbing,canAdjustManualDirection else{return}
+        cancelControllerResetSample()
         presentation.calibration.requestRecenter();presentation.calibrationRequest += 1
+    }
+    private func cancelControllerResetSample() {
+        controlVisual.resetRequest.cancel()
+        controlVisual.resetPoseTask?.cancel();controlVisual.resetPoseTask=nil
     }
     private func resetControllerPosition() {
         guard !presentation.movingControls,!presentation.scrubbing else{return}
+        cancelControllerResetSample()
         controlVisual.facingTask?.cancel()
-        controlVisual.orientation=VRControllerPlacement.facing(position:VRControllerPlacement.origin)
+        if presentation.navigationVisibility != nil {presentation.navigationVisibility=true}
+        presentation.controlsVisible=true
+        presentation.scheduleHide()
+        guard presentation.active,!presentation.stopping,!presentation.advancing,
+              presentation.calibration.status != .capturing else {
+            applyControllerReset(pose:nil);return
+        }
+        let ticket=controlVisual.resetRequest.begin()
+        let player=presentation.player,entity=controlEntity
+        let calibrationRequest=presentation.calibrationRequest,settings=presentation.settings
+        controlVisual.resetPoseTask=Task { @MainActor in
+            let pose=try? await DeviceInitialPose(resetSample:true).sample()
+            guard !Task.isCancelled,controlVisual.resetRequest.isCurrent(ticket) else{return}
+            guard presentation.active,!presentation.stopping,!presentation.advancing,
+                  !presentation.movingControls,!presentation.scrubbing,scenePhase == .active,
+                  presentation.player === player,controlEntity === entity,
+                  presentation.calibrationRequest==calibrationRequest,presentation.settings==settings,
+                  presentation.calibration.status != .capturing else {
+                cancelControllerResetSample();return
+            }
+            guard controlVisual.resetRequest.finish(ticket) else{return}
+            controlVisual.resetPoseTask=nil
+            applyControllerReset(pose:pose)
+        }
+    }
+    private func applyControllerReset(pose:VRInitialPose?) {
+        controlVisual.resetFrameSubscription?.cancel();controlVisual.resetFrameSubscription=nil
+        let resetTicket=controlVisual.resetTrace.begin()
+        controlVisual.resetStarted=ProcessInfo.processInfo.systemUptime
+        recordControllerReset(.before,ticket:resetTicket,controls:controlEntity)
+        controlVisual.facingTask?.cancel()
+        controlVisual.worldFrame=VRControllerWorldFrame.frame(parentWorld:controllerReference.orientation(relativeTo:nil))
+        if let pose {
+            controlVisual.viewer=controllerReference.convert(position:pose.position,from:nil)
+            controlVisual.cachedHead=pose.orientation;controlVisual.poseCacheSource=3
+            controlVisual.poseCacheWritten=ProcessInfo.processInfo.systemUptime
+        }
+        controlVisual.orientation=VRControllerVisualLevel.facing(position:VRControllerPlacement.origin,viewer:controlVisual.viewer,
+            frame:controlVisual.worldFrame,viewingHead:pose?.orientation,previous:controlVisual.orientation)
         presentation.controlsOffset = .zero
         if presentation.navigationVisibility != nil {presentation.navigationVisibility=true}
         presentation.controlsVisible=true
         presentation.scheduleHide()
+        // The sampled orientation is not observable; commit it even when reset position is already zero.
+        placeControls(controlEntity)
     }
     private func addTapTargets() {
         // Six thin collision surfaces surround the frozen viewing origin. They have no visible material,
@@ -639,12 +722,25 @@ struct VRImmersiveView: View {
             placement.addChild(target)
         } }
     }
+    private var canAdjustManualDirection: Bool {
+        presentation.calibration.allowsManualDirection(isLoading: presentation.advancing)
+    }
+    private func adjustManualDirection(yaw: Double = 0, pitch: Double = 0, roll: Double = 0) {
+        guard canAdjustManualDirection else { return }
+        presentation.settings.yawDegrees += yaw
+        presentation.settings.pitchDegrees += pitch
+        presentation.settings.rollDegrees += roll
+    }
+    private func resetDirectionFromControls() {
+        guard canAdjustManualDirection else { return }
+        presentation.calibration.resetDirection(&presentation.settings)
+    }
     private func resetManualDirection() {
         presentation.settings.yawDegrees = 0; presentation.settings.pitchDegrees = 0; presentation.settings.rollDegrees = 0
     }
     private func updateControllerReference() {
         guard let entry=controllerEntryPose else{return}
-        // Use the same world orientation as the video surface, not a separate entry gaze.
+        // Keep controller placement independent of the automatic video comfort offset.
         let videoBase=presentation.calibration.pose?.orientation ?? simd_quatf()
         let videoHeading=videoBase * VRInitialPose.manualRotation(yaw:presentation.settings.yawDegrees,pitch:presentation.settings.pitchDegrees,roll:presentation.settings.rollDegrees)
         guard let pose=VRControllerReference.pose(entry:entry,vertical:presentation.calibration.pose,horizontal:videoHeading) else{return}
@@ -663,8 +759,11 @@ struct VRImmersiveView: View {
         }
         let viewer=controllerReference.convert(position:(presentation.calibration.pose ?? entry).position,from:nil)
         controlVisual.viewer=viewer
-        controlVisual.viewerFrame=VRControllerViewFrame.localFrame(viewerWorld:(presentation.calibration.pose ?? entry).orientation,parentWorld:controllerReference.orientation(relativeTo:nil))
-        if !draggingControls && !presentation.preservePlacementAcrossFiles {controlVisual.orientation=VRControllerViewFrame.facing(position:VRControllerPlacement.origin+presentation.controlsOffset,viewer:viewer,frame:controlVisual.viewerFrame,previous:controlVisual.orientation)}
+        controlVisual.worldFrame=VRControllerWorldFrame.frame(parentWorld:controllerReference.orientation(relativeTo:nil))
+        controlVisual.cachedHead=(presentation.calibration.pose ?? entry).orientation
+        controlVisual.poseCacheSource=presentation.calibration.pose == nil ? 0:1
+        controlVisual.poseCacheWritten=ProcessInfo.processInfo.systemUptime
+        if !draggingControls && !presentation.preservePlacementAcrossFiles {controlVisual.orientation=VRControllerVisualLevel.facing(position:VRControllerPlacement.origin+presentation.controlsOffset,viewer:viewer,frame:controlVisual.worldFrame,viewingHead:controlVisual.cachedHead,previous:controlVisual.orientation)}
     }
     private func placeControls(_ controls: Entity?) {
         guard let controls else { return }
@@ -675,6 +774,14 @@ struct VRImmersiveView: View {
         if controls.parent != parent { parent.addChild(controls) }
         controls.position = presentation.testPattern ? [0, -0.25, -1.5] : VRControllerPlacement.origin + presentation.controlsOffset
         controls.orientation = presentation.testPattern ? simd_quatf() : controlVisual.orientation
+        if let ticket=controlVisual.resetTrace.applied() {
+            recordControllerReset(.applied,ticket:ticket,controls:controls)
+            controlVisual.resetFrameSubscription=controls.scene?.subscribe(to:SceneEvents.Update.self) { [weak controls] _ in
+                guard let controls,controlVisual.resetTrace.nextFrame(ticket:ticket) else{return}
+                controlVisual.resetFrameSubscription?.cancel();controlVisual.resetFrameSubscription=nil
+                recordControllerReset(.nextSceneUpdate,ticket:ticket,controls:controls)
+            }
+        }
         updateFade(controls,visible:presentation.testPattern || presentation.controlsVisible)
         if moveHandle.parent != controls {controls.addChild(moveHandle)}
         moveHandle.isEnabled=false
@@ -693,13 +800,17 @@ struct VRImmersiveView: View {
     private func faceViewerDuringDrag() {
         controlVisual.facingTask?.cancel();controlVisual.poseTask?.cancel()
         guard let controls=controlEntity,let parent=controls.parent else{return}
-        // Update viewing frame only while dragging; keep the last valid frame on tracking loss.
+        // Existing drag-only tracking provides a consistent viewer position and viewing frame.
+        // Full viewer-relative facing includes height; the center projection stays visually level.
+        // Keep the last valid position on tracking loss, with the existing sampling lifecycle.
         controlVisual.poseTask=Task { @MainActor in
             guard presentation.calibration.status != .capturing else{return}
             try? await DeviceInitialPose().duringDrag { pose in
                 guard !Task.isCancelled,presentation.movingControls,controls.parent === parent else{return}
                 controlVisual.viewer=parent.convert(position:pose.position,from:nil)
-                controlVisual.viewerFrame=VRControllerViewFrame.localFrame(viewerWorld:pose.orientation,parentWorld:parent.orientation(relativeTo:nil))
+                controlVisual.worldFrame=VRControllerWorldFrame.frame(parentWorld:parent.orientation(relativeTo:nil))
+                controlVisual.cachedHead=pose.orientation;controlVisual.poseCacheSource=2
+                controlVisual.poseCacheWritten=ProcessInfo.processInfo.systemUptime
             }
         }
         controlVisual.facingTask=Task { @MainActor in
@@ -709,8 +820,9 @@ struct VRImmersiveView: View {
                 let duration=last.duration(to:now).components
                 let elapsed=Float(duration.seconds)+Float(duration.attoseconds)/1e18
                 last=now
-                let target=VRControllerViewFrame.facing(position:controls.position,viewer:controlVisual.viewer,frame:controlVisual.viewerFrame,previous:controlVisual.orientation)
-                controlVisual.orientation=VRControllerViewFrame.approaching(controlVisual.orientation,target:target,frame:controlVisual.viewerFrame,elapsed:elapsed)
+                let target=VRControllerVisualLevel.facing(position:controls.position,viewer:controlVisual.viewer,frame:controlVisual.worldFrame,viewingHead:controlVisual.cachedHead,previous:controlVisual.orientation)
+                let levelFrame=VRControllerVisualLevel.levelingFrame(position:controls.position,viewer:controlVisual.viewer,frame:controlVisual.worldFrame,viewingHead:controlVisual.cachedHead)
+                controlVisual.orientation=VRControllerVisualLevel.approaching(controlVisual.orientation,target:target,frame:levelFrame,elapsed:elapsed)
                 controls.orientation=controlVisual.orientation
                 updateDraggedPosition(controls)
                 do {try await Task.sleep(for:.milliseconds(16))} catch{return}
@@ -722,18 +834,44 @@ struct VRImmersiveView: View {
         guard let controls=controlEntity, let parent=controls.parent else{return}
         let position=controls.position, start=controls.orientation
         controlVisual.facingTask=Task { @MainActor in
-            // Release uses the same last viewing frame as the drag, without a late resample.
+            // Release uses the same last valid viewing sample, without a late resample.
             guard !Task.isCancelled,!presentation.stopping,controls.parent === parent else{return}
             let viewer=controlVisual.viewer
-            let target=VRControllerViewFrame.facing(position:position,viewer:viewer,frame:controlVisual.viewerFrame,previous:start)
+            let target=VRControllerVisualLevel.facing(position:position,viewer:viewer,frame:controlVisual.worldFrame,viewingHead:controlVisual.cachedHead,previous:start)
+            let levelFrame=VRControllerVisualLevel.levelingFrame(position:position,viewer:viewer,frame:controlVisual.worldFrame,viewingHead:controlVisual.cachedHead)
             for step in 1...(reduceMotion ? 1:12) {
                 guard !Task.isCancelled else{return}
                 let t=reduceMotion ? Float(1):Float(step)/12
-                controlVisual.orientation=VRControllerViewFrame.interpolating(start,target:target,frame:controlVisual.viewerFrame,fraction:t*t*(3-2*t))
+                controlVisual.orientation=VRControllerVisualLevel.interpolating(start,target:target,frame:levelFrame,fraction:t*t*(3-2*t))
                 controls.orientation=controlVisual.orientation
                 if !reduceMotion {do {try await Task.sleep(for:.milliseconds(16))} catch{return}}
             }
         }
+    }
+    private func recordControllerReset(_ phase:ControllerResetLogPhase,ticket:Int,controls:Entity?) {
+        let parent=controls?.parent
+        let video:Entity?=systemRenderer.ready && systemRenderer.entity.isEnabled ? systemRenderer.entity:(renderer.ready && renderer.entity.isEnabled ? renderer.entity:nil)
+        var values=ControllerResetLog.values(sequence:ticket,phase:phase,world:controls?.transformMatrix(relativeTo:nil),
+            parent:parent?.transformMatrix(relativeTo:nil),local:controls?.transform.matrix,intended:controlVisual.orientation,
+            frame:controlVisual.worldFrame,cachedHead:controlVisual.cachedHead,video:video?.orientation(relativeTo:nil),
+            localPosition:controls?.position,cachedViewer:controlVisual.viewer,offset:presentation.controlsOffset)
+        let now=ProcessInfo.processInfo.systemUptime
+        values[.crElapsedMS]=(now-controlVisual.resetStarted)*1000
+        values[.crPoseSource]=Double(controlVisual.poseCacheSource)
+        if let written=controlVisual.poseCacheWritten {values[.crPoseAgeMS]=(now-written)*1000}
+        values[.crExpectedParent]=parent === controllerReference ? 1:0
+        values[.crHasScene]=controls?.scene == nil ? 0:1
+        values[.crPreservePlacement]=presentation.preservePlacementAcrossFiles ? 1:0
+        values[.crVisible]=presentation.controlsVisible ? 1:0
+        values[.crMoving]=presentation.movingControls ? 1:0;values[.crScrubbing]=presentation.scrubbing ? 1:0
+        switch presentation.calibration.status {case .idle:values[.crCalibration]=0;case .capturing:values[.crCalibration]=1;case .ready:values[.crCalibration]=2;case .unavailable:values[.crCalibration]=3}
+        values[.crAutoPitch]=presentation.calibration.automaticPitchDegrees
+        values[.crManualYaw]=presentation.settings.yawDegrees;values[.crManualPitch]=presentation.settings.pitchDegrees;values[.crManualRoll]=presentation.settings.rollDegrees
+        values[.projection]=Double(VRProjection.allCases.firstIndex(of:presentation.settings.projection) ?? 0)
+        values[.layout]=Double(VRLayout.allCases.firstIndex(of:presentation.settings.layout) ?? 0)
+        values[.route]=video === systemRenderer.entity ? 0:(video === renderer.entity ? 1:-1)
+        let status=PlaybackLogStore.shared.status;values[.logFailures]=Double(status.failures);values[.logDropped]=Double(status.dropped)
+        PlaybackLogStore.shared.enqueue(PlaybackLogRecord(event:.controllerReset,values:values))
     }
     private func applyPlacement() {
         if let pose = presentation.calibration.pose {
@@ -746,11 +884,19 @@ struct VRImmersiveView: View {
 
 @MainActor private final class ControllerVisualState {
     var entity:Entity?
-    var orientation=VRControllerPlacement.facing(position:VRControllerPlacement.origin)
+    var resetTrace=ControllerResetTrace()
+    var resetRequest=VRControllerResetRequest()
+    var resetPoseTask:Task<Void,Never>?
+    var resetFrameSubscription:(any Cancellable)?
+    var resetStarted:Double=0
+    var cachedHead:simd_quatf?
+    var poseCacheSource:Int = -1
+    var poseCacheWritten:Double?
+    var orientation=VRControllerWorldFrame.facing(position:VRControllerPlacement.origin,viewer:.zero,frame:simd_quatf(angle:0,axis:[0,1,0]),previous:simd_quatf(angle:0,axis:[0,1,0]))
     var facingTask:Task<Void,Never>?
     var poseTask:Task<Void,Never>?
     var viewer=SIMD3<Float>.zero
-    var viewerFrame=simd_quatf(angle:0,axis:[0,1,0])
+    var worldFrame=simd_quatf(angle:0,axis:[0,1,0])
     var dragPointer:SIMD3<Float>?
     var localGrab=SIMD3<Float>.zero
     var fadeTarget:Bool?
@@ -1094,3 +1240,14 @@ private struct CenterRingFeedbackStyle:ButtonStyle {
             .hoverEffectGroup()
     }
 }
+
+#if DEBUG
+private struct ControllerReviewPose: VRInitialPoseProvider {
+    let upward: Bool
+    func sample() async throws -> VRInitialPose? {
+        var matrix = simd_float4x4(VRInitialPose.manualRotation(yaw: 0, pitch: upward ? 45 : 0, roll: 0))
+        matrix.columns.3 = [0, 1.2, 0, 1]
+        return VRInitialPose(matrix: matrix)
+    }
+}
+#endif

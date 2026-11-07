@@ -44,7 +44,7 @@ TestMedia/
 !Tests/VistaCoreTests/Resources/SyntheticVP9.mp4
 !Tests/VistaCoreTests/Resources/SyntheticVP9.mkv
 
-# Project-generated thirty-second controller interaction fixture
+# Project-generated 120-second controller interaction fixture
 !Tests/VistaCoreTests/Resources/SyntheticControls.mp4
 
 # Project-generated 4K HEVC reorder-memory regression fixture

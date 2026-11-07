@@ -1,4 +1,5 @@
 import Foundation
+import simd
 #if SWIFT_PACKAGE
 import VistaCore
 #endif
@@ -148,7 +149,7 @@ public final class ReadCancellationTrace:@unchecked Sendable {
 }
 
 /// Anonymous bounded records: no arbitrary text, names, URLs, errors or credentials accepted.
-public enum PlaybackLogEvent:String,Codable,Sendable {case sample,stopped,failed,rendererFailed}
+public enum PlaybackLogEvent:String,Codable,Sendable {case sample,stopped,failed,rendererFailed,controllerReset}
 public enum PlaybackLogField:String,Codable,CaseIterable,Sendable {
  case position,playing,paused,preparing,buffering,width,height,frames,waits,clockDeltaMS,epoch,target,targetBuffered
  case reads,bytes,readMS,interrupted,waitMS,seekMS,firstFrameMS,presentMS
@@ -156,6 +157,15 @@ public enum PlaybackLogField:String,Codable,CaseIterable,Sendable {
  case seekReadMS,seekWaitMS,seekInterrupted,firstReadMS,firstWaitMS,firstInterrupted,presentReadMS,presentWaitMS,presentInterrupted,failureKind
  case ioStarted,ioFinished,ioCancelled,ioFailed,ioInFlight,ioPeak,ioOld,ioOldRemaining,ioOldMS,ioMaxMS
  case logFailures,logDropped,decoder,projection,layout,route,textureCount,textureMS,uploaded,coalesced
+ // Controller-reset diagnostics: fixed numeric fields, no absolute room positions.
+ case crPoseSource,crPoseAgeMS,crPreservePlacement
+ case crSequence,crPhase,crElapsedMS,crHasEntity,crHasParent,crExpectedParent,crHasScene,crHeadCached,crVideoAvailable,crCalibration
+ case crVisible,crMoving,crScrubbing,crAutoPitch,crManualPitch,crManualYaw,crManualRoll,cw00,cw01,cw02
+ case cw10,cw11,cw12,cw20,cw21,cw22,cp00,cp01,cp02,cp10
+ case cp11,cp12,cp20,cp21,cp22,cl00,cl01,cl02,cl10,cl11
+ case cl12,cl20,cl21,cl22,cqX,cqY,cqZ,cqW,cfX,cfY
+ case cfZ,cfW,chX,chY,chZ,chW,cvX,cvY,cvZ,cvW
+ case crLocalX,crLocalY,crLocalZ,crViewerX,crViewerY,crViewerZ,crOffsetX,crOffsetY,crOffsetZ
 }
 public struct PlaybackLogRecord:Codable,Sendable {
  public let event:PlaybackLogEvent
@@ -222,4 +232,46 @@ public final class PlaybackLogStore:@unchecked Sendable {
   if synchronize {try handle.synchronize()}
  }
  public func drainForTesting(){queue.sync{}}
+}
+
+
+/// Diagnostic-only sequence bookkeeping. Does not apply transforms or request tracking.
+public struct ControllerResetTrace:Sendable {
+ public private(set) var sequence=0
+ public private(set) var awaitingApply:Int?
+ public private(set) var awaitingFrame:Int?
+ public init() {}
+ @discardableResult public mutating func begin()->Int {sequence += 1;awaitingApply=sequence;awaitingFrame=nil;return sequence}
+ public mutating func applied()->Int? {guard let ticket=awaitingApply else{return nil};awaitingApply=nil;awaitingFrame=ticket;return ticket}
+ public mutating func nextFrame(ticket:Int)->Bool {guard awaitingFrame==ticket else{return false};awaitingFrame=nil;return true}
+ public mutating func cancel(){awaitingApply=nil;awaitingFrame=nil}
+}
+public enum ControllerResetLogPhase:Int,Sendable {case before=0,applied=1,nextSceneUpdate=2}
+/// Matrix linear blocks only (rotation and any scale): no absolute room/device positions or arbitrary text.
+public enum ControllerResetLog {
+ public static func values(sequence:Int,phase:ControllerResetLogPhase,world:simd_float4x4?,parent:simd_float4x4?,local:simd_float4x4?,
+                           intended:simd_quatf,frame:simd_quatf,cachedHead:simd_quatf?,video:simd_quatf?,
+                           localPosition:SIMD3<Float>?,cachedViewer:SIMD3<Float>,offset:SIMD3<Float>)->[PlaybackLogField:Double] {
+  var v:[PlaybackLogField:Double]=[.crSequence:Double(sequence),.crPhase:Double(phase.rawValue),.crHasEntity:world == nil ? 0:1,
+      .crHasParent:parent == nil ? 0:1,.crHeadCached:cachedHead == nil ? 0:1,.crVideoAvailable:video == nil ? 0:1]
+  func matrix(_ m:simd_float4x4?,_ keys:[PlaybackLogField]) {
+   guard let m else{return}
+   for row in 0..<3 {for column in 0..<3 {v[keys[row*3+column]]=Double(m[column][row])}}
+  }
+  func quaternion(_ q:simd_quatf?,_ keys:[PlaybackLogField]) {
+   guard let q else{return}
+   for i in 0..<4 {v[keys[i]]=Double(q.vector[i])}
+  }
+  func vector(_ p:SIMD3<Float>?,_ keys:[PlaybackLogField]) {
+   guard let p else{return}
+   for i in 0..<3 {v[keys[i]]=Double(p[i])}
+  }
+  matrix(world,[.cw00,.cw01,.cw02,.cw10,.cw11,.cw12,.cw20,.cw21,.cw22])
+  matrix(parent,[.cp00,.cp01,.cp02,.cp10,.cp11,.cp12,.cp20,.cp21,.cp22])
+  matrix(local,[.cl00,.cl01,.cl02,.cl10,.cl11,.cl12,.cl20,.cl21,.cl22])
+  quaternion(intended,[.cqX,.cqY,.cqZ,.cqW]);quaternion(frame,[.cfX,.cfY,.cfZ,.cfW])
+  quaternion(cachedHead,[.chX,.chY,.chZ,.chW]);quaternion(video,[.cvX,.cvY,.cvZ,.cvW])
+  vector(localPosition,[.crLocalX,.crLocalY,.crLocalZ]);vector(cachedViewer,[.crViewerX,.crViewerY,.crViewerZ]);vector(offset,[.crOffsetX,.crOffsetY,.crOffsetZ])
+  return v
+ }
 }

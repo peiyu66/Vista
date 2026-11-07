@@ -218,33 +218,50 @@ final class VistaUITests:XCTestCase {
         app.buttons["immersiveStop"].tap()
         XCTAssertTrue(app.buttons["entry-控制器互動測試.mp4"].waitForExistence(timeout:15))
     }
-    @MainActor func testProgressTimeFollowsSeekAndStops() throws {
-        let app=fresh();app.buttons["emptyEdit"].tap();app.buttons["localDemoSource"].tap()
-        XCTAssertTrue(app.buttons["entry-播放測試"].waitForExistence(timeout:10));app.buttons["entry-播放測試"].tap()
-        app.buttons["addShortcut"].tap();app.buttons["editShortcuts"].tap()
-        app.buttons["entry-控制器互動測試.mp4"].tap()
-        XCTAssertTrue(app.buttons["immersiveSettings"].waitForExistence(timeout:25));app.buttons["immersiveSettings"].tap()
-        XCTAssertEqual(app.buttons["immersiveForward"].label,"前進 30 秒")
-        XCTAssertEqual(app.buttons["immersiveBack"].label,"後退 30 秒")
-        let pause=app.buttons["immersivePause"]
-        expectation(for:NSPredicate(format:"label == %@ AND enabled == true","暫停"),evaluatedWith:pause);waitForExpectations(timeout:15)
-        pause.tap()
-        let slider=app.sliders["playbackSeek"]
-        XCTAssertTrue(slider.waitForExistence(timeout:5));XCTAssertTrue(slider.isEnabled)
-        XCTAssertEqual(app.staticTexts["playbackDuration"].label,"02:00")
-        app.buttons["immersiveForward"].tap()
-        expectation(for:NSPredicate(format:"label == %@ AND enabled == true","播放"),evaluatedWith:pause);waitForExpectations(timeout:15)
-        let elapsed=app.staticTexts["playbackElapsed"].label
-        XCTAssertTrue(["00:29","00:30","00:31","00:32","00:33","00:34"].contains(elapsed),elapsed)
-        app.buttons["immersiveStop"].tap()
-        XCTAssertTrue(app.buttons["entry-控制器互動測試.mp4"].waitForExistence(timeout:15))
+    @MainActor func testPlaybackSpeedButtonsPauseResumeAndLimits() throws {
+        for large in [false,true] {
+            let app=openSystemFixture(extra:(large ? ["-UIPreferredContentSizeCategoryName","UICTContentSizeCategoryAccessibilityXXXL"]:[]))
+            let pause=app.buttons["immersivePause"],up=app.buttons["immersiveForward"],normal=app.buttons["immersiveBack"],speed=app.staticTexts["playbackSpeed"]
+            expectation(for:NSPredicate(format:"label == %@ AND enabled == true","暫停"),evaluatedWith:pause);waitForExpectations(timeout:20)
+            XCTAssertEqual(up.label,"加速 1 倍");XCTAssertEqual(normal.label,"恢復 1 倍速")
+            XCTAssertFalse(normal.isEnabled);XCTAssertTrue(up.isEnabled)
+            let controls=["immersivePrevious","immersiveBack","immersivePause","immersiveForward","immersiveNext"].map {app.buttons[$0]}
+            for index in 1..<controls.count {XCTAssertGreaterThan(controls[index].frame.midX,controls[index-1].frame.midX)}
+            XCTAssertTrue(app.sliders["playbackSeek"].exists)
+            pause.tap()
+            expectation(for:NSPredicate(format:"label == %@","1× · 暫停"),evaluatedWith:speed);waitForExpectations(timeout:5)
+            up.tap()
+            expectation(for:NSPredicate(format:"label == %@","2× · 暫停"),evaluatedWith:speed);waitForExpectations(timeout:5)
+            XCTAssertTrue(normal.isEnabled)
+            if up.isEnabled {
+                up.tap();expectation(for:NSPredicate(format:"label == %@","3× · 暫停"),evaluatedWith:speed);waitForExpectations(timeout:5)
+                XCTAssertFalse(up.isEnabled)
+            } else {XCTAssertTrue(app.staticTexts["playbackSpeedLimit"].exists)}
+            normal.tap()
+            expectation(for:NSPredicate(format:"label == %@","1× · 暫停"),evaluatedWith:speed);waitForExpectations(timeout:5)
+            XCTAssertFalse(normal.isEnabled)
+            up.tap();pause.tap()
+            expectation(for:NSPredicate(format:"label == %@","2×"),evaluatedWith:speed);waitForExpectations(timeout:10)
+            pause.tap()
+            expectation(for:NSPredicate(format:"label == %@","2× · 暫停"),evaluatedWith:speed);waitForExpectations(timeout:5)
+            XCTAssertTrue(app.sliders["playbackSeek"].isEnabled)
+            app.buttons["immersiveStop"].tap()
+            XCTAssertTrue(app.buttons["entry-控制器互動測試.mp4"].waitForExistence(timeout:15))
+            app.terminate()
+        }
     }
     @MainActor private func openSystemFixture(extra:[String]=[])->XCUIApplication {
         let app=fresh(extra:extra);app.buttons["emptyEdit"].tap();app.buttons["localDemoSource"].tap()
         XCTAssertTrue(app.buttons["entry-播放測試"].waitForExistence(timeout:10));app.buttons["entry-播放測試"].tap()
         app.buttons["addShortcut"].tap();app.buttons["editShortcuts"].tap()
         app.buttons["entry-控制器互動測試.mp4"].tap()
-        XCTAssertTrue(app.buttons["immersiveSettings"].waitForExistence(timeout:25));app.buttons["immersiveSettings"].tap()
+        let settings = app.buttons["immersiveSettings"]
+        XCTAssertTrue(settings.waitForExistence(timeout:25))
+        let projection = app.buttons["projection-equirectangular180"]
+        print("FIXTURE_SETTINGS_BEFORE_TAP", "visible", projection.exists, "preparing", app.progressIndicators["playbackPreparing"].exists)
+        // First-launch format preparation may already have opened this panel.
+        if !projection.exists { settings.tap() }
+        XCTAssertTrue(projection.waitForExistence(timeout:10))
         return app
     }
     @MainActor func testFisheyeGPUCandidateSwitchAndStop() throws {
@@ -265,8 +282,8 @@ final class VistaUITests:XCTestCase {
         try requireDiagnosticUI()
         let app=openSystemFixture(extra:["--system-renderer-probe"])
         app.buttons["projection-equirectangular180"].tap()
-        XCTAssertEqual(app.buttons["immersiveForward"].label,"前進 30 秒")
-        XCTAssertEqual(app.buttons["immersiveBack"].label,"後退 30 秒")
+        XCTAssertEqual(app.buttons["immersiveForward"].label,"加速 1 倍")
+        XCTAssertEqual(app.buttons["immersiveBack"].label,"恢復 1 倍速")
         let pause=app.buttons["immersivePause"]
         expectation(for:NSPredicate(format:"label == %@ AND enabled == true","暫停"),evaluatedWith:pause);waitForExpectations(timeout:15)
         pause.tap()
@@ -317,8 +334,8 @@ final class VistaUITests:XCTestCase {
         app.buttons["addShortcut"].tap();app.buttons["editShortcuts"].tap()
         app.buttons["entry-\(file)"].tap()
         XCTAssertTrue(app.buttons["immersiveSettings"].waitForExistence(timeout:25));app.buttons["immersiveSettings"].tap()
-        XCTAssertEqual(app.buttons["immersiveForward"].label,"前進 30 秒")
-        XCTAssertEqual(app.buttons["immersiveBack"].label,"後退 30 秒")
+        XCTAssertEqual(app.buttons["immersiveForward"].label,"加速 1 倍")
+        XCTAssertEqual(app.buttons["immersiveBack"].label,"恢復 1 倍速")
         let pause=app.buttons["immersivePause"]
         expectation(for:NSPredicate(format:"label == %@ AND enabled == true","暫停"),evaluatedWith:pause);waitForExpectations(timeout:15)
         pause.tap()
@@ -343,7 +360,7 @@ final class VistaUITests:XCTestCase {
         app.buttons["immersiveStop"].tap()
         XCTAssertTrue(app.buttons["entry-控制器互動測試.mp4"].waitForExistence(timeout:15))
     }
-    @MainActor func testSystemCandidateRepeatedSeekAndStop() throws {
+    @MainActor func testSystemCandidateRepeatedSpeedAndStop() throws {
         try requireDiagnosticUI()
         let app=fresh();app.buttons["emptyEdit"].tap();app.buttons["localDemoSource"].tap()
         XCTAssertTrue(app.buttons["entry-播放測試"].waitForExistence(timeout:10));app.buttons["entry-播放測試"].tap()
@@ -354,8 +371,8 @@ final class VistaUITests:XCTestCase {
         // Explicitly establish the system renderer projection for this independent test.
         let projection=app.buttons["projection-equirectangular180"]
         XCTAssertTrue(projection.waitForExistence(timeout:5));projection.tap()
-        XCTAssertEqual(app.buttons["immersiveForward"].label,"前進 30 秒")
-        XCTAssertEqual(app.buttons["immersiveBack"].label,"後退 30 秒")
+        XCTAssertEqual(app.buttons["immersiveForward"].label,"加速 1 倍")
+        XCTAssertEqual(app.buttons["immersiveBack"].label,"恢復 1 倍速")
         let pause=app.buttons["immersivePause"]
         expectation(for:NSPredicate(format:"label == %@ AND enabled == true","暫停"),evaluatedWith:pause);waitForExpectations(timeout:15)
         pause.tap()
@@ -371,7 +388,7 @@ final class VistaUITests:XCTestCase {
         expectation(for:NSPredicate(format:"label CONTAINS %@","呈現通知"),evaluatedWith:timings);waitForExpectations(timeout:5)
         if app.staticTexts["systemVideoCandidate"].label.contains("AVPlayer") {
             XCTAssertTrue(timings.label.contains("系統管理（未知）"))
-            XCTAssertTrue(timings.label.contains("已緩衝："))
+            // Rate changes do not issue a seek; no seek-buffer metric is expected.
             #if VISTA_ANON_IO_EXPERIMENT
             XCTAssertTrue(timings.label.contains("呈現 I/O 起"),timings.label)
             XCTAssertTrue(timings.label.contains("溢0"),timings.label)
@@ -395,8 +412,8 @@ final class VistaUITests:XCTestCase {
         app.buttons["entry-控制器互動測試.mp4"].tap()
         XCTAssertTrue(app.buttons["immersiveSettings"].waitForExistence(timeout:20))
         app.buttons["immersiveSettings"].tap()
-        XCTAssertEqual(app.buttons["immersiveForward"].label,"前進 30 秒")
-        XCTAssertEqual(app.buttons["immersiveBack"].label,"後退 30 秒")
+        XCTAssertEqual(app.buttons["immersiveForward"].label,"加速 1 倍")
+        XCTAssertEqual(app.buttons["immersiveBack"].label,"恢復 1 倍速")
         let pause=app.buttons["immersivePause"]
         expectation(for:NSPredicate(format:"label == %@ AND enabled == true","暫停"),evaluatedWith:pause)
         waitForExpectations(timeout:15)
@@ -479,6 +496,33 @@ final class VistaUITests:XCTestCase {
         right.coordinate(withNormalizedOffset:CGVector(dx:0.65,dy:0.25)).tap()
         XCTAssertTrue((zero.value as? String ?? "").contains("yaw=15"))
     }
+    @MainActor func testAutomaticAndManualDirectionTotal() throws {
+        for large in [false, true] {
+            let app=XCUIApplication()
+            app.launchArguments=["--controller-layout-review", "--review-auto-pitch"]+(large ? ["--review-large-text"]:[])
+            app.launch()
+            let zero=app.buttons["directionZero"], vertical=app.staticTexts["manualVerticalAngle"]
+            XCTAssertTrue(zero.waitForExistence(timeout:10))
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"enabled == true"),object:zero)],timeout:5),.completed)
+            XCTAssertEqual(vertical.label,"+15°")
+            XCTAssertEqual(zero.value as? String,"yaw=0,pitch=15,roll=0")
+            app.buttons["directionUp"].tap(); XCTAssertEqual(vertical.label,"+30°")
+            app.buttons["directionRight"].tap()
+            XCTAssertTrue(app.staticTexts["manualHorizontalAngle"].label.contains("+15°"))
+            XCTAssertEqual(zero.value as? String,"yaw=15,pitch=30,roll=0")
+            app.buttons["directionLeft"].tap()
+            app.buttons["directionDown"].tap(); XCTAssertEqual(vertical.label,"+15°")
+            zero.tap(); XCTAssertEqual(vertical.label,"0°")
+            XCTAssertEqual(zero.value as? String,"yaw=0,pitch=0,roll=0")
+            zero.tap(); XCTAssertEqual(vertical.label,"0°")
+            app.buttons["directionUp"].tap(); XCTAssertEqual(vertical.label,"+15°")
+            app.buttons["recenterVideo"].tap()
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"label == '0°'"),object:vertical)],timeout:5),.completed)
+            XCTAssertEqual(zero.value as? String,"yaw=0,pitch=0,roll=0")
+            app.terminate()
+        }
+    }
+
     @MainActor func testCurvedDirectionAndResetRegions() throws {
         for large in [false,true] {
             let app=XCUIApplication();app.launchArguments=["--controller-layout-review"]+(large ? ["--review-large-text"]:[]);app.launch()
@@ -487,7 +531,7 @@ final class VistaUITests:XCTestCase {
             XCTAssertTrue(app.staticTexts["videoFormatHeading"].exists)
             XCTAssertTrue(app.staticTexts["manualHorizontalAngle"].label.contains("0°"))
             XCTAssertEqual(app.staticTexts["manualVerticalAngle"].label,"0°")
-            XCTAssertTrue(app.staticTexts["resetControllerGestureHint"].label.contains("三擊重設影片方向"))
+            XCTAssertTrue(app.staticTexts["resetControllerGestureHint"].label.contains("長按重設影片方向"))
             XCTAssertEqual(app.buttons["clearVRFormat"].label,"重設影片格式")
             for id in ["directionUp","directionLeft","directionRight","directionDown","recenterVideo","resetControllerPosition","clearVRFormat"] {XCTAssertTrue(app.buttons[id].isHittable)}
             app.buttons["directionUp"].tap();XCTAssertTrue((zero.value as? String ?? "").contains("pitch=15"))
@@ -505,6 +549,9 @@ final class VistaUITests:XCTestCase {
             XCTAssertEqual(app.buttons["projection-equirectangular180"].value as? String,"已選取")
             XCTAssertEqual(app.buttons["layout-sideBySide"].value as? String,"已選取")
             zero.tap();XCTAssertEqual(zero.value as? String,"yaw=0,pitch=0,roll=0")
+            let image=XCTAttachment(screenshot:XCUIScreen.main.screenshot())
+            image.name=large ? "Accepted-controller-large":"Accepted-controller-normal"
+            image.lifetime = .keepAlways;add(image)
             app.terminate()
         }
     }

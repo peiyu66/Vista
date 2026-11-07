@@ -55,6 +55,9 @@ enum BrowserWindowPreferences {
         }.environment(vr).windowStyle(.plain).defaultSize(initialSize).windowResizability(.contentMinSize)
         ImmersiveSpace(id:"VistaVR") {VRImmersiveView().environment(vr)}
             .immersionStyle(selection:.constant(.full),in:.full)
+            // Scene-scoped visual preference only; native gesture input stays unchanged.
+            // Dismissing VistaVR removes this preference, restoring system hand visibility.
+            .upperLimbVisibility(.hidden)
     }
 }
 #if DEBUG

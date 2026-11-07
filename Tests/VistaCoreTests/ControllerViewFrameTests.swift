@@ -83,11 +83,11 @@ import simd
 
 struct BackgroundInteractionTests {
     @Test func exclusiveResolvedEventsAndBlockedInteractions() {
-        for taps in [0,1,2,3,4] {
+        for event:VRBackgroundInteraction.Event in [.tap(count:0),.tap(count:1),.tap(count:2),.tap(count:3),.tap(count:4),.longPress] {
             for active in [false,true] {for background in [false,true] {for moving in [false,true] {for scrubbing in [false,true] {for pattern in [false,true] {
-                let action=VRBackgroundInteraction.action(taps:taps,isBackground:background,active:active,testPattern:pattern,moving:moving,scrubbing:scrubbing)
-                if !active || !background || moving || scrubbing || pattern || taps == 0 || taps == 4 {#expect(action == .none)}
-                else {#expect(action == (taps == 3 ? .recenterVideo : (taps == 2 ? .reset:.toggle)))}
+                let action=VRBackgroundInteraction.action(event:event,isBackground:background,active:active,testPattern:pattern,moving:moving,scrubbing:scrubbing)
+                if !active || !background || moving || scrubbing || pattern || [.tap(count:0),.tap(count:3),.tap(count:4)].contains(event) {#expect(action == .none)}
+                else {#expect(action == (event == .longPress ? .recenterVideo : (event == .tap(count:2) ? .reset:.toggle)))}
             }}}}}
         }
     }

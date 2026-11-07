@@ -334,3 +334,162 @@ struct ControllerContinuityTests {
  }
 }
 #endif
+
+
+@MainActor struct VRInitialViewCompensationTests {
+    private func videoOrientation(_ calibration: VRViewCalibration, manual: VRSettings = VRSettings()) -> simd_quatf {
+        let total = calibration.videoSettings(for: manual)
+        return calibration.pose!.orientation * VRInitialPose.manualRotation(yaw: total.yawDegrees, pitch: total.pitchDegrees, roll: total.rollDegrees)
+    }
+
+    @Test func upwardThresholdIsAnExplicitHeadElevationHypothesis() {
+        for yaw: Float in [0, 0.7, -.pi / 2] {
+            for roll: Float in [0, .pi / 2, -.pi / 3] {
+                for (degrees, expected): (Float, Double) in [(0, 0), (29.9, 0), (30, 15), (30.1, 15), (45, 15), (60, 15), (90, 15)] {
+                    let sample = pose(yaw: yaw, pitch: degrees * .pi / 180, roll: roll)
+                    #expect(VRInitialViewCompensation.pitchDegrees(for: sample) == expected)
+                }
+            }
+        }
+        #expect(VRInitialViewCompensation.pitchDegrees(for: pose(pitch: -.pi / 3)) == 0)
+        #expect(VRInitialViewCompensation.pitchDegrees(for: pose(roll: .pi / 2)) == 0)
+    }
+
+    @Test func newFileAddsOneLocalPitchWithoutChangingRawPoseOrFollowingHead() async {
+        let calibration = VRViewCalibration()
+        let raw = pose(yaw: 0.7, pitch: .pi / 3, roll: 0.2)
+        let source = PoseSource(raw)
+        #expect(await calibration.capture(using: source))
+        #expect(calibration.automaticPitchDegrees == 15)
+        #expect(calibration.pose!.position == raw.position)
+        #expect(calibration.pose!.orientation.vector == raw.orientation.vector)
+        let extra = VRInitialPose.manualRotation(yaw: 0, pitch: 15, roll: 0)
+        let expected = raw.orientation * extra
+        #expect(simd_distance(videoOrientation(calibration).act([0, 0, -1]), expected.act([0, 0, -1])) < 0.00001)
+        // A further manual up press shares the same total-pitch axis as the readout.
+        var manual = VRSettings(); manual.pitchDegrees = 15
+        let expected30 = raw.orientation * VRInitialPose.manualRotation(yaw: 0, pitch: 30, roll: 0)
+        #expect(simd_distance(videoOrientation(calibration, manual: manual).act([0, 0, -1]), expected30.act([0, 0, -1])) < 0.00001)
+        await source.change(pose())
+        #expect(!(await calibration.capture(using: source)))
+        #expect(calibration.automaticPitchDegrees == 15)
+        #expect(await source.calls == 1)
+    }
+
+    @Test func adjacentFilesReevaluateRatherThanAccumulateOrReuseOffset() async {
+        let calibration = VRViewCalibration(), source = PoseSource(nil)
+        for (pitch, expected): (Float, Double) in [(.pi / 3, 15), (0, 0), (.pi / 2, 15)] {
+            calibration.resetForNewFile()
+            #expect(calibration.automaticPitchDegrees == 0 && calibration.pose == nil)
+            await source.change(pose(pitch: pitch))
+            #expect(await calibration.capture(using: source))
+            #expect(calibration.automaticPitchDegrees == expected)
+        }
+        #expect(await source.calls == 3)
+    }
+
+    @Test func manualRecenterKeepsPreviousBasisOnFailureAndHasNoExtraOffsetOnSuccess() async {
+        let calibration = VRViewCalibration(), source = PoseSource(pose(pitch: .pi / 3))
+        #expect(await calibration.capture(using: source))
+        let oldVideo = videoOrientation(calibration).vector
+        await source.change(nil)
+        calibration.requestRecenter()
+        #expect(!(await calibration.capture(using: source)))
+        #expect(videoOrientation(calibration).vector == oldVideo)
+        #expect(calibration.automaticPitchDegrees == 15)
+        let recentered = pose(pitch: .pi / 2)
+        await source.change(recentered)
+        calibration.requestRecenter()
+        #expect(await calibration.capture(using: source))
+        #expect(calibration.automaticPitchDegrees == 0)
+        #expect(simd_distance(videoOrientation(calibration).act([0, 0, -1]), recentered.orientation.act([0, 0, -1])) < 0.00001)
+    }
+
+    @Test func staleAcquisitionCannotAddCompensationToAnotherFile() async {
+        for cancel in [false, true] {
+            let calibration = VRViewCalibration(), source = GatedPoseSource()
+            let task = Task { await calibration.capture(using: source) }
+            await source.waitUntilStarted()
+            if cancel { calibration.cancel(); task.cancel() } else { calibration.resetForNewFile() }
+            await source.complete(pose(pitch: .pi / 2))
+            #expect(!(await task.value))
+            #expect(calibration.pose == nil && calibration.automaticPitchDegrees == 0)
+        }
+    }
+
+    @Test func inputIsBlockedUntilPoseAndFilePreparationCannotResetEdits() async {
+        let calibration = VRViewCalibration(), source = GatedPoseSource()
+        #expect(!calibration.allowsManualDirection(isLoading: false))
+        let task = Task { await calibration.capture(using: source) }
+        await source.waitUntilStarted()
+        #expect(!calibration.allowsManualDirection(isLoading: false))
+        await source.complete(pose(pitch: .pi / 3))
+        #expect(await task.value)
+        #expect(!calibration.allowsManualDirection(isLoading: true))
+        #expect(calibration.allowsManualDirection(isLoading: false))
+        calibration.requestRecenter()
+        #expect(!calibration.allowsManualDirection(isLoading: false))
+        #expect(!(await calibration.capture(using: PoseSource(nil))))
+        #expect(calibration.allowsManualDirection(isLoading: false))
+        #expect(!calibration.allowsManualDirection(isLoading: true))
+    }
+}
+
+@MainActor struct VRTotalDirectionTests {
+    @Test func displayedAndRenderedAnglesShareOneOffsetForAllAxesAndProjectionRoutes() async {
+        let calibration = VRViewCalibration()
+        #expect(await calibration.capture(using: PoseSource(pose(pitch: .pi / 3))))
+        for projection in VRProjection.allCases {
+            for yaw: Double in [-375, -180, -15, 0, 15, 180, 375] {
+                for pitch: Double in [-390, -195, -180, -30, -15, 0, 15, 75, 165, 180, 345, 375] {
+                    var manual = VRSettings(); manual.projection = projection; manual.layout = .overUnder
+                    manual.yawDegrees = yaw; manual.pitchDegrees = pitch; manual.rollDegrees = 15
+                    let total = calibration.videoSettings(for: manual)
+                    #expect(total.yawDegrees == yaw && total.pitchDegrees == pitch + 15 && total.rollDegrees == 15)
+                    #expect(total.projection == projection && total.layout == .overUnder)
+                    #expect(manual.pitchDegrees == pitch) // Derived settings never mutate preferences.
+                    let rendered = VRInitialPose.manualRotation(yaw: total.yawDegrees, pitch: total.pitchDegrees, roll: total.rollDegrees)
+                    let displayed = VRInitialPose.manualRotation(yaw: Double(VRManualAngleDisplay.normalized(total.yawDegrees)), pitch: Double(VRManualAngleDisplay.normalized(total.pitchDegrees)), roll: Double(VRManualAngleDisplay.normalized(total.rollDegrees)))
+                    for axis: SIMD3<Float> in [[0,0,-1], [0,1,0], [1,0,0]] {
+                        #expect(simd_distance(rendered.act(axis), displayed.act(axis)) < 0.00001)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test func totalReadoutTracksManualStepsZeroRepeatedZeroAndNewFile() async {
+        let calibration = VRViewCalibration(), source = PoseSource(pose(pitch: .pi / 3))
+        #expect(await calibration.capture(using: source))
+        var manual = VRSettings()
+        #expect(VRManualAngleDisplay.text(calibration.videoSettings(for: manual).pitchDegrees) == "+15°")
+        manual.pitchDegrees += 15
+        #expect(VRManualAngleDisplay.text(calibration.videoSettings(for: manual).pitchDegrees) == "+30°")
+        manual.pitchDegrees -= 30
+        #expect(VRManualAngleDisplay.text(calibration.videoSettings(for: manual).pitchDegrees) == "0°")
+        manual.yawDegrees = -15; manual.rollDegrees = 15
+        let raw = calibration.pose!.orientation.vector
+        calibration.resetDirection(&manual)
+        let zero = calibration.videoSettings(for: manual)
+        #expect(zero.yawDegrees == 0 && zero.pitchDegrees == 0 && zero.rollDegrees == 0)
+        #expect(calibration.automaticPitchDegrees == 0 && calibration.pose!.orientation.vector == raw)
+        calibration.resetDirection(&manual)
+        #expect(calibration.videoSettings(for: manual) == zero)
+        #expect(await source.calls == 1) // Zero never samples.
+        manual.pitchDegrees += 15
+        #expect(VRManualAngleDisplay.text(calibration.videoSettings(for: manual).pitchDegrees) == "+15°")
+        calibration.resetForNewFile(); manual = VRSettings()
+        #expect(await calibration.capture(using: source))
+        #expect(calibration.videoSettings(for: manual).pitchDegrees == 15)
+    }
+
+    @Test func unavailablePoseHasNoAutomaticOffsetAndZeroStillWorks() async {
+        let calibration = VRViewCalibration()
+        #expect(!(await calibration.capture(using: PoseSource(nil))))
+        var manual = VRSettings(); manual.yawDegrees = 15; manual.pitchDegrees = -15
+        #expect(calibration.videoSettings(for: manual) == manual)
+        calibration.resetDirection(&manual)
+        #expect(calibration.videoSettings(for: manual) == VRSettings())
+        #expect(calibration.pose == nil && calibration.status == .unavailable)
+    }
+}

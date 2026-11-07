@@ -18,6 +18,23 @@ import VistaCore
     public private(set) var preparationText = ""
     public private(set) var isSeeking = false
     public private(set) var isBuffering = false
+    public private(set) var speedStatus=PlaybackSpeedStatus()
+    public private(set) var speedMessage:String?
+    public var playbackGeneration:UUID {generation}
+    public var canIncreaseSpeed:Bool {isPlaying && !isPreparing && speedStatus.canIncrease}
+    public var canResetSpeed:Bool {isPlaying && !isPreparing && speedStatus.canReset}
+    public func increaseSpeed() {changeSpeed(to:speedStatus.selected+1)}
+    public func resetSpeed() {changeSpeed(to:1)}
+    private func changeSpeed(to rate:Int) {
+        guard isPlaying,!isPreparing else{return}
+        #if VISTA_NATIVE_PLAYER_EXPERIMENT
+        guard let nativeSession else{return}
+        guard nativeSession.setSpeed(rate) else {
+            if rate<=3 {speedMessage="此影片不支援 \(rate)× 播放。"};return
+        }
+        speedStatus=nativeSession.speedStatus;speedMessage=nil
+        #endif
+    }
     @ObservationIgnored private var submittedSession:UUID?
     public func markRendererSubmitted(session:UUID,enqueuedAt:Double?=nil) {
         guard !isPreparing,isPlaying,pixelFrame?.session==session,submittedSession != session else{return}
@@ -69,7 +86,7 @@ import VistaCore
     public func play(file: MediaFile, source: any MediaByteSource, sourceKind:PlaybackSourceKind = .unknown) {
         self.sourceKind=sourceKind
         self.file = file; self.source = source
-        trackInfo = nil
+        trackInfo = nil;speedStatus=PlaybackSpeedStatus();speedMessage=nil
         launch(at: 0, paused: false)
     }
     public func seek(to requested: Double) {seek(to:requested,minimum:0)}
@@ -121,6 +138,7 @@ import VistaCore
     public func stop() {
         if isPlaying || isPreparing {persistDiagnostics(event:.stopped)}
         nativeSession?.stop()
+        speedStatus=PlaybackSpeedStatus();speedMessage=nil
         finishMetrics()
         generation = UUID()
         timeline?.stopAudio()
@@ -224,6 +242,7 @@ import VistaCore
     private func launchNative(file:MediaFile,source:any MediaByteSource,startAt:Double,startPaused:Bool) {
         let old=task;nativeSession?.stop();old?.cancel();finishMetrics()
         let id=UUID();generation=id
+        speedStatus=PlaybackSpeedStatus();speedMessage=nil
         isPlaying=true;isPreparing=true;isPaused=startPaused;isBuffering=false;frame=nil;pixelFrame=nil
         position=0;message="正在準備影片…";preparationText="";submittedSession=nil
         preparationStart=ProcessInfo.processInfo.systemUptime;preparationMarks=[]
@@ -238,13 +257,15 @@ import VistaCore
                 },onState:{ [weak self] state in
                     guard let self,self.generation==id else{return}
                     self.isBuffering = state == .waiting
-                    self.isPaused = state == .paused
+                    self.isPaused = session.isPlaybackPaused
                     self.message = state == .waiting ? "緩衝中…":state == .seeking ? "正在跳轉…":state == .paused ? "已暫停":"AVPlayer 系統播放"
                 },onFrame:{ [weak self] next in
                     guard let self,self.generation==id else{return}
                     if self.isPreparing {self.markPreparation("首幀交付")}
                     self.diagnosticsText=session.diagnosticsText
                     self.pixelFrame=next;self.position=next.time;self.isPreparing=false;self.isSeeking=false
+                },onSpeed:{ [weak self] speed in
+                    guard let self,self.generation==id else{return};self.speedStatus=speed
                 })
                 if generation==id {message="播放結束"}
             }catch {
@@ -258,7 +279,7 @@ import VistaCore
                     message=failure == .source ? "來源讀取失敗，請確認連線後重新播放。":failure == .stalled ? "資料等待逾時，請停止後重試。":"系統播放器無法播放這個檔案。"
                 }else if !(error is CancellationError) {message="系統播放失敗，請停止後重試。"}
             }
-            if generation==id {isPlaying=false;isPreparing=false;isSeeking=false;isBuffering=false;nativeSession=nil;task=nil}
+            if generation==id {isPlaying=false;isPreparing=false;isSeeking=false;isBuffering=false;speedStatus=PlaybackSpeedStatus();speedMessage=nil;nativeSession=nil;task=nil}
         }
     }
     #endif
