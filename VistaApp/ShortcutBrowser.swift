@@ -32,9 +32,9 @@ import Observation
     private var refreshFixtureRevision=0
     func refreshDirectory() {
         guard let source else{return}
-        let path=components,session=sessions[sessionKey(source.id,path)]
+        let path=components,session=sessions.existingSession(for:sessionKey(source.id,path))
         cancelListing();refreshTagSort=sort.field == .tags
-        entries=[];nextOffset=0;error=nil;notice=nil;selection=nil
+        entries=[];nextOffset=0;error=nil;notice=nil;selection=nil;listingSession=nil
         parentEntries=[];parentOffset=belowShortcutRoot ? 0:nil;parentError=nil
         sampledFolders.removeAll();bonjourAttempted.remove(source.id)
         let token=generation
@@ -64,7 +64,7 @@ import Observation
         let samples=Array(entries.prefix(TagSupportEvidence.sampleLimit)).map {
             (mediaPath(path,source:source)+[$0.name]).joined(separator:"/")
         }
-        let session=sessions[sessionKey(source.id,path)]
+        let session=sessions.existingSession(for:sessionKey(source.id,path))
         let checkBonjour = !bonjourAttempted.contains(source.id)
         let checkSamples = !path.isEmpty && !samples.isEmpty && !sampledFolders.contains(key) && session != nil
         guard checkBonjour || checkSamples else{return}
@@ -88,7 +88,7 @@ import Observation
             }
             if !positive,checkSamples,let session {
                 positive=(try? await session.hasFinderEvidence(paths:samples)) == true
-                guard !Task.isCancelled,token==generation else{return}
+                guard !Task.isCancelled,token==generation,sessions.containsSession(session,for:sessionKey(source.id,path)) else{return}
                 if sampledFolders.count>=64 {sampledFolders.removeAll()}
                 sampledFolders.insert(key)
             }
@@ -166,7 +166,8 @@ import Observation
     private var generation=0
     private var request: Task<Void,Never>?
     private var connectionTask: Task<Void,Never>?
-    private var sessions: [String:SMBDirectoryProvider]=[:]
+    private let sessions=DirectoryReadRecovery<SMBDirectoryProvider>()
+    private var listingSession:SMBDirectoryProvider?
     private var localProviders:[UUID:LocalDirectoryProvider]=[:]
     private var normalContext: (UUID,[String],UUID?)?
     private let testing:Bool
@@ -296,14 +297,18 @@ import Observation
         connectionTask?.cancel(); connecting=false; shortcutID=nil; showingConnection=false; password="";manualShare=""
         browse(source:item.id,path:[])
     }
+    private var diagnosticNavigation:UInt64=0
     func browse(source id: UUID,path: [String]) {
         localFolderTitle=nil
         guard path.allSatisfy(SavedLocations.validComponent) else { return }
-        cancelListing(); sourceID=id;components=path;entries=[];nextOffset=0;error=nil;notice=nil;selection=nil
+        let nextNavigation=LifecycleDiagnostics.shared.nextID(),target=saved.sources.first{$0.id==id}
+        LifecycleDiagnostics.shared.record(.browseIntent,[.navigation:Double(nextNavigation),.generation:Double(generation+1),.sourceKind:target == nil ? 3:target?.isDemo == true ? 0:target?.kind == .local ? 2:1])
+        cancelListing(); sourceID=id;components=path;entries=[];nextOffset=0;error=nil;notice=nil;selection=nil;listingSession=nil
         parentEntries=[];parentOffset=belowShortcutRoot ? 0:nil;parentError=nil
+        diagnosticNavigation=nextNavigation
         loadMore()
     }
-    private func cancelListing() { refreshTagSort=false; capabilityTask?.cancel();capabilityTask=nil; tagRevision += 1;tagTask?.cancel();tagsLoading=false;tagSortMessage=nil;tagProgress=0;tagUnresolved=0;tagsPaused=false;generation += 1;request?.cancel();parentRequest?.cancel();loading=false;parentLoading=false }
+    private func cancelListing() { LifecycleDiagnostics.shared.record(.cancelRequested,[.navigation:Double(diagnosticNavigation),.generation:Double(generation)]);refreshTagSort=false; capabilityTask?.cancel();capabilityTask=nil; tagRevision += 1;tagTask?.cancel();tagsLoading=false;tagSortMessage=nil;tagProgress=0;tagUnresolved=0;tagsPaused=false;generation += 1;request?.cancel();parentRequest?.cancel();loading=false;parentLoading=false }
     func back() { guard let sourceID,canGoBack else {return};browse(source:sourceID,path:Array(components.dropLast())) }
     func open(_ entry: FileEntry) {
         guard entries.contains(entry), let sourceID else {return}
@@ -316,7 +321,7 @@ import Observation
             if source.kind == .local {
                 do {mediaSource=try localProvider(source)} catch {notice="請在編輯模式重新授權本機資料夾。";return}
             } else if source.isDemo {mediaSource=DemoMediaSource()}
-            else if let session=sessions[sessionKey(source.id,components)] {mediaSource=session}
+            else if let session=sessions.existingSession(for:sessionKey(source.id,components)) {mediaSource=session}
             else {notice="連線已失效，請重新開啟資料夾。";return}
             notice=nil
             playback=BrowserPlayback(selection:PlaybackSelection(directory:directory,file:entry),source:mediaSource,isDemo:source.isDemo,
@@ -355,9 +360,18 @@ import Observation
     func loadMore() {
         guard !loading,let offset=nextOffset,let source else {return}
         loading=true;error=nil;let token=generation;let path=components
+        let traceID=LifecycleDiagnostics.shared.nextID(),navigation=diagnosticNavigation
+        let traceValues:[LifecycleField:Double]=[.scope:1,.request:Double(traceID),.navigation:Double(navigation),.generation:Double(token)]
+        LifecycleDiagnostics.shared.record(.requestStart,traceValues)
         request=Task {
+          LifecycleDiagnostics.shared.record(.taskEntered,traceValues.merging([.cancelled:Task.isCancelled ? 1:0]){_,new in new})
+          defer {LifecycleDiagnostics.shared.record(.taskExited,traceValues.merging([.cancelled:Task.isCancelled ? 1:0]){_,new in new})}
+          await LifecycleContext.$request.withValue(LifecycleRequestContext(navigation:navigation,request:traceID)) {
             do {
+                try Task.checkCancellation()
+                guard token==generation else {throw CancellationError()}
                 let page:DirectoryPage
+                var appliedOffset=offset
                 var resolvedLocalTitle:String?
                 if testing,ProcessInfo.processInfo.arguments.contains("--refresh-directory-fixture") {
                     let revision=refreshFixtureRevision
@@ -381,6 +395,7 @@ import Observation
                         names=["Videos","Movies"]
                     } else {
                         guard let secret=try credentials.load(for:source.credentialID ?? source.id) else{throw SMBCredentialStore.Failure.unavailable}
+                        LifecycleDiagnostics.shared.providerBoundary(.willCall,operation:.listShares)
                         names=try await SMBShareEnumerator.shared.shares(server:source.server,username:source.username,password:secret)
                     }
                     page=DirectoryPage(entries:names.map{FileEntry($0,.directory)})
@@ -388,22 +403,68 @@ import Observation
                     page=try await DemoDirectoryProvider().page(at:DirectoryPath(mediaPath(path,source:source)),offset:offset,sort:sort.field == .tags ? DirectorySort():sort)
                 } else {
                     if testing {throw SMBCredentialStore.Failure.unavailable}
-                    let session:SMBDirectoryProvider
-                    if let existing=sessions[sessionKey(source.id,path)] {session=existing}
-                    else {
-                        guard let secret=try credentials.load(for:source.credentialID ?? source.id) else {throw SMBCredentialStore.Failure.unavailable}
-                        session=try await SMBDirectoryProvider.connect(input:ConnectionInput(server:source.server,share:path.first ?? "",username:source.username),password:secret)
-                        guard !Task.isCancelled, token==generation else {await session.disconnect();return}
-                        sessions[sessionKey(source.id,path)]=session
-                        bonjourAttempted.remove(source.id);sampledFolders.removeAll()
+                    let key=sessionKey(source.id,path),requestedSort=sort.field == .tags ? DirectorySort():sort
+                    let stillCurrent:@MainActor @Sendable () ->Bool = { [self] in
+                        guard !Task.isCancelled,token==generation,sourceID==source.id,components==path,
+                              let latest=saved.sources.first(where:{$0.id==source.id}) else{return false}
+                        return latest.kind==source.kind && latest.server==source.server && latest.share==source.share &&
+                            latest.username==source.username && latest.credentialID==source.credentialID
                     }
-                    page=try await session.page(at:DirectoryPath(mediaPath(path,source:source)),offset:offset,sort:sort.field == .tags ? DirectorySort():sort)
+                    guard stillCurrent() else {throw CancellationError()}
+                    LifecycleDiagnostics.shared.record(.sessionLookup,traceValues)
+                    let existing=sessions.existingSession(for:key)
+                    LifecycleDiagnostics.shared.record(existing == nil ? .sessionCreateRequested:.sessionReused,traceValues)
+                    // An offset belongs to the provider snapshot that produced the displayed rows.
+                    let restartSnapshot=offset>0 && (listingSession == nil || existing !== listingSession)
+                    let requestedOffset=restartSnapshot ? 0:offset
+                    let result=try await sessions.readPage(key:key,offset:requestedOffset,isCurrent:stillCurrent,
+                        makeInitial:{ [self] in
+                            guard stillCurrent() else {throw CancellationError()}
+                            guard let secret=try credentials.load(for:source.credentialID ?? source.id) else {throw SMBCredentialStore.Failure.unavailable}
+                            LifecycleDiagnostics.shared.providerBoundary(.willCall,operation:.connect)
+                            return try await SMBDirectoryProvider.connect(input:ConnectionInput(server:source.server,share:path.first ?? "",username:source.username),password:secret)
+                        },makeRecovery:{ [self] in
+                            guard stillCurrent() else {throw CancellationError()}
+                            guard let secret=try credentials.load(for:source.credentialID ?? source.id) else {throw SMBCredentialStore.Failure.unavailable}
+                            LifecycleDiagnostics.shared.providerBoundary(.willCall,operation:.connect)
+                            return try await SMBDirectoryProvider.connectFreshForRecovery(input:ConnectionInput(server:source.server,share:path.first ?? "",username:source.username),password:secret)
+                        },read:{ session,pageOffset in
+                            guard stillCurrent() else {throw CancellationError()}
+                            LifecycleDiagnostics.shared.providerBoundary(.willCall,operation:.listDirectory)
+                            return try await session.page(at:DirectoryPath(mediaPath(path,source:source)),offset:pageOffset,sort:requestedSort)
+                        },retire:{session in try await session.retireForDirectoryRecovery()},
+                        shouldRecover:{ [self] error in
+                            // A listing must not take ownership of a player's live media source.
+                            playback == nil && SMBDirectoryProvider.recoveryDisposition(for:error).allowsFreshRecovery
+                        },onRecoveryStage:{ [self] stage in
+                            let phase:Int
+                            switch stage {
+                            case .started:
+                                phase=1
+                                // These calls may finish later; session identity/revisions reject their results.
+                                capabilityTask?.cancel();capabilityTask=nil;tagRevision += 1;tagTask?.cancel();tagsLoading=false
+                                parentRequest?.cancel();parentLoading=false;parentEntries=[];parentOffset=belowShortcutRoot ? 0:nil;parentError=nil
+                                sampledFolders.removeAll();bonjourAttempted.remove(source.id)
+                            case .retired:phase=2
+                            case .connected:phase=3
+                            case .succeeded:phase=4
+                            case .failed:phase=5
+                            case .discarded:phase=6
+                            }
+                            LifecycleDiagnostics.shared.record(.recoveryStage,traceValues.merging([.operation:3,.phase:Double(phase)]){_,new in new})
+                        })
+                    guard stillCurrent() else {throw CancellationError()}
+                    if restartSnapshot || result.restarted {entries=[];selection=nil;nextOffset=0;appliedOffset=0}
+                    listingSession=result.session
+                    if existing == nil || result.restarted {bonjourAttempted.remove(source.id);sampledFolders.removeAll()}
+                    page=result.page
                 }
-                guard !Task.isCancelled,token==generation else {return}
+                guard !Task.isCancelled,token==generation else {LifecycleDiagnostics.shared.record(.resultDiscarded,traceValues.merging([.outcome:Task.isCancelled ? 1:3]){_,new in new});return}
                 if source.kind == .local {localFolderTitle=resolvedLocalTitle}
                 var seen=Set(entries.map(\.id))
                 entries += page.entries.filter {!$0.isHidden && SavedLocations.validComponent($0.name) && seen.insert($0.id).inserted}
-                nextOffset=page.nextOffset.flatMap {$0>offset ? $0:nil};loading=false
+                nextOffset=page.nextOffset.flatMap {$0>appliedOffset ? $0:nil};loading=false
+                LifecycleDiagnostics.shared.record(.resultApplied,traceValues)
                 detectTagSupport()
                 if tagsNeeded,!editing,!tagsPaused {
                     tagSortMessage="正在列出資料夾：\(entries.count) 項"
@@ -413,12 +474,23 @@ import Observation
                 } else if tagsNeeded {loadTags()}
                 if belowShortcutRoot && parentEntries.isEmpty && parentOffset == 0 {loadParent()}
             } catch {
-                guard !Task.isCancelled,token==generation else {return}
-                if !source.isDemo,let failed=sessions.removeValue(forKey:sessionKey(source.id,path)) {Task {await failed.disconnect()}}
+                LifecycleDiagnostics.shared.record(.requestError,traceValues.merging(SMBDirectoryProvider.diagnosticFailure(for:error).fields){_,new in new})
+                guard !Task.isCancelled,token==generation else {LifecycleDiagnostics.shared.record(.resultDiscarded,traceValues.merging([.outcome:Task.isCancelled ? 1:3]){_,new in new});return}
+                if error is CancellationError {loading=false;return}
                 loading=false;self.error=source.kind == .local ? "無法讀取本機資料夾；請在編輯模式重新授權，或確認檔案已下載。":path.isEmpty && !source.isFolderSource ? "無法列出分享；可手動指定已知分享，或確認帳號權限。":source.isDemo ? "無法讀取此示範資料夾。" : "無法開啟資料夾。請確認伺服器、網路及登入資訊。"
+                if source.kind == .smb {
+                    switch SMBDirectoryProvider.recoveryDisposition(for:error) {
+                    case .permissionDenied:self.error="沒有讀取此資料夾的權限。"
+                    case .authenticationRequired:self.error="登入資訊已失效，請重新登入。"
+                    case .notFound:self.error="此資料夾已不存在，請返回上層。"
+                    default:break
+                    }
+                }
                 if belowShortcutRoot && parentOffset == 0 {loadParent()}
             }
+          }
         }
+        LifecycleDiagnostics.shared.record(.taskCreated,traceValues)
     }
     func loadTags() {
         tagRevision += 1;tagTask?.cancel();tagsLoading=false
@@ -469,9 +541,10 @@ import Observation
                     case 11:state = .invalid
                     default:state = .loaded([FinderTag(name:"合成標籤",color:colors[value]),FinderTag(name:"合成第二標籤",color:4)])
                     }}
-                } else if let session=sessions[sessionKey(source.id,path)] {
+                } else if let session=sessions.existingSession(for:sessionKey(source.id,path)) {
                     do {state=try await session.tags(at:DirectoryPath(mediaPath(path,source:source)+[entry.name]))}
                     catch {if Task.isCancelled{return};state = .failed}
+                    guard sessions.containsSession(session,for:sessionKey(source.id,path)) else{return}
                 } else {state = .failed}
                 guard !Task.isCancelled,token==generation,revision==tagRevision,tagsNeeded else{return}
                 working[index].finderTags=state
@@ -510,7 +583,7 @@ import Observation
         tagsPaused=false
         tagRevision += 1;tagTask?.cancel();tagsLoading=false
         let revision=tagRevision
-        let token=generation,session=sessions[sessionKey(source.id,components)]
+        let token=generation,session=sessions.existingSession(for:sessionKey(source.id,components))
         tagTask=Task {
             if let session {await session.clearTagCache()}
             guard !Task.isCancelled,token==generation,revision==tagRevision,tagsNeeded else{return}
@@ -526,22 +599,40 @@ import Observation
         guard belowShortcutRoot,!parentLoading,let offset=parentOffset,let source else {return}
         let token=generation,path=Array(components.dropLast())
         parentLoading=true;parentError=nil
+        let traceID=LifecycleDiagnostics.shared.nextID(),navigation=diagnosticNavigation
+        let traceValues:[LifecycleField:Double]=[.scope:2,.request:Double(traceID),.navigation:Double(navigation),.generation:Double(token)]
+        LifecycleDiagnostics.shared.record(.requestStart,traceValues)
         parentRequest=Task {
+          LifecycleDiagnostics.shared.record(.taskEntered,traceValues.merging([.cancelled:Task.isCancelled ? 1:0]){_,new in new})
+          defer {LifecycleDiagnostics.shared.record(.taskExited,traceValues.merging([.cancelled:Task.isCancelled ? 1:0]){_,new in new})}
+          await LifecycleContext.$request.withValue(LifecycleRequestContext(navigation:navigation,request:traceID)) {
             do {
+                try Task.checkCancellation()
+                guard token==generation else {throw CancellationError()}
                 let page:DirectoryPage
                 if source.kind == .local {page=try await localProvider(source).page(at:DirectoryPath(path),offset:offset,sort:visibleSort)}
                 else if source.isDemo || (testing && ProcessInfo.processInfo.arguments.contains("--host-navigation-fixture")) {page=try await DemoDirectoryProvider().page(at:DirectoryPath(mediaPath(path,source:source)),offset:offset,sort:sort.field == .tags ? DirectorySort():sort)}
-                else if let session=sessions[sessionKey(source.id,path)] {page=try await session.page(at:DirectoryPath(mediaPath(path,source:source)),offset:offset,sort:sort.field == .tags ? DirectorySort():sort)}
-                else {throw SMBCredentialStore.Failure.unavailable}
-                guard !Task.isCancelled,token==generation,!editing else{return}
+                else {
+                    LifecycleDiagnostics.shared.record(.sessionLookup,traceValues)
+                    guard let session=sessions.existingSession(for:sessionKey(source.id,path)) else {throw SMBCredentialStore.Failure.unavailable}
+                    LifecycleDiagnostics.shared.record(.sessionReused,traceValues)
+                    LifecycleDiagnostics.shared.providerBoundary(.willCall,operation:.listDirectory)
+                    page=try await session.page(at:DirectoryPath(mediaPath(path,source:source)),offset:offset,sort:sort.field == .tags ? DirectorySort():sort)
+                    guard sessions.containsSession(session,for:sessionKey(source.id,path)) else{throw CancellationError()}
+                }
+                guard !Task.isCancelled,token==generation,!editing else{LifecycleDiagnostics.shared.record(.resultDiscarded,traceValues.merging([.outcome:Task.isCancelled ? 1:token != generation ? 3:4]){_,new in new});return}
                 var seen=Set(parentEntries.map(\.id))
                 parentEntries += page.entries.filter {$0.kind == .directory && !$0.isHidden && SavedLocations.validComponent($0.name) && seen.insert($0.id).inserted}
                 parentOffset=page.nextOffset.flatMap {$0>offset ? $0:nil};parentLoading=false
+                LifecycleDiagnostics.shared.record(.resultApplied,traceValues)
             } catch {
-                guard !Task.isCancelled,token==generation,!editing else{return}
+                LifecycleDiagnostics.shared.record(.requestError,traceValues.merging(SMBDirectoryProvider.diagnosticFailure(for:error).fields){_,new in new})
+                guard !Task.isCancelled,token==generation,!editing else{LifecycleDiagnostics.shared.record(.resultDiscarded,traceValues.merging([.outcome:Task.isCancelled ? 1:token != generation ? 3:4]){_,new in new});return}
                 parentLoading=false;parentError="無法讀取上層資料夾。"
             }
+          }
         }
+        LifecycleDiagnostics.shared.record(.taskCreated,traceValues)
     }
     func openParent(_ entry:FileEntry) {
         guard belowShortcutRoot,entry.kind == .directory,parentEntries.contains(entry),let sourceID else{return}
@@ -636,7 +727,7 @@ import Observation
                 }
                 saved=candidate
                 let keys=sessions.keys.filter{$0.hasPrefix(id.uuidString+"/")}
-                for key in keys {if let old=sessions.removeValue(forKey:key) {Task {await old.disconnect()}}}
+                for key in keys {if let old=sessions.removeSession(for:key) {Task {await old.disconnect()}}}
                 var cleanupNotice:String?
                 if let oldSource {
                     do {try credentials.remove(for:oldSource.credentialID ?? oldSource.id)}
@@ -665,7 +756,7 @@ import Observation
             if normalContext?.0==source.id {normalContext=nil}
             connectionTask?.cancel();connecting=false;password="";showingConnection=false
             if sourceID==source.id {cancelListing();sourceID=nil;shortcutID=nil;components=[];entries=[];parentEntries=[];normalContext=nil}
-            for key in sessions.keys.filter({$0.hasPrefix(source.id.uuidString+"/")}) {if let session=sessions.removeValue(forKey:key){Task {await session.disconnect()}}}
+            for key in sessions.keys.filter({$0.hasPrefix(source.id.uuidString+"/")}) {if let session=sessions.removeSession(for:key){Task {await session.disconnect()}}}
             notice=nil
             #if DEBUG
             if syntheticAuthentication {notice=(try credentials.load(for:source.credentialID ?? source.id)) == nil ? "合成憑證已清除":"合成憑證清除失敗"}
@@ -689,6 +780,7 @@ struct BrowserPlayback:Identifiable {
 }
 
 struct ShortcutBrowserView: View {
+    @Environment(\.scenePhase) private var diagnosticScenePhase
     @ScaledMetric(relativeTo:.body) private var dateColumnWidth:CGFloat=220
     @ScaledMetric(relativeTo:.body) private var sizeColumnWidth:CGFloat=120
     @State private var customWidths:[DirectorySort.Field:CGFloat]=[:]
@@ -786,7 +878,9 @@ struct ShortcutBrowserView: View {
             model.server=host;model.connectionName=chosen.0
             discovery.stop();browsingNetwork=false;connectionFocus = .username
         }
-        .onDisappear{discovery.stop()}
+        .onAppear{LifecycleDiagnostics.shared.record(.viewAppear,[.scope:1])}
+        .onChange(of:diagnosticScenePhase,initial:true){old,new in LifecycleDiagnostics.shared.record(.scenePhase,[.scope:1,.previousPhase:old.diagnosticValue,.phase:new.diagnosticValue])}
+        .onDisappear{LifecycleDiagnostics.shared.record(.viewDisappear,[.scope:1]);discovery.stop()}
         #if DEBUG
         .onChange(of:model.entries.count) {
             if ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests") && ProcessInfo.processInfo.arguments.contains("--fit-columns-preview") {
@@ -839,8 +933,11 @@ struct ShortcutBrowserView: View {
                 Spacer()
                 if model.belowShortcutRoot {
                     Button("Home",systemImage:"house",action:model.home).labelStyle(.iconOnly).accessibilityIdentifier("shortcutHome")
+                } else if model.editing {
+                    Button("完成",action:model.toggleEditing)
+                        .accessibilityIdentifier("editShortcuts")
                 } else {
-                    Button(model.editing ? "完成":"編輯",systemImage:model.editing ? "checkmark":"pencil") {model.toggleEditing()}
+                    Button("編輯",systemImage:"pencil",action:model.toggleEditing)
                         .labelStyle(.iconOnly).accessibilityIdentifier("editShortcuts")
                 }
             }.padding(22)

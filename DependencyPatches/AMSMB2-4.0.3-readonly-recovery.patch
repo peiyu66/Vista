@@ -1,0 +1,535 @@
+--- a/AMSMB2/AMSMB2.swift
++++ b/AMSMB2/AMSMB2.swift
+@@ -266,6 +266,59 @@
+             connectShare(
+                 name: name, encrypted: encrypted, completionHandler: asyncHandler(continuation)
+             )
++        }
++    }
++
++    /// Connects a fresh manager exactly once, with the normal security settings.
++    /// Unlike connectShare, this does not send an echo or retry a failed connect.
++    /// Use a newly initialized manager; a failed attempt must be retired locally.
++    open func connectShareOnce(
++        name: String, encrypted: Bool = false, completionHandler: SimpleCompletionHandler
++    ) {
++        with(completionHandler: completionHandler) {
++            self.connectLock.lock()
++            defer { self.connectLock.unlock() }
++            guard self.client == nil else {
++                throw SMB2OperationFailure(origin: .submission, posixCode: EALREADY)
++            }
++            self.client = try self.connect(shareName: name, encrypted: encrypted)
++        }
++    }
++
++    /// Async form of the single-attempt, fresh-manager connection.
++    open func connectShareOnce(name: String, encrypted: Bool = false) async throws {
++        try await withCheckedThrowingContinuation { continuation in
++            connectShareOnce(
++                name: name, encrypted: encrypted, completionHandler: asyncHandler(continuation)
++            )
++        }
++    }
++
++    /// Retires this manager without sending a disconnect or any other network RPC.
++    /// The caller must prevent new work before calling and never reuse this manager.
++    /// Completion follows queue drain, including return from operation callbacks.
++    open func retireLocallyAfterDraining(completionHandler: @Sendable @escaping () -> Void) {
++        q.async {
++            // Do not hold connectLock while waiting: queued connect operations
++            // need it before they can finish and decrement operationCount.
++            self.operationLock.lock()
++            while self.operationCount > 0 {
++                self.operationLock.wait()
++            }
++            self.operationLock.unlock()
++
++            self.connectLock.lock()
++            self.client?.invalidateLocally()
++            self.client = nil
++            self.connectLock.unlock()
++            completionHandler()
++        }
++    }
++
++    /// Async local retirement. Cancellation does not skip the required drain.
++    open func retireLocallyAfterDraining() async {
++        await withCheckedContinuation { continuation in
++            retireLocallyAfterDraining { continuation.resume() }
+         }
+     }
+ 
+@@ -490,7 +543,7 @@
+             let stat: smb2_stat_64
+             do {
+                 stat = try client.stat(path)
+-            } catch POSIXError.ENOLINK {
++            } catch where SMB2OperationFailure.matchesPOSIX(error, codes: .ENOLINK) {
+                 // `libsmb2` can not read symlink attributes using `stat`, so if we get
+                 // the related error, we simply open file as reparse point then use `fstat`.
+                 let file = try SMB2FileHandle(path: path, flags: O_RDONLY | O_SYMLINK, on: client)
+@@ -733,7 +786,7 @@
+         with(completionHandler: completionHandler) { client in
+             do {
+                 try client.unlink(path)
+-            } catch POSIXError.ENOLINK, POSIXError.ENETRESET {
++            } catch where SMB2OperationFailure.matchesPOSIX(error, codes: .ENOLINK, .ENETRESET) {
+                 // Try to remove file as a symbolic link.
+                 try client.unlink(path, type: .link)
+             }
+@@ -764,7 +817,7 @@
+             let stat: smb2_stat_64
+             do {
+                 stat = try client.stat(path)
+-            } catch POSIXError.ENOLINK {
++            } catch where SMB2OperationFailure.matchesPOSIX(error, codes: .ENOLINK) {
+                 // `libsmb2` can not read symlink attributes using `stat`, so if we get
+                 // the related error, we simply open file as reparse point then use `fstat`.
+                 let file = try SMB2FileHandle(path: path, flags: O_RDONLY | O_SYMLINK, on: client)
+@@ -1502,17 +1555,23 @@
+     private func listDirectory(client: SMB2Client, path: String, recursive: Bool) throws
+         -> [[URLResourceKey: any Sendable]]
+     {
+-        var contents = [[URLResourceKey: any Sendable]]()
+-        let dir = try SMB2Directory(path.canonical, on: client)
+-        for ent in dir {
+-            let name = String(cString: ent.name)
+-            if [".", ".."].contains(name) { continue }
+-            var result = [URLResourceKey: any Sendable]()
+-            result[.nameKey] = name
+-            result[.pathKey] =
+-                path.fileURL().appendingPathComponent(name, isDirectory: ent.st.isDirectory).path
+-            ent.st.populateResourceValue(&result)
+-            contents.append(result)
++        // Directory entries contain C-owned names. Keep open, iteration and
++        // conversion to owned Swift values in one context lifetime, so another
++        // operation cannot invalidate/free the directory between those steps.
++        var contents = try client.withThreadSafeContext { _ in
++            var contents = [[URLResourceKey: any Sendable]]()
++            let dir = try SMB2Directory(path.canonical, on: client)
++            for ent in dir {
++                let name = String(cString: ent.name)
++                if [".", ".."].contains(name) { continue }
++                var result = [URLResourceKey: any Sendable]()
++                result[.nameKey] = name
++                result[.pathKey] =
++                    path.fileURL().appendingPathComponent(name, isDirectory: ent.st.isDirectory).path
++                ent.st.populateResourceValue(&result)
++                contents.append(result)
++            }
++            return contents
+         }
+ 
+         if recursive {
+--- a/AMSMB2/Context.swift
++++ b/AMSMB2/Context.swift
+@@ -9,6 +9,11 @@
+ 
+ import Foundation
+ import SMB2
++#if canImport(Darwin)
++import Darwin
++#else
++import Glibc
++#endif
+ 
+ /// Provides synchronous operation on SMB2
+ final class SMB2Client: CustomDebugStringConvertible, CustomReflectable, @unchecked Sendable {
+@@ -25,10 +30,18 @@
+         if isConnected {
+             try? self.disconnect()
+         }
+-        try? withThreadSafeContext { context in
+-            self.context = nil
+-            smb2_destroy_context(context)
+-        }
++        invalidateLocally()
++    }
++
++    /// Local destruction only. Callers must stop new work and drain operations first.
++    /// libsmb2 sets fd to -1 before invoking pending callbacks; generic_handler
++    /// checks that fd before dereferencing their now-expired Swift callback data.
++    func invalidateLocally() {
++        _context_lock.lock()
++        defer { _context_lock.unlock() }
++        guard let context else { return }
++        self.context = nil
++        smb2_destroy_context(context)
+     }
+ 
+     func withThreadSafeContext<R>(_ handler: (UnsafeMutablePointer<smb2_context>) throws -> R)
+@@ -38,7 +51,10 @@
+         defer {
+             _context_lock.unlock()
+         }
+-        return try handler(context.unwrap())
++        guard let context else {
++            throw SMB2OperationFailure(origin: .contextUnavailable, posixCode: ENOTCONN)
++        }
++        return try handler(context)
+     }
+ 
+     public var debugDescription: String {
+@@ -180,7 +196,7 @@
+ 
+     var fileDescriptor: Int32 {
+         do {
+-            return try smb2_get_fd(context.unwrap())
++            return try withThreadSafeContext(smb2_get_fd)
+         } catch {
+             return -1
+         }
+@@ -207,12 +223,18 @@
+     }
+ 
+     func service(revents: Int32) throws {
+-        let result = smb2_service(context, revents)
+-        if result < 0 {
+-            smb2_destroy_context(context)
+-            context = nil
+-            try POSIXError.throwIfError(result, description: error)
+-        }
++        try withThreadSafeContext { context in
++            let result = smb2_service(context, revents)
++            try handleServiceResult(result)
++        }
++    }
++
++    /// Kept separate so synthetic service results can verify provenance without
++    /// driving a network connection or a timeout.
++    func handleServiceResult(_ result: Int32) throws {
++        guard result < 0 else { return }
++        invalidateLocally()
++        throw SMB2OperationFailure(origin: .serviceInvalidated, result: result)
+     }
+ }
+ 
+@@ -237,7 +259,7 @@
+ 
+     func echo() throws {
+         if !isConnected {
+-            throw POSIXError(.ENOTCONN)
++            throw SMB2OperationFailure(origin: .contextUnavailable, posixCode: ENOTCONN)
+         }
+         try async_await { context, cbPtr -> Int32 in
+             smb2_echo_async(context, SMB2Client.generic_handler, cbPtr)
+@@ -361,20 +383,32 @@
+         }
+     }
+ 
+-    private func wait_for_reply(_ cb: inout CBData) throws {
++    private func wait_for_reply(_ cb: CBData) throws {
+         let startDate = Date()
+         while !cb.isFinished {
+             var pfd = pollfd()
+             pfd.fd = fileDescriptor
++            guard pfd.fd >= 0 else {
++                throw SMB2OperationFailure(origin: .contextUnavailable, posixCode: ENOTCONN)
++            }
+             pfd.events = try whichEvents()
+ 
+-            if pfd.fd < 0 || (poll(&pfd, 1, 1000) < 0 && errno != EAGAIN) {
+-                throw POSIXError(.init(errno), description: error)
++            let result = poll(&pfd, 1, 1000)
++            if result < 0 {
++                // Use the errno from this poll, never SMB2Client.errno/nterror.
++                #if canImport(Darwin)
++                let code = Darwin.errno
++                #else
++                let code = Glibc.errno
++                #endif
++                if code != EAGAIN {
++                    throw SMB2OperationFailure(origin: .wait, result: result, posixCode: code)
++                }
+             }
+ 
+             if pfd.revents == 0 {
+                 if timeout > 0, Date().timeIntervalSince(startDate) > timeout {
+-                    throw POSIXError(.ETIMEDOUT)
++                    throw SMB2OperationFailure(origin: .wait, posixCode: ETIMEDOUT)
+                 }
+                 continue
+             }
+@@ -424,14 +458,22 @@
+                     dataHandlerError = error
+                 }
+             }
+-            let result = try withUnsafeMutablePointer(to: &cb) { cb in
+-                try handler(context, cb)
+-            }
+-            try POSIXError.throwIfError(result, description: error)
+-            try wait_for_reply(&cb)
++            // Keep the callback pointer valid through submission, wait and any
++            // cleanup. On wait failure, destroy pending C callbacks before this
++            // pointer scope ends or the context lock admits another operation.
++            try withUnsafeMutablePointer(to: &cb) { callback in
++                let result = try handler(context, callback)
++                try SMB2OperationFailure.throwIfPOSIXFailure(result, origin: .submission)
++                do {
++                    try wait_for_reply(callback.pointee)
++                } catch {
++                    invalidateLocally()
++                    throw error
++                }
++            }
+             let cbResult = cb.result
+ 
+-            try POSIXError.throwIfError(cbResult, description: error)
++            try SMB2OperationFailure.throwIfPOSIXFailure(cbResult, origin: .response)
+             if let error = dataHandlerError { throw error }
+             return try (cbResult, resultData.unwrap())
+         }
+@@ -462,13 +504,25 @@
+                     dataHandlerError = error
+                 }
+             }
+-            let pdu = try withUnsafeMutablePointer(to: &cb) { cb in
+-                try handler(context, cb).unwrap()
+-            }
+-            smb2_queue_pdu(context, pdu)
+-            try wait_for_reply(&cb)
+-
+-            try POSIXError.throwIfErrorStatus(cb.status)
++            try withUnsafeMutablePointer(to: &cb) { callback in
++                guard let pdu = try handler(context, callback) else {
++                    throw SMB2OperationFailure(origin: .submission)
++                }
++                smb2_queue_pdu(context, pdu)
++                do {
++                    try wait_for_reply(callback.pointee)
++                } catch {
++                    invalidateLocally()
++                    throw error
++                }
++            }
++
++            if cb.status.severity == .error {
++                throw SMB2OperationFailure(
++                    origin: .response, result: cb.result,
++                    posixCode: nterror_to_errno(cb.status.rawValue), ntStatus: cb.status.rawValue
++                )
++            }
+             if let error = dataHandlerError { throw error }
+             return try (cb.status.rawValue, resultData.unwrap())
+         }
+--- a/AMSMB2/Extensions.swift
++++ b/AMSMB2/Extensions.swift
+@@ -31,7 +31,7 @@
+ extension Optional where Wrapped: SMB2Client {
+     func unwrap() throws -> SMB2Client {
+         guard let self = self, self.fileDescriptor >= 0 else {
+-            throw POSIXError(.ENOTCONN, description: "SMB2 server not connected.")
++            throw SMB2OperationFailure(origin: .contextUnavailable, posixCode: ENOTCONN)
+         }
+         return self
+     }
+--- a/AMSMB2/FileHandle.swift
++++ b/AMSMB2/FileHandle.swift
+@@ -94,7 +94,9 @@
+     init(fileDescriptor: smb2_file_id, on client: SMB2Client) throws {
+         self.client = client
+         var fileDescriptor = fileDescriptor
+-        self.handle = smb2_fh_from_file_id(client.context, &fileDescriptor)
++        self.handle = try client.withThreadSafeContext { context in
++            smb2_fh_from_file_id(context, &fileDescriptor)
++        }
+     }
+ 
+     // This initializer does not support O_SYMLINK.
+@@ -125,7 +127,12 @@
+     }
+ 
+     var fileId: UUID {
+-        .init(uuid: (try? smb2_get_file_id(handle.unwrap()).unwrap().pointee) ?? compound_file_id)
++        // The file-id pointer belongs to the context's C handle. Copy the value
++        // while holding its lifetime lock, never retain that pointer across it.
++        let value = try? client.withThreadSafeContext { _ in
++            try smb2_get_file_id(handle.unwrap()).unwrap().pointee
++        }
++        return .init(uuid: value ?? compound_file_id)
+     }
+ 
+     func close() {
+@@ -201,10 +208,12 @@
+ 
+     @discardableResult
+     func lseek(offset: Int64, whence: SeekWhence) throws -> Int64 {
+-        let handle = try handle.unwrap()
+-        let result = smb2_lseek(client.context, handle, offset, whence.rawValue, nil)
+-        try POSIXError.throwIfError(result, description: client.error)
+-        return result
++        try client.withThreadSafeContext { context in
++            let handle = try handle.unwrap()
++            let result = smb2_lseek(context, handle, offset, whence.rawValue, nil)
++            try POSIXError.throwIfError(result, description: client.error)
++            return result
++        }
+     }
+ 
+     func read(length: Int = 0) throws -> Data {
+@@ -212,17 +221,19 @@
+             length <= UInt32.max, "Length bigger than UInt32.max can't be handled by libsmb2."
+         )
+ 
+-        let handle = try handle.unwrap()
+-        let count = length > 0 ? length : optimizedReadSize
+-        var buffer = Data(repeating: 0, count: count)
+-        let result = try buffer.withUnsafeMutableBytes { buffer in
+-            try client.async_await { context, cbPtr -> Int32 in
+-                smb2_read_async(
+-                    context, handle, buffer.baseAddress, .init(buffer.count), SMB2Client.generic_handler, cbPtr
+-                )
+-            }
+-        }
+-        return Data(buffer.prefix(Int(result)))
++        return try client.withThreadSafeContext { _ in
++            let handle = try handle.unwrap()
++            let count = length > 0 ? length : optimizedReadSize
++            var buffer = Data(repeating: 0, count: count)
++            let result = try buffer.withUnsafeMutableBytes { buffer in
++                try client.async_await { context, cbPtr -> Int32 in
++                    smb2_read_async(
++                        context, handle, buffer.baseAddress, .init(buffer.count), SMB2Client.generic_handler, cbPtr
++                    )
++                }
++            }
++            return Data(buffer.prefix(Int(result)))
++        }
+     }
+ 
+     func pread(offset: UInt64, length: Int = 0) throws -> Data {
+@@ -230,18 +241,20 @@
+             length <= UInt32.max, "Length bigger than UInt32.max can't be handled by libsmb2."
+         )
+ 
+-        let handle = try handle.unwrap()
+-        let count = length > 0 ? length : optimizedReadSize
+-        var buffer = Data(repeating: 0, count: count)
+-        let result = try buffer.withUnsafeMutableBytes { buffer in
+-            try client.async_await { context, cbPtr -> Int32 in
+-                smb2_pread_async(
+-                    context, handle, buffer.baseAddress, .init(buffer.count), offset, SMB2Client.generic_handler,
+-                    cbPtr
+-                )
+-            }
+-        }
+-        return buffer.prefix(Int(result))
++        return try client.withThreadSafeContext { _ in
++            let handle = try handle.unwrap()
++            let count = length > 0 ? length : optimizedReadSize
++            var buffer = Data(repeating: 0, count: count)
++            let result = try buffer.withUnsafeMutableBytes { buffer in
++                try client.async_await { context, cbPtr -> Int32 in
++                    smb2_pread_async(
++                        context, handle, buffer.baseAddress, .init(buffer.count), offset, SMB2Client.generic_handler,
++                        cbPtr
++                    )
++                }
++            }
++            return buffer.prefix(Int(result))
++        }
+     }
+ 
+     var maxWriteSize: Int {
+@@ -336,19 +349,21 @@
+         defer { withExtendedLifetime(args) {} }
+         var inputBuffer = [UInt8](args)
+         return try inputBuffer.withUnsafeMutableBytes { buf in
+-            var req = smb2_ioctl_request(
+-                ctl_code: command.rawValue,
+-                file_id: fileId.uuid,
+-                input_offset: 0, input_count: .init(buf.count),
+-                max_input_response: 0,
+-                output_offset: 0, output_count: UInt32(client.maximumTransactionSize),
+-                max_output_response: 65535,
+-                flags: .init(SMB2_0_IOCTL_IS_FSCTL),
+-                input: buf.baseAddress
+-            )
+             return try client.async_await_pdu(dataHandler: R.init) {
+                 context, cbPtr -> UnsafeMutablePointer<smb2_pdu>? in
+-                smb2_cmd_ioctl_async(context, &req, SMB2Client.generic_handler, cbPtr)
++                // Both fileId and maximumTransactionSize read C-owned state.
++                // Construct the request only after async_await_pdu owns the lock.
++                var req = smb2_ioctl_request(
++                    ctl_code: command.rawValue,
++                    file_id: fileId.uuid,
++                    input_offset: 0, input_count: .init(buf.count),
++                    max_input_response: 0,
++                    output_offset: 0, output_count: UInt32(client.maximumTransactionSize),
++                    max_output_response: 65535,
++                    flags: .init(SMB2_0_IOCTL_IS_FSCTL),
++                    input: buf.baseAddress
++                )
++                return smb2_cmd_ioctl_async(context, &req, SMB2Client.generic_handler, cbPtr)
+             }.data
+         }
+     }
+--- /dev/null
++++ b/AMSMB2/OperationFailure.swift
+@@ -0,0 +1,65 @@
++//
++//  OperationFailure.swift
++//  AMSMB2
++//
++//  Local Vista integration: preserve failure provenance without server text.
++//
++
++import Foundation
++
++/// A failure at the SMB operation boundary, without paths, credentials or server text.
++public struct SMB2OperationFailure: Error, Sendable, Equatable, LocalizedError {
++    public enum Origin: String, Sendable {
++        /// smb2_service failed and the client context was destroyed. This does not
++        /// identify the underlying cause or prove a physical network disconnect.
++        case serviceInvalidated
++        /// The request could not be submitted to libsmb2.
++        case submission
++        /// A command callback reported failure, rather than the service loop.
++        case response
++        /// Waiting for a command failed, including a poll failure or timeout.
++        case wait
++        /// No usable client/context was available for the operation.
++        case contextUnavailable
++    }
++
++    public let origin: Origin
++    /// The original return/callback value, if that boundary supplied one.
++    public let result: Int32?
++    /// A positive POSIX code only when that boundary defines one. In particular,
++    /// smb2_service's generic -1 is not the POSIX permission code EPERM.
++    public let posixCode: Int32?
++    /// Present only for an actual raw PDU callback status. Never sampled from
++    /// the context's mutable, potentially stale nterror field.
++    public let ntStatus: UInt32?
++
++    public init(origin: Origin, result: Int32? = nil, posixCode: Int32? = nil, ntStatus: UInt32? = nil) {
++        self.origin = origin
++        self.result = result
++        self.posixCode = posixCode
++        self.ntStatus = ntStatus
++    }
++
++    public var errorDescription: String? {
++        "SMB operation failed (\(origin.rawValue))."
++    }
++
++    static func throwIfPOSIXFailure(_ result: Int32, origin: Origin) throws {
++        guard result < 0 else { return }
++        // Avoid overflow and avoid inventing a cancellation code for an unknown result.
++        let code = Int32(exactly: -Int64(result))
++        throw Self(origin: origin, result: result, posixCode: code)
++    }
++
++    /// Preserve existing operation-specific fallbacks for real command errors.
++    /// Service-loop and wait failures must not look like server path responses.
++    static func matchesPOSIX(_ error: any Error, codes: POSIXErrorCode...) -> Bool {
++        if let failure = error as? Self {
++            guard failure.origin == .response || failure.origin == .submission,
++                  let code = failure.posixCode else { return false }
++            return codes.contains { $0.rawValue == code }
++        }
++        guard let error = error as? POSIXError else { return false }
++        return codes.contains(error.code)
++    }
++}

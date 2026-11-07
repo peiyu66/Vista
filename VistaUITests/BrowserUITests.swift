@@ -22,6 +22,40 @@ final class VistaUITests:XCTestCase {
         expectation(for:done,evaluatedWith:path);waitForExpectations(timeout:timeout)
         XCTAssertFalse(app.staticTexts["tagSortStatus"].exists)
     }
+    @MainActor func testSourceEditingShowsDoneTextAcrossModesAndWidths() throws {
+        let app=fresh(extra:["--window-resize-test"])
+        let edit=app.buttons["editShortcuts"]
+        XCTAssertEqual(edit.label,"編輯")
+        let editIconWidth=edit.frame.width
+        app.buttons["emptyEdit"].tap()
+        app.buttons["localDemoSource"].tap()
+        XCTAssertTrue(app.buttons["entry-影片"].waitForExistence(timeout:5))
+        app.buttons["entry-影片"].tap();app.buttons["addShortcut"].tap()
+        for size in ["testNarrowWindow","testWideWindow"] {
+            app.buttons[size].tap()
+            XCTAssertEqual(edit.label,"完成")
+            XCTAssertGreaterThan(edit.frame.width,editIconWidth)
+            XCTAssertTrue(edit.isHittable)
+            XCTAssertEqual(edit.images.count,0)
+            let details=XCTAttachment(string:edit.debugDescription)
+            details.name="source-edit-done-"+size;details.lifetime = .keepAlways;add(details)
+            edit.tap()
+            XCTAssertTrue(app.buttons["shortcut-影片"].waitForExistence(timeout:5))
+            XCTAssertFalse(app.buttons["localDemoSource"].exists)
+            XCTAssertEqual(edit.label,"編輯")
+            edit.tap()
+            XCTAssertTrue(app.buttons["localDemoSource"].waitForExistence(timeout:5))
+        }
+        edit.tap()
+        app.buttons["entry-電影"].tap()
+        XCTAssertTrue(app.buttons["shortcutHome"].waitForExistence(timeout:5))
+        XCTAssertFalse(edit.exists)
+        app.buttons["shortcutHome"].tap()
+        XCTAssertEqual(edit.label,"編輯")
+        edit.tap()
+        XCTAssertEqual(edit.label,"完成")
+        XCTAssertGreaterThan(edit.frame.width,editIconWidth)
+    }
     @MainActor func testSidebarFirstAndLastRowInsetsAcrossHeights() throws {
         let app=XCUIApplication()
         app.launchArguments=["--shortcut-ui-tests","--reset-shortcut-fixture","--long-shortcuts","--window-resize-test","--sidebar-inset-test"]

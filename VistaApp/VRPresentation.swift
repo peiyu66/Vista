@@ -1,5 +1,10 @@
 import ImageIO
 import SwiftUI
+
+extension ScenePhase {
+    var diagnosticValue:Double {switch self {case .active:0;case .inactive:1;case .background:2;@unknown default:-1}}
+}
+
 import RealityKit
 import Observation
 import Combine
@@ -401,14 +406,17 @@ struct VRImmersiveView: View {
             cancelControllerResetSample()
             if await presentation.calibration.capture(using: DeviceInitialPose()) { resetManualDirection();updateControllerReference() }
         }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase) { old, phase in
+            LifecycleDiagnostics.shared.record(.scenePhase,[.scope:2,.previousPhase:old.diagnosticValue,.phase:phase.diagnosticValue])
             if phase != .active {cancelControllerResetSample()}
             if phase == .background {
                 presentation.player?.pauseForBackground()
                 presentation.holdControls()
             }
         }
+        .onAppear{LifecycleDiagnostics.shared.record(.viewAppear,[.scope:2,.phase:scenePhase.diagnosticValue])}
         .onDisappear {
+            LifecycleDiagnostics.shared.record(.viewDisappear,[.scope:2])
             cancelControllerResetSample()
             presentation.calibration.cancel()
             controlVisual.resetTrace.cancel()

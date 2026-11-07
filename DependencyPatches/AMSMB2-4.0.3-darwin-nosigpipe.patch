@@ -1,0 +1,27 @@
+--- a/Dependencies/libsmb2/lib/socket.c
++++ b/Dependencies/libsmb2/lib/socket.c
+@@ -1077,6 +1077,24 @@
+                 return -EIO;
+         }
+ 
++#if defined(__APPLE__)
++        /* Vista candidate: a broken SMB connection must report a write error,
++         * not terminate the process with SIGPIPE. Set this on each new client
++         * socket before connect or any protocol write; do not alter signals
++         * for other sockets or for the process as a whole. */
++        {
++                const int no_sigpipe = 1;
++                if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE,
++                               &no_sigpipe, sizeof(no_sigpipe)) != 0) {
++                        const int option_errno = errno;
++                        smb2_set_error(smb2, "Failed to set SMB socket SO_NOSIGPIPE: "
++                                       "%s(%d).", strerror(option_errno), option_errno);
++                        close(fd);
++                        return -option_errno;
++                }
++        }
++#endif
++
+ #ifdef _XBOX
+         if(setsockopt(fd, SOL_SOCKET, 0x5801, (PCSTR)&bBroadcast, sizeof(BOOL) ) != 0 )
+         {

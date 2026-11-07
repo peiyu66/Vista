@@ -1,0 +1,50 @@
+{
+  "package": "AMSMB2",
+  "upstreamVersion": "4.0.3",
+  "upstreamRevision": "1726aaaf7adf63d7d1d2a0c5d1b0e635028215c0",
+  "upstreamURL": "https://github.com/amosavian/AMSMB2/tree/1726aaaf7adf63d7d1d2a0c5d1b0e635028215c0",
+  "libsmb2Revision": "aff9fa6ba9f41cfd3c15d184554601ec3f6d8d03",
+  "patch": "DependencyPatches/AMSMB2-4.0.3-darwin-nosigpipe.patch",
+  "patchSHA256": "8001d88e1bc6adda2c09769f22c65954e8a5d479b0f25ecb64b5f9398b536051",
+  "changedUpstreamFiles": [
+    "Dependencies/libsmb2/lib/socket.c",
+    "AMSMB2/AMSMB2.swift",
+    "AMSMB2/Context.swift",
+    "AMSMB2/Extensions.swift",
+    "AMSMB2/FileHandle.swift",
+    "AMSMB2/OperationFailure.swift"
+  ],
+  "scope": "Accepted Build64 socket-local SO_NOSIGPIPE, typed failure origins, local callback/C-handle lifetime protection and one-attempt read-only directory recovery; original manager queue and configured timeout unchanged",
+  "noGlobalSignalDispositionChanges": true,
+  "candidateOnly": false,
+  "licenseFile": "Dependencies/AMSMB2/LICENSE",
+  "patches": [
+    {
+      "path": "DependencyPatches/AMSMB2-4.0.3-darwin-nosigpipe.patch",
+      "sha256": "8001d88e1bc6adda2c09769f22c65954e8a5d479b0f25ecb64b5f9398b536051",
+      "scope": "Build63 Darwin socket-local SO_NOSIGPIPE, unchanged"
+    },
+    {
+      "path": "DependencyPatches/AMSMB2-4.0.3-readonly-recovery.patch",
+      "sha256": "81bca3550a701a1a965583c841b386d843f57dd59285bb46baa7ae70da2e1a45",
+      "scope": "Build64 typed failure provenance, one-connect recovery entry, local retirement after callbacks drain, callback and C-handle lifetime protection"
+    }
+  ],
+  "noTimeoutValueChanges": true,
+  "waitFailureCleanupChanged": true,
+  "excludedHistoricalSMBTimeoutExperiment": true,
+  "timeoutNote": "The configured duration, poll interval and existing comparison are unchanged. Failure cleanup now invalidates before callback storage leaves scope.",
+  "acceptedDate": "2026-11-07",
+  "baselineDocument": "docs/已驗收基底.md",
+  "behaviorDocument": "docs/SMB目錄恢復.md",
+  "licenseFiles": [
+    "Dependencies/AMSMB2/LICENSE",
+    "Dependencies/AMSMB2/Dependencies/libsmb2/COPYING",
+    "Dependencies/AMSMB2/Dependencies/libsmb2/LICENCE-LGPL-2.1.txt"
+  ],
+  "validationScope": {
+    "installedBuild64": "User accepted directory-switch recovery and the source-editor Done label. Four observed service invalidations recovered through fresh, non-cached directory listings. No matching termination report proves SIGPIPE causation.",
+    "integratedSource": "Targeted local validation passed: 135 core tests in 33 suites, 18 dependency tests with 30 cases, 22 socket checks, 26 source contracts, 3 simulator UI tests, and both visionOS Release builds. Keeps main background-only pause; this recombination has not been retested on a physical device.",
+    "limits": "No broad concurrency-safety, complete network-recovery, video-recovery, or all-crashes-fixed claim."
+  }
+}

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum BrowserWindowPreferences {
     static var defaults:UserDefaults {
@@ -21,9 +22,11 @@ enum BrowserWindowPreferences {
     }
 }
 @main struct VistaApp: App {
+    @Environment(\.scenePhase) private var diagnosticScenePhase
     @State private var vr=VRPresentation()
     private let initialSize:CGSize
     init() {
+        _ = BrowserLifecycleNotifications.shared
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests"),
            ProcessInfo.processInfo.arguments.contains("--reset-shortcut-fixture") {
@@ -53,6 +56,7 @@ enum BrowserWindowPreferences {
             ShortcutBrowserView().glassBackgroundEffect().opacity(vr.active ? 0:1).allowsHitTesting(!vr.active).accessibilityHidden(vr.active).persistentSystemOverlays(vr.active ? .hidden : .automatic)
             #endif
         }.environment(vr).windowStyle(.plain).defaultSize(initialSize).windowResizability(.contentMinSize)
+        .onChange(of:diagnosticScenePhase,initial:true){old,new in LifecycleDiagnostics.shared.record(.scenePhase,[.scope:0,.previousPhase:old.diagnosticValue,.phase:new.diagnosticValue])}
         ImmersiveSpace(id:"VistaVR") {VRImmersiveView().environment(vr)}
             .immersionStyle(selection:.constant(.full),in:.full)
             // Scene-scoped visual preference only; native gesture input stays unchanged.
@@ -117,3 +121,20 @@ private struct DeviceMediaSelfTestView: View {
     }
 }
 #endif
+
+@MainActor private final class BrowserLifecycleNotifications {
+    static let shared=BrowserLifecycleNotifications()
+    private var observers:[NSObjectProtocol]=[]
+    private init() {
+        _ = LifecycleDiagnostics.shared // Process-static once, independent of SwiftUI view recreation.
+        let events:[(Notification.Name,Double)]=[
+            (UIApplication.didBecomeActiveNotification,0),(UIApplication.willResignActiveNotification,1),
+            (UIApplication.didEnterBackgroundNotification,2),(UIApplication.willEnterForegroundNotification,3),
+            (UIApplication.willTerminateNotification,4),(UIApplication.didReceiveMemoryWarningNotification,5)]
+        for (name,value) in events {
+            observers.append(NotificationCenter.default.addObserver(forName:name,object:nil,queue:nil){_ in
+                LifecycleDiagnostics.shared.record(.applicationNotification,[.notification:value])
+            })
+        }
+    }
+}

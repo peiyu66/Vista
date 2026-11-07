@@ -1,10 +1,12 @@
 # SMB 讀取生命週期契約
 
+本頁保留 2026-11-03 的 MKV 前置 session 契約與驗證歷史，不是現行主列表的恢復規格。2026-11-07 正式目錄恢復及本地 AMSMB2 修補見 [SMB 目錄恢復](SMB目錄恢復.md)；新的局部排空／handle 防護不代表本頁的不可變快照或 MKV 產品整合已完成。
+
 2026-11-03。`SMBReadSession` 已編譯並以可控 transport 驗證，尚未接入 App 播放入口。既有 MP4 播放仍使用原 adapter；MKV 仍拒絕開啟。這份文件是 session 生命週期與版本檢查的正式來源；parser 狀態見 [MKV 與 VP9 評估](MKV與VP9評估.md)。
 
 ## 實際依賴的取消能力
 
-查核目前鎖定的 AMSMB2 4.0.3，commit `1726aaaf7adf63d7d1d2a0c5d1b0e635028215c0`：
+當時查核的上游 AMSMB2 4.0.3，commit `1726aaaf7adf63d7d1d2a0c5d1b0e635028215c0`：
 
 - [contents async 包裝與讀取迴圈](https://github.com/amosavian/AMSMB2/blob/1726aaaf7adf63d7d1d2a0c5d1b0e635028215c0/AMSMB2/AMSMB2.swift)：async API 使用 checked continuation，沒有 Swift Task cancellation handler；每次 range read 重新開檔。progress 在一段資料已讀取並寫入 memory stream 後執行，回傳 false 只能停止後續迴圈，不能中止當下的同步讀取。
 - [底層等待](https://github.com/amosavian/AMSMB2/blob/1726aaaf7adf63d7d1d2a0c5d1b0e635028215c0/AMSMB2/Context.swift)：poll 等待中，在沒有事件時才檢查既定 timeout；不能把 manager 的 15 秒設定當成所有情況的整體操作期限或即時取消保證。
