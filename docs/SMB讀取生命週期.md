@@ -1,6 +1,6 @@
 # SMB 讀取生命週期契約
 
-本頁保留 2026-11-03 的 MKV 前置 session 契約與驗證歷史，不是現行主列表的恢復規格。2026-11-07 正式目錄恢復及本地 AMSMB2 修補見 [SMB 目錄恢復](SMB目錄恢復.md)；新的局部排空／handle 防護不代表本頁的不可變快照或 MKV 產品整合已完成。
+本頁保留 2026-11-03 的 MKV 前置 session 契約與驗證歷史，不是現行主列表的恢復規格。2026-11-07 正式目錄恢復及本地 AMSMB2 修補見 [SMB 目錄恢復](SMB目錄恢復.md)，Build66 播放專用 wrapper 見 [播放中斷恢復](播放中斷恢復.md)。該 wrapper 的觀測 metadata 指紋不是本頁的不可變快照，未接入本頁的 SMBReadSession／Admission，也不代表 MKV 產品整合已完成。
 
 2026-11-03。`SMBReadSession` 已編譯並以可控 transport 驗證，尚未接入 App 播放入口。既有 MP4 播放仍使用原 adapter；MKV 仍拒絕開啟。這份文件是 session 生命週期與版本檢查的正式來源；parser 狀態見 [MKV 與 VP9 評估](MKV與VP9評估.md)。
 

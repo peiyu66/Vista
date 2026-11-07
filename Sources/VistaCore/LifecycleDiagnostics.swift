@@ -8,10 +8,12 @@ public enum LifecycleEvent:String,Codable,Sendable {
     case taskCreated,taskEntered,taskExited,providerWillCall,providerEntered,providerExited
     case sessionLookup,sessionReused,sessionCreateRequested,cacheMiss,recoveryStage
     case apiStart,apiReturned,apiError,directoryMappingDone,cacheHit,readerClosed,disconnectRequested
+    case playbackBoundary,playbackSourceRecovery
 }
 public enum LifecycleField:String,Codable,Sendable {
     case scope,phase,previousPhase,notification,navigation,request,parentRequest,session,operation,outcome
     case errorDomain,errorCode,errorOrigin,timeout,durationMS,sampledStart,sourceKind,generation,active,cancelled
+    case trace,epoch,cause,detail,playing,paused,preparing,frameAvailable,requiresFlush,rendererFailed,acceptsSamples,pending,worker,ticket
 }
 public enum LifecycleOperation:Int,Codable,Sendable {
     case connect=1,listShares,listDirectory,attributes,rangeRead,tagRead,finderInfo,disconnect
@@ -124,7 +126,7 @@ public final class LifecycleDiagnostics:@unchecked Sendable {
         switch event {
         case .processStart,.scenePhase,.browseIntent,.cancelRequested,.requestStart,
              .taskCreated,.taskEntered,.taskExited,.sessionLookup,.sessionReused,.sessionCreateRequested,
-             .cacheHit,.cacheMiss,.directoryMappingDone,.resultApplied,.resultDiscarded,.requestError,.recoveryStage:
+             .cacheHit,.cacheMiss,.directoryMappingDone,.resultApplied,.resultDiscarded,.requestError,.recoveryStage,.playbackBoundary,.playbackSourceRecovery:
             return true
         case .providerWillCall,.providerEntered,.providerExited,.apiStart,.apiReturned,.apiError:
             return [1.0,2.0,3.0].contains(fields[LifecycleField.operation.rawValue] ?? 0)

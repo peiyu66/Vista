@@ -323,8 +323,35 @@ import Observation
             } else if source.isDemo {mediaSource=DemoMediaSource()}
             else if let session=sessions.existingSession(for:sessionKey(source.id,components)) {mediaSource=session}
             else {notice="連線已失效，請重新開啟資料夾。";return}
+            let playbackID=UUID()
+            let sourceFactory:(@MainActor (MediaFile) throws -> any MediaByteSource)?
+            if let borrowed=mediaSource as? SMBDirectoryProvider {
+                let share=components.first ?? source.share
+                let stillCurrent:@MainActor @Sendable () ->Bool = { [weak self] in
+                    guard let self,self.playback?.id==playbackID,
+                          let latest=self.saved.sources.first(where:{$0.id==source.id}) else{return false}
+                    return latest.kind==source.kind && latest.server==source.server && latest.share==source.share &&
+                        latest.username==source.username && latest.credentialID==source.credentialID
+                }
+                sourceFactory={ [weak self] file in
+                    guard let self,stillCurrent() else{throw CancellationError()}
+                    return PlaybackRecoveringSource(file:file,initial:SMBPlaybackSession(provider:borrowed),
+                        metadata:{session,file in try await session.metadata(for:file)},
+                        makeFresh:{ [weak self] in
+                            guard let self,stillCurrent() else{throw CancellationError()}
+                            guard let secret=try self.credentials.load(for:source.credentialID ?? source.id) else{throw SMBCredentialStore.Failure.unavailable}
+                            LifecycleDiagnostics.shared.providerBoundary(.willCall,operation:.connect)
+                            let fresh=try await SMBDirectoryProvider.connectFreshForRecovery(
+                                input:ConnectionInput(server:source.server,share:share,username:source.username),password:secret)
+                            return SMBPlaybackSession(provider:fresh)
+                        },retire:{session in try await session.retireForPlaybackRecovery()},
+                        shouldRecover:{SMBPlaybackSession.recoveryDisposition(for:$0).allowsFreshRecovery},
+                        shouldJoinExistingRecovery:{($0 as? SMBPlaybackReadFailure) == .retired},
+                        isCurrent:stillCurrent)
+                }
+            } else {sourceFactory=nil}
             notice=nil
-            playback=BrowserPlayback(selection:PlaybackSelection(directory:directory,file:entry),source:mediaSource,isDemo:source.isDemo,
+            playback=BrowserPlayback(id:playbackID,selection:PlaybackSelection(directory:directory,file:entry),source:mediaSource,sourceFactory:sourceFactory,isDemo:source.isDemo,
                 preferenceSource:source.kind == .local ? .local(id:source.id):source.isDemo ? .demo:.smb(server:source.server,share:components.first ?? source.share,account:source.username))
         }
     }
@@ -434,8 +461,10 @@ import Observation
                             return try await session.page(at:DirectoryPath(mediaPath(path,source:source)),offset:pageOffset,sort:requestedSort)
                         },retire:{session in try await session.retireForDirectoryRecovery()},
                         shouldRecover:{ [self] error in
-                            // A listing must not take ownership of a player's live media source.
-                            playback == nil && SMBDirectoryProvider.recoveryDisposition(for:error).allowsFreshRecovery
+                            // Never retire a live borrowed media source. The one exception is
+                            // its explicit already-drained playback retirement marker: finishing
+                            // pagination for next/previous must not wait for playback dismissal.
+                            SMBDirectoryProvider.recoveryDisposition(for:error).permitsDirectoryRecovery(playbackActive:playback != nil)
                         },onRecoveryStage:{ [self] stage in
                             let phase:Int
                             switch stage {
@@ -772,9 +801,10 @@ import Observation
 private extension String {var nonempty:String? {isEmpty ? nil:self}}
 
 struct BrowserPlayback:Identifiable {
-    let id=UUID()
+    let id:UUID
     let selection:PlaybackSelection
     let source:any MediaByteSource
+    let sourceFactory:(@MainActor (MediaFile) throws -> any MediaByteSource)?
     let isDemo:Bool
     let preferenceSource:VRPreferenceSource
 }
@@ -853,7 +883,7 @@ struct ShortcutBrowserView: View {
         .allowsHitTesting(model.playback == nil).accessibilityHidden(model.playback != nil)
         .overlay {
             if let playback=model.playback {
-                PlaybackView(selection:playback.selection,source:playback.source,isDemo:playback.isDemo,
+                PlaybackView(selection:playback.selection,source:playback.source,sourceFactory:playback.sourceFactory,isDemo:playback.isDemo,
                              preferenceSource:playback.preferenceSource,directImmersive:directImmersivePlayback,nextFile:model.nextPlayback,hasNext:model.hasNextPlayback,
                              previousFile:model.previousPlayback,hasPrevious:model.hasPreviousPlayback) {model.playback=nil}
                     .id(playback.id)

@@ -228,6 +228,9 @@ public struct PlaybackReport: Sendable {
     nonisolated func resourceLoader(_ loader: AVAssetResourceLoader, shouldWaitForLoadingOfRequestedResource request: AVAssetResourceLoadingRequest) -> Bool {
         MainActor.assumeIsolated { load(request) }
     }
+    static func shouldReportReadFailure(_ error:any Error,taskCancelled:Bool,requestCancelled:Bool,stopped:Bool)->Bool {
+        !taskCancelled && !requestCancelled && !stopped && !(error is CancellationError)
+    }
     private func load(_ request: AVAssetResourceLoadingRequest) -> Bool {
         guard !stopped, tasks.count < 8 else { if !stopped {onReadFailure?()};request.finishLoading(with: PlaybackFailure.readFailed); return true }
         let id = ObjectIdentifier(request)
@@ -256,7 +259,8 @@ public struct PlaybackReport: Sendable {
                         do {data=try await source.read(file,range:range)}
                         catch {
                             #if VISTA_ANON_IO_EXPERIMENT
-                            onAnonymousEnd?(anonymousID,0,error is CancellationError,!(error is CancellationError))
+                            let cancelled=error is CancellationError || Task.isCancelled || stopped || request.isCancelled
+                            onAnonymousEnd?(anonymousID,0,cancelled,!cancelled)
                             #endif
                             onRangeEnd?(epoch,0,ProcessInfo.processInfo.systemUptime-started,true)
                             if let traceID,error is CancellationError {trace?.readCancelled(traceID)};throw error
@@ -267,6 +271,7 @@ public struct PlaybackReport: Sendable {
                         onRangeEnd?(epoch,data.count,ProcessInfo.processInfo.systemUptime-started,Task.isCancelled)
                         if let traceID {trace?.reading(traceID,false)}
                         try Task.checkCancellation()
+                        guard !stopped,!request.isCancelled else{throw CancellationError()}
                         guard data.count == Int(range.upperBound - range.lowerBound) else { throw PlaybackFailure.readFailed }
                         dataRequest.respond(with: data)
                         onReadProgress?()
@@ -275,8 +280,12 @@ public struct PlaybackReport: Sendable {
                         await Task.yield()
                     }
                 }
-                if !Task.isCancelled { request.finishLoading() }
-            } catch { if !Task.isCancelled { onReadFailure?();request.finishLoading(with: PlaybackFailure.readFailed) } }
+                if !Task.isCancelled,!stopped,!request.isCancelled { request.finishLoading() }
+            } catch {
+                if Self.shouldReportReadFailure(error,taskCancelled:Task.isCancelled,requestCancelled:request.isCancelled,stopped:stopped) {
+                    onReadFailure?();request.finishLoading(with: PlaybackFailure.readFailed)
+                }
+            }
         }
         return true
     }

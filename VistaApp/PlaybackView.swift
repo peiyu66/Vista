@@ -7,6 +7,7 @@ struct PlaybackView: View {
     @Environment(\.dismissImmersiveSpace) private var dismissVR
     let selection: PlaybackSelection
     let source: (any MediaByteSource)?
+    var sourceFactory:(@MainActor (MediaFile) throws -> any MediaByteSource)? = nil
     let isDemo: Bool
     let preferenceSource: VRPreferenceSource
     var directImmersive=false
@@ -18,6 +19,10 @@ struct PlaybackView: View {
     @State private var replacement: PlaybackSelection?
     @State private var advanceTask: Task<Void, Never>?
     @State private var autoplayReplacement = false
+    @State private var replayAfterPreparation = false
+    @State private var preparedSource:(any MediaByteSource)?
+    @State private var preparedSourceUsed=false
+    @State private var preparationID=UUID()
     private var playingSelection: PlaybackSelection { replacement ?? selection }
     @State private var inspection: MediaInspection?
     @State private var inspectionFailed = false
@@ -152,13 +157,17 @@ struct PlaybackView: View {
         .onAppear { vr.settings = VRSettings(); vr.message = nil; vr.calibration.resetForNewFile() }
         .onDisappear {
             advanceTask?.cancel(); vr.openRequest = nil
-            player.stop()
+            cancelPreparedSource();player.stop()
             if vr.active { Task { await dismissVR() } }
         }
         .onChange(of: player.position) { _, position in
             if !isScrubbing { scrubTime = position }
         }
         .task(id: playingSelection.id + "#" + String(attempt)) {
+            guard !Task.isCancelled else{return}
+            cancelPreparedSource()
+            let owner=UUID();preparationID=owner
+            let currentSelection=playingSelection
             preferencesReady = false;vr.canClearFormat=false
             formatChoice = VRFormatChoice();formatChoice.filename=playingSelection.file.name; rememberedFormat = nil
             inspection = nil
@@ -169,6 +178,9 @@ struct PlaybackView: View {
             }
             if directImmersive { vr.advancing = true; vr.holdControls() }
             do {
+                try await player.awaitPreparedSourceCleanup()
+                try Task.checkCancellation()
+                guard preparationID==owner else{throw CancellationError()}
                 #if DEBUG
                 if isDemo && ProcessInfo.processInfo.arguments.contains("--slow-media-preparation") {
                     try await Task.sleep(for: .seconds(30))
@@ -177,10 +189,16 @@ struct PlaybackView: View {
                     throw MediaInspectionError.unavailable
                 }
                 #endif
-                guard let source else { throw MediaInspectionError.unavailable }
-                let file = try MediaFile(components: playingSelection.directory.components + [playingSelection.file.name])
-                let result = try await MediaInspector.inspect(file, source: source)
                 try Task.checkCancellation()
+                guard preparationID==owner else{throw CancellationError()}
+                guard let source else { throw MediaInspectionError.unavailable }
+                let file = try MediaFile(components: currentSelection.directory.components + [currentSelection.file.name])
+                let prepared=try sourceFactory?(file) ?? source
+                preparedSource=prepared;preparedSourceUsed=false
+                player.bindPreparedSource(prepared)
+                let result = try await MediaInspector.inspect(file, source: prepared)
+                try Task.checkCancellation()
+                guard preparationID==owner else{throw CancellationError()}
                 inspection = result
                 do {
                     let saved = try VRPreferenceStore.local.get().loadDimensions(source: preferenceSource, file: file, revision: result.revision)
@@ -190,11 +208,17 @@ struct PlaybackView: View {
                     preferenceMessage = nil
                 } catch { preferenceMessage = "無法讀取已存格式；仍可手動設定。" }
                 preferencesReady = true;vr.canClearFormat=rememberedFormat != nil
-                let metadata = try await VRMetadataInspector.inspect(file, source: source)
+                let metadata = try await VRMetadataInspector.inspect(file, source: prepared)
                 try Task.checkCancellation()
+                guard preparationID==owner else{throw CancellationError()}
                 formatChoice.metadata = metadata
                 vr.settings = formatChoice.format.settings;appliedSettings=vr.settings
                 if autoplayReplacement {finishReplacementPreparation()}
+                else if replayAfterPreparation {
+                    replayAfterPreparation=false;vr.advancing=false
+                    vr.requiresFormatConfirmation = !formatChoice.confirmed
+                    if formatChoice.confirmed {startPlayback()} else {vr.holdControls()}
+                }
                 else if directImmersive {
                     vr.advancing = false
                     vr.requiresFormatConfirmation = !formatChoice.confirmed
@@ -203,13 +227,15 @@ struct PlaybackView: View {
                     else { vr.holdControls() }
                 }
             } catch {
-                if !Task.isCancelled {
+                if !Task.isCancelled,!(error is CancellationError),preparationID==owner {
+                    cancelPreparedSource()
+                    let cleanupFailed=(error as? PlaybackController.PreparationFailure) == .sourceCleanup
                     player.persistDiagnostics(event:.failed,rendererValues:[.failureKind:1])
                     inspectionFailed = true; preferencesReady = true; formatChoice.metadata = .unavailable
                     preferenceMessage = "無法確認檔案；本次格式不會保存。"
-                    autoplayReplacement = false
+                    autoplayReplacement = false;replayAfterPreparation=false
                     vr.advancing = false
-                    vr.message = "無法讀取影片，請停止返回檔案列表，確認連線與檔案後再試。"
+                    vr.message = cleanupFailed ? "無法確認先前來源已完成清理，已停止準備影片。請停止返回檔案列表。":"無法讀取影片，請停止返回檔案列表，確認連線與檔案後再試。"
                     vr.holdControls()
                 }
             }
@@ -251,7 +277,7 @@ struct PlaybackView: View {
         vr.fileTitle = playingSelection.file.name
         vr.canAdvance = hasNext(playingSelection)
         vr.canGoBack = hasPrevious(playingSelection)
-        vr.onStop = { advanceTask?.cancel(); player.stop(); close() }
+        vr.onStop = { advanceTask?.cancel(); cancelPreparedSource();player.stop(); close() }
         vr.onCancelNavigation = { advanceTask?.cancel() }
         vr.onNext = { advanceToAdjacent(backward:false) }
         vr.onPrevious = { advanceToAdjacent(backward:true) }
@@ -287,8 +313,8 @@ struct PlaybackView: View {
                     vr.endControllerNavigation()
                     return
                 }
-                player.stop()
-                autoplayReplacement = true
+                cancelPreparedSource();player.stop()
+                autoplayReplacement = true;replayAfterPreparation=false
                 vr.calibration.resetForNewFile();vr.calibrationRequest += 1
                 replacement = next
             } catch {
@@ -298,7 +324,7 @@ struct PlaybackView: View {
         }
     }
     private func stopAndReturn() async {
-        advanceTask?.cancel(); vr.openRequest = nil; player.stop()
+        advanceTask?.cancel(); vr.openRequest = nil; cancelPreparedSource();player.stop()
         if vr.active { await dismissVR() }
         vr.finishSession()
         close()
@@ -324,18 +350,34 @@ struct PlaybackView: View {
         }
         vr.opening = false
     }
+    private func cancelPreparedSource() {
+        preparationID=UUID()
+        (preparedSource as? any PlaybackRecoveryControlling)?.cancelPlayback()
+        player.bindPreparedSource(nil)
+        preparedSource=nil;preparedSourceUsed=false
+    }
     private func startPlayback() {
         guard preferencesReady, !inspectionFailed, formatChoice.confirmed, !vr.opening, !vr.advancing,
-              let source,
               let file = try? MediaFile(components: playingSelection.directory.components + [playingSelection.file.name]) else { return }
+        // A stopped/failed/ended source is permanently closed. Replay prepares metadata
+        // and playback against a new file-bound wrapper instead of reviving that object.
+        if sourceFactory != nil && (preparedSourceUsed || preparedSource == nil) {
+            cancelPreparedSource();player.stop()
+            replayAfterPreparation=true;attempt += 1
+            return
+        }
+        guard let source=preparedSource else{return}
+        let owner=preparationID
         configureImmersiveCallbacks()
         vr.requiresFormatConfirmation = false
         if vr.active || !directImmersive {
+            preparedSourceUsed=true
             player.play(file: file, source: source, sourceKind:isDemo ? .synthetic : source is LocalDirectoryProvider ? .local : .smb); vr.revealControls()
         } else {
             Task {
                 await enterVR(testPattern: false)
-                guard vr.active, !Task.isCancelled else { return }
+                guard vr.active, !Task.isCancelled,preparationID==owner else { return }
+                preparedSourceUsed=true
                 player.play(file: file, source: source, sourceKind:isDemo ? .synthetic : source is LocalDirectoryProvider ? .local : .smb); vr.revealControls()
             }
         }

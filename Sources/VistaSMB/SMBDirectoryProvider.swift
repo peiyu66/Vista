@@ -9,12 +9,20 @@ import VistaCore
 public enum SMBDirectoryReadFailure: Int, Error, Sendable, Equatable {
     case cancelled=1, retired=2, permissionDenied=3, authenticationRequired=4, notFound=5, serverRejected=6
     case serviceInvalidated=7, contextUnavailable=8, transportFailure=9, unclassifiedSessionFailure=10
+    case retiredByPlaybackRecovery=11
 
     public var allowsFreshRecovery: Bool {
         switch self {
-        case .serviceInvalidated,.contextUnavailable,.transportFailure,.unclassifiedSessionFailure:true
+        case .serviceInvalidated,.contextUnavailable,.transportFailure,.unclassifiedSessionFailure,.retiredByPlaybackRecovery:true
         default:false
         }
+    }
+
+    /// A live player may still borrow the registry's provider. Only the playback-specific
+    /// retirement marker proves that provider has already drained and closed; the player's
+    /// replacement stays private. Registry/current-owner checks remain the runner's job.
+    public func permitsDirectoryRecovery(playbackActive: Bool) -> Bool {
+        allowsFreshRecovery && (!playbackActive || self == .retiredByPlaybackRecovery)
     }
 
     static func classify(_ error:any Error)->Self {
@@ -146,6 +154,8 @@ public actor SMBDirectoryProvider: DirectoryProvider, MediaByteSource {
     private let mediaReader: SMBMediaReader
     private let operationLeases: SMBOperationLeases
     private var retirement: Task<Void, any Error>?
+    private var retirementStartedForPlayback = false
+    private var retiredByPlaybackRecovery = false
     private var cache: [DirectoryPath: [FileEntry]] = [:]
     private var orderedCache: [DirectoryPath: (DirectorySort,[FileEntry])] = [:]
     private var tagCache:[String:(Date,FinderTagState)]=[:]
@@ -211,7 +221,9 @@ public actor SMBDirectoryProvider: DirectoryProvider, MediaByteSource {
         diagnostics.providerBoundary(.entered,operation:.listDirectory,session:diagnosticSession)
         defer {diagnostics.providerBoundary(.exited,operation:.listDirectory,session:diagnosticSession)}
         try Task.checkCancellation()
-        guard !closed, operationLeases.acquire() else { throw SMBDirectoryReadFailure.retired }
+        guard !closed, operationLeases.acquire() else {
+            throw retiredByPlaybackRecovery ? SMBDirectoryReadFailure.retiredByPlaybackRecovery : .retired
+        }
         defer { operationLeases.release() }
         if cache[path] == nil {
             diagnostics.directoryCache(hit:false,session:diagnosticSession)
@@ -416,6 +428,24 @@ public actor SMBDirectoryProvider: DirectoryProvider, MediaByteSource {
         return try await mediaReader.read(file,range:range)
     }
 
+    func playbackMetadata(for file: MediaFile) async throws -> PlaybackSourceIdentity {
+        try Task.checkCancellation()
+        guard !closed else { throw playbackRetirementFailure }
+        do { return try await mediaReader.playbackMetadata(for: file) }
+        catch SMBPlaybackReadFailure.retired { throw playbackRetirementFailure }
+    }
+
+    func playbackRead(_ file: MediaFile, range: Range<UInt64>) async throws -> Data {
+        try Task.checkCancellation()
+        guard !closed else { throw playbackRetirementFailure }
+        do { return try await mediaReader.playbackRead(file, range: range) }
+        catch SMBPlaybackReadFailure.retired { throw playbackRetirementFailure }
+    }
+
+    private var playbackRetirementFailure: SMBPlaybackReadFailure {
+        retiredByPlaybackRecovery ? .retiredByPlaybackRecovery : .retired
+    }
+
     /// Stops admission, waits for real asynchronous work, then destroys only local session state.
     /// This call adds no RPC. If ordinary disconnect already began, it joins that same task
     /// (which may include its existing disconnect RPC) and propagates any cleanup failure.
@@ -424,13 +454,24 @@ public actor SMBDirectoryProvider: DirectoryProvider, MediaByteSource {
         try await retire(localOnly:true)
     }
 
+    /// A directory owner can replace this provider only after its actual retirement finished.
+    /// Joining an earlier ordinary retirement never upgrades that retirement's reason.
+    public func retireForPlaybackRecovery() async throws {
+        try await retire(localOnly: true, forPlaybackRecovery: true)
+    }
+
     public func disconnect() async {
         do {try await retire(localOnly:false)}
         catch { /* The shared retirement task has already recorded this failure. */ }
     }
 
-    private func retire(localOnly:Bool) async throws {
-        if let retirement {try await retirement.value;return}
+    private func retire(localOnly:Bool,forPlaybackRecovery:Bool=false) async throws {
+        if let retirement {
+            try await retirement.value
+            if retirementStartedForPlayback { retiredByPlaybackRecovery = true }
+            return
+        }
+        retirementStartedForPlayback = forPlaybackRecovery
         diagnostics.record(.disconnectRequested,[.session:Double(diagnosticSession),.navigation:Double(LifecycleContext.navigation)])
         closed=true;cacheRevision += 1
         cache.removeAll();orderedCache.removeAll();tagCache.removeAll()
@@ -457,6 +498,7 @@ public actor SMBDirectoryProvider: DirectoryProvider, MediaByteSource {
         }
         retirement=task
         try await task.value
+        if retirementStartedForPlayback { retiredByPlaybackRecovery = true }
     }
 }
 

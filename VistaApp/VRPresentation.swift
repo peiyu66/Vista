@@ -165,12 +165,39 @@ struct VRSettingsView: View {
     }
 }
 
+// Anonymous low-frequency view boundaries only. No media names or frame contents.
+@MainActor private final class ImmersivePlaybackBoundaryState {
+    // Cause: 1 appear, 2 first/changed frame session, 3 scene change, 4 renderer error, 5 disappear.
+    let trace=PlaybackBoundaryTrace(scope:1)
+    private(set) var generation=0
+    private var observedSession:UUID?
+    private var observedFrame=false
+    func begin(_ cause:Int) {generation += 1;trace.begin(reason:cause,generation:generation)}
+    func observeFrame(_ player:PlaybackController?) {
+        let session=player?.pixelFrame?.session
+        if !observedFrame || observedSession != session {
+            observedFrame=true;observedSession=session;begin(2)
+        }
+        record(.frameObserved,player:player)
+    }
+    func record(_ stage:PlaybackBoundaryStage,player:PlaybackController?,fields:[LifecycleField:Double]=[:],once:Bool=true,context:PlaybackBoundaryTrace.Context?=nil,capturedGeneration:Int?=nil) {
+        guard trace.shouldRecord(stage,once:once,context:context) else{return}
+        var values:[LifecycleField:Double]=[.playing:player?.isPlaying == true ? 1:0,
+            .paused:player?.isPaused == true ? 1:0,.preparing:player?.isPreparing == true ? 1:0,
+            .frameAvailable:player?.pixelFrame != nil ? 1:0]
+        if let session=player?.pixelFrame?.session {values[.session]=Double(PlaybackBoundaryIdentity.session(session))}
+        values.merge(fields){_,new in new}
+        trace.record(stage,generation:capturedGeneration ?? generation,fields:values,once:once,context:context)
+    }
+}
+
 struct VRImmersiveView: View {
     @Environment(VRPresentation.self) private var presentation
     @Environment(\.dismissImmersiveSpace) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @State private var renderer = VRRenderer()
     @State private var systemRenderer = SystemVideoPresenter()
+    @State private var playbackBoundaries=ImmersivePlaybackBoundaryState()
     @State private var placement = Entity()
     @State private var controllerEntryPose:VRInitialPose?
     @State private var controllerReference:Entity = {let entity=Entity();entity.position=[0,1.5,0];return entity}()
@@ -343,9 +370,13 @@ struct VRImmersiveView: View {
         }
         .onChange(of: systemRenderer.error) {_,error in
             guard let error else{return}
+            playbackBoundaries.begin(4)
+            playbackBoundaries.record(.failure,player:presentation.player,fields:[.outcome:2])
             presentation.message=error
             presentation.player?.persistDiagnostics(event:.rendererFailed)
+            playbackBoundaries.record(.stopEntered,player:presentation.player,fields:[.outcome:2])
             presentation.player?.stop()
+            playbackBoundaries.record(.stopReturned,player:presentation.player,fields:[.outcome:2])
             presentation.holdControls()
         }
         .onChange(of: presentation.message) {_,message in if message != nil {presentation.endControllerNavigation(showError:true);presentation.holdControls()}}
@@ -371,18 +402,39 @@ struct VRImmersiveView: View {
             }
         }
         .task(id: UpdateKey(image: presentation.image.map(ObjectIdentifier.init), settings: presentation.videoSettings,pixel:presentation.player?.pixelFrame.map(ObjectIdentifier.init))) {
+            playbackBoundaries.observeFrame(presentation.player)
+            systemRenderer.onRecoverableInterruption = { [weak player=presentation.player, boundaries=playbackBoundaries] session in
+                boundaries.record(.upstreamPauseEntered,player:player,once:false)
+                guard let player,player.pixelFrame?.session == session else{
+                    boundaries.record(.upstreamPauseReturned,player:player,fields:[.outcome:1],once:false)
+                    return false
+                }
+                player.pauseForBackground()
+                let accepted=player.isPlaying && !player.isPreparing && player.isPaused && player.pixelFrame?.session == session
+                boundaries.record(.upstreamPauseReturned,player:player,fields:[.outcome:accepted ? 0:2],once:false)
+                return accepted
+            }
+            systemRenderer.setSceneActive(scenePhase == .active)
             #if VISTA_SYSTEM_VIDEO_EXPERIMENT
             if !presentation.testPattern,let frame=presentation.player?.pixelFrame {
                 if #available(visionOS 26.0,*),SystemVideoSamples.supports(frame,settings:presentation.videoSettings) {
+                    playbackBoundaries.record(.stopEntered,player:presentation.player,fields:[.operation:2])
                     renderer.stop()
+                    playbackBoundaries.record(.stopReturned,player:presentation.player,fields:[.operation:2])
+                    playbackBoundaries.record(.submitEntered,player:presentation.player,fields:[.operation:1])
                     systemRenderer.submit(frame,settings:presentation.videoSettings)
+                    playbackBoundaries.record(.submitReturned,player:presentation.player,fields:[.operation:1])
                 } else {
+                    playbackBoundaries.record(.submitEntered,player:presentation.player,fields:[.operation:2])
                     systemRenderer.stop()
                     renderer.submit(frame:frame,settings:presentation.videoSettings,metrics:presentation.player?.metrics)
+                    playbackBoundaries.record(.submitReturned,player:presentation.player,fields:[.operation:2])
                 }
             } else {
+                playbackBoundaries.record(.submitEntered,player:presentation.player,fields:[.operation:2])
                 systemRenderer.stop()
                 renderer.submit(image:presentation.image,settings:presentation.videoSettings,metrics:presentation.player?.metrics)
+                playbackBoundaries.record(.submitReturned,player:presentation.player,fields:[.operation:2])
             }
             #else
             renderer.submit(image: presentation.image, settings: presentation.videoSettings,metrics:presentation.player?.metrics)
@@ -408,14 +460,44 @@ struct VRImmersiveView: View {
         }
         .onChange(of: scenePhase) { old, phase in
             LifecycleDiagnostics.shared.record(.scenePhase,[.scope:2,.previousPhase:old.diagnosticValue,.phase:phase.diagnosticValue])
+            playbackBoundaries.begin(3)
+            let sceneContext=playbackBoundaries.trace.context(),sceneGeneration=playbackBoundaries.generation
+            playbackBoundaries.record(.sceneEntered,player:presentation.player,fields:[.previousPhase:old.diagnosticValue,.outcome:phase.diagnosticValue,.active:phase == .active ? 1:0])
+            defer {playbackBoundaries.record(.sceneReturned,player:presentation.player,fields:[.outcome:phase.diagnosticValue,.active:phase == .active ? 1:0],context:sceneContext,capturedGeneration:sceneGeneration)}
+            systemRenderer.setSceneActive(phase == .active)
+            presentation.player?.setPlaybackSceneActive(phase == .active)
             if phase != .active {cancelControllerResetSample()}
+            // Preserve Build59/60 upstream policy: inactive alone never pauses or stops playback.
             if phase == .background {
+                playbackBoundaries.record(.pauseEntered,player:presentation.player)
                 presentation.player?.pauseForBackground()
+                playbackBoundaries.record(.pauseReturned,player:presentation.player)
                 presentation.holdControls()
+            } else if phase == .active {
+                // Paused VideoOutput need not emit a new pixel. Re-submit the retained
+                // frame explicitly, without seeking, restarting audio, or reconnecting.
+                #if VISTA_SYSTEM_VIDEO_EXPERIMENT
+                if !presentation.testPattern,let frame=presentation.player?.pixelFrame,
+                   #available(visionOS 26.0,*),SystemVideoSamples.supports(frame,settings:presentation.videoSettings) {
+                    playbackBoundaries.observeFrame(presentation.player)
+                    playbackBoundaries.record(.submitEntered,player:presentation.player,fields:[.operation:1])
+                    systemRenderer.submit(frame,settings:presentation.videoSettings)
+                    playbackBoundaries.record(.submitReturned,player:presentation.player,fields:[.operation:1])
+                }
+                #endif
             }
         }
-        .onAppear{LifecycleDiagnostics.shared.record(.viewAppear,[.scope:2,.phase:scenePhase.diagnosticValue])}
+        .onAppear{
+            presentation.player?.setPlaybackSceneActive(scenePhase == .active)
+            playbackBoundaries.begin(1)
+            playbackBoundaries.record(.sceneEntered,player:presentation.player,fields:[.outcome:scenePhase.diagnosticValue,.active:scenePhase == .active ? 1:0])
+            LifecycleDiagnostics.shared.record(.viewAppear,[.scope:2,.phase:scenePhase.diagnosticValue])
+            playbackBoundaries.record(.sceneReturned,player:presentation.player,fields:[.outcome:scenePhase.diagnosticValue,.active:scenePhase == .active ? 1:0])
+        }
         .onDisappear {
+            playbackBoundaries.begin(5)
+            playbackBoundaries.record(.stopEntered,player:presentation.player)
+            defer {playbackBoundaries.record(.stopReturned,player:presentation.player)}
             LifecycleDiagnostics.shared.record(.viewDisappear,[.scope:2])
             cancelControllerResetSample()
             presentation.calibration.cancel()
@@ -425,6 +507,7 @@ struct VRImmersiveView: View {
             controlVisual.facingTask?.cancel();controlVisual.facingTask=nil
             controlVisual.poseTask?.cancel();controlVisual.poseTask=nil
             controlVisual.dragPointer=nil;draggingControls=false
+            presentation.player?.setPlaybackSceneActive(false)
             renderer.stop();systemRenderer.stop(); presentation.finishSession()
         }
     }
@@ -911,208 +994,6 @@ struct VRImmersiveView: View {
     var fadeTask:Task<Void,Never>?
 }
 
-
-/// Candidate only: a single pending pixel buffer, one serial flush/enqueue worker, existing timeline upstream.
-@MainActor @Observable private final class SystemVideoPresenter {
-    let entity=ModelEntity()
-    let context=CIContext()
-    var ready=false
-    var error:String?
-    var probe=""
-    private var inputProbe=""
-    @ObservationIgnored private var probeTask:Task<Void,Never>?
-    @ObservationIgnored private var statusTask:Task<Void,Never>?
-    @ObservationIgnored private var failedSession:UUID?
-    @ObservationIgnored private var video=AVSampleBufferVideoRenderer()
-    @ObservationIgnored private var sharedVideoMaterial:VideoMaterial?
-    @ObservationIgnored private var configuredSettings:VRSettings?
-    #if DEBUG
-    var packingImageSize:CGSize? {sharedVideoMaterial?.controller.currentImageSize}
-    var packingState:String {
-        let size=sharedVideoMaterial?.controller.currentImageSize
-        return "layout=\(configuredSettings?.layout.rawValue ?? "nil") image=\(size?.width ?? -1)x\(size?.height ?? -1) mode=\(String(describing:sharedVideoMaterial?.controller.currentViewingMode)) ready=\(ready) error=\(error ?? "none")"
-    }
-    #endif
-    private(set) var materialCreationCount=0
-    private(set) var lastSubmittedSession:UUID?
-    private(set) var lastSubmittedAt:Double?
-    @available(visionOS 26.0,*)
-    private func material()->VideoMaterial {
-        if let sharedVideoMaterial {return sharedVideoMaterial}
-        let created=VideoMaterial(videoRenderer:video)
-        sharedVideoMaterial=created;materialCreationCount += 1
-        return created
-    }
-    @ObservationIgnored private var pending:(DecodedVideoFrame,VRSettings)?
-    @ObservationIgnored private var worker:Task<Void,Never>?
-    @ObservationIgnored private var generation=0
-    @ObservationIgnored private var current:(UUID,VRSettings)?
-    @ObservationIgnored private var needsFlush=true
-    @ObservationIgnored private var isStopped=true
-    func stop() {
-        guard !isStopped else{return}
-        isStopped=true
-        generation += 1;pending=nil;needsFlush=true;ready=false;entity.isEnabled=false
-        probeTask?.cancel();probeTask=nil;probe="";inputProbe=""
-        statusTask?.cancel();statusTask=nil
-        // The existing serial worker finishes any flush before a later generation can enqueue.
-        if worker == nil {video.flush()}
-    }
-    @available(visionOS 26.0,*)
-    func submit(_ frame:DecodedVideoFrame,settings:VRSettings) {
-        guard failedSession != frame.session else{return}
-        isStopped=false
-        if current?.0 != frame.session || current?.1 != settings {
-            generation += 1;needsFlush=true;current=(frame.session,settings)
-            probeTask?.cancel();probeTask=nil;probe="";inputProbe=""
-        statusTask?.cancel();statusTask=nil
-        }
-        pending=(frame,settings)
-        guard worker == nil else{return}
-        worker=Task { @MainActor in
-            let samples=SystemVideoSamples()
-            while let next=pending {
-                pending=nil
-                let ticket=generation
-                var stage="prepare"
-                do {
-                    if needsFlush {
-                        needsFlush=false;samples.reset()
-                        // RealityKit retains the initial packing for a renderer/material pair.
-                        // Retire both together only when packing changes; ordinary frames reuse them.
-                        let changesPacking = configuredSettings.map { $0.layout != next.1.layout } ?? false
-                        await video.flush(removingDisplayedImage:changesPacking)
-                        guard ticket==generation else{continue}
-                        if changesPacking {
-                            entity.model=nil;sharedVideoMaterial=nil
-                            video=AVSampleBufferVideoRenderer();configuredSettings=nil
-                        }
-                        if configuredSettings != next.1 || entity.model == nil {
-                        let crop=next.1.crop(width:CVPixelBufferGetWidth(next.0.pixel),height:CVPixelBufferGetHeight(next.0.pixel),rightEye:false)!
-                        guard let mesh=VRMesh(projection:next.1.projection,eyeWidth:Int(crop.width),eyeHeight:Int(crop.height)) else{throw PlaybackFailure.unsupportedTrack}
-                        var descriptor=MeshDescriptor(name:"System video candidate")
-                        descriptor.positions=MeshBuffers.Positions(mesh.positions)
-                        descriptor.normals=MeshBuffers.Normals(mesh.normals)
-                        descriptor.textureCoordinates=MeshBuffers.TextureCoordinates(mesh.uv)
-                        descriptor.primitives = .triangles(mesh.indices)
-                        let material=material()
-                        material.controller.preferredViewingMode = next.1.layout == .mono ? .mono:.stereo
-                        entity.model=ModelComponent(mesh:try MeshResource.generate(from:[descriptor]),materials:[material])
-                        entity.orientation=VRInitialPose.manualRotation(yaw:next.1.yawDegrees,pitch:next.1.pitchDegrees,roll:next.1.rollDegrees)
-                    #if DEBUG
-                    if ProcessInfo.processInfo.arguments.contains("--system-renderer-flat") {
-                        entity.model=ModelComponent(mesh:.generatePlane(width:2,height:1),materials:[material])
-                        entity.position=[0,0,-2];entity.orientation=simd_quatf()
-                    }
-                    #endif
-                        configuredSettings=next.1
-                        }
-                    }
-                    stage="queue"
-                    let deadline=ContinuousClock.now.advanced(by:.milliseconds(250))
-                    while !video.isReadyForMoreMediaData,ContinuousClock.now<deadline,ticket==generation,pending==nil {
-                        try await Task.sleep(for:.milliseconds(5))
-                    }
-                    guard ticket==generation,pending==nil else{continue}
-                    guard video.isReadyForMoreMediaData,video.status != .failed else{throw PlaybackFailure.decodeFailed}
-                    #if DEBUG
-                    if ProcessInfo.processInfo.arguments.contains("--system-renderer-failure") {stage="injected";throw PlaybackFailure.decodeFailed}
-                    #endif
-                    stage="sample"
-                    let sample=try samples.sample(next.0,settings:next.1)
-                    #if DEBUG
-                    if ProcessInfo.processInfo.arguments.contains("--system-renderer-probe"),inputProbe.isEmpty {
-                        let image=CIImage(cvPixelBuffer:next.0.pixel)
-                        let thumb=image.transformed(by:CGAffineTransform(scaleX:16/image.extent.width,y:16/image.extent.height))
-                        var bytes=[UInt8](repeating:0,count:16*16*4)
-                        context.render(thumb,toBitmap:&bytes,rowBytes:64,bounds:CGRect(x:0,y:0,width:16,height:16),format:.RGBA8,colorSpace:CGColorSpaceCreateDeviceRGB())
-                        let rgb=bytes.enumerated().filter{$0.offset%4 != 3}.map{Int($0.element)}
-                        let sum=rgb.reduce(0,+),bright=rgb.filter{$0>20}.count
-                        inputProbe="inputRGBsum=\(sum) bright=\(bright) surface=\(CVPixelBufferGetIOSurface(next.0.pixel) != nil) format=\(CVPixelBufferGetPixelFormatType(next.0.pixel)) PTS=\(next.0.time)"
-                        if ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests"),let cg=context.createCGImage(image,from:image.extent),let destination=CGImageDestinationCreateWithURL(FileManager.default.temporaryDirectory.appendingPathComponent("vista-input-calibration.png") as CFURL,"public.png" as CFString,1,nil) {
-                            CGImageDestinationAddImage(destination,cg,nil);_ = CGImageDestinationFinalize(destination)
-                        }
-                    }
-                    #endif
-                    #if DEBUG
-                    if ProcessInfo.processInfo.arguments.contains("--system-renderer-raw") {
-                        let rawFormat=try CMVideoFormatDescription(imageBuffer:next.0.pixel)
-                        let raw=try CMSampleBuffer(imageBuffer:next.0.pixel,formatDescription:rawFormat,sampleTiming:CMSampleTimingInfo(duration:.invalid,presentationTimeStamp:.zero,decodeTimeStamp:.invalid))
-                        raw.sampleAttachments[0][.displayImmediately]=true
-                        video.enqueue(raw)
-                    } else {video.enqueue(sample)}
-                    #else
-                    video.enqueue(sample)
-                    #endif
-                    ready=true;entity.isEnabled=true;error=nil
-                    if lastSubmittedSession != next.0.session {
-                        lastSubmittedAt=ProcessInfo.processInfo.systemUptime
-                        lastSubmittedSession=next.0.session
-                    }
-                    startProbe(ticket:ticket)
-                    startStatusMonitor(ticket:ticket)
-                } catch { if ticket==generation {
-                    failedSession=next.0.session;pending=nil;needsFlush=true
-                    self.error=failureMessage(stage:stage)
-                    ready=false;entity.isEnabled=false
-                } }
-            }
-            if needsFlush {await video.flush(removingDisplayedImage:true)}
-            worker=nil
-            if let next=pending {submit(next.0,settings:next.1)}
-        }
-    }
-    private func failureMessage(stage:String)->String {
-        let status=(video.error as NSError?).map {" code=\($0.code)"} ?? ""
-        return "系統影片呈現失敗，已停止 [videoRenderer/\(stage)\(status)]"
-    }
-    private func startStatusMonitor(ticket:Int) {
-        guard statusTask==nil else{return}
-        statusTask=Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                do {try await Task.sleep(for:.milliseconds(100))} catch{return}
-                guard let self,ticket==self.generation else{return}
-                if self.video.status == .failed || self.video.requiresFlushToResumeDecoding {
-                    self.failedSession=self.current?.0;self.pending=nil;self.needsFlush=true
-                    self.error=self.failureMessage(stage:"async")
-                    self.ready=false;self.entity.isEnabled=false
-                    return
-                }
-            }
-        }
-    }
-    private func startProbe(ticket:Int) {
-        #if DEBUG
-        guard ProcessInfo.processInfo.arguments.contains("--system-renderer-probe"),probeTask==nil else{return}
-        probeTask=Task { @MainActor in
-            for _ in 0..<20 {
-                do {try await Task.sleep(for:.milliseconds(100))} catch{return}
-                guard ticket==generation else{return}
-                // Apple's copyDisplayedPixelBuffer contract returns nil at nonzero rate.
-                // Freeze only the renderer for this synthetic Debug observation, then restore.
-                let synthetic=ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests")
-                let savedRate=CMTimebaseGetRate(video.timebase)
-                if synthetic {CMTimebaseSetRate(video.timebase,rate:0)}
-                let displayed=video.displayedPixelBuffer()
-                if synthetic {CMTimebaseSetRate(video.timebase,rate:savedRate)}
-                if let pixel=displayed {
-                    if ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests"),let image=context.createCGImage(CIImage(cvPixelBuffer:pixel),from:CIImage(cvPixelBuffer:pixel).extent) {
-                        let url=FileManager.default.temporaryDirectory.appendingPathComponent("vista-renderer-calibration.png")
-                        if let destination=CGImageDestinationCreateWithURL(url as CFURL,"public.png" as CFString,1,nil) {
-                            CGImageDestinationAddImage(destination,image,nil);_ = CGImageDestinationFinalize(destination)
-                        }
-                    }
-                    probe=inputProbe+" renderer 可讀回影格 \(CVPixelBufferGetWidth(pixel))×\(CVPixelBufferGetHeight(pixel))；非雙眼輸出驗收"
-                    return
-                }
-            }
-            probe=inputProbe+" renderer 讀回不可用（不代表黑畫面） status=\(video.status.rawValue) ready=\(video.isReadyForMoreMediaData) flush=\(video.requiresFlushToResumeDecoding) rate=\(CMTimebaseGetRate(video.timebase)) error=\((video.error as NSError?)?.code ?? 0)"
-            print("SYSTEM_RENDERER_PROBE status=\(video.status.rawValue) ready=\(video.isReadyForMoreMediaData) requiresFlush=\(video.requiresFlushToResumeDecoding) time=\(CMTimebaseGetTime(video.timebase).seconds) rate=\(CMTimebaseGetRate(video.timebase)) error=\((video.error as NSError?)?.code ?? 0)")
-        }
-        #endif
-    }
-
-}
 
 #if DEBUG
 struct PackingRendererReview:View {

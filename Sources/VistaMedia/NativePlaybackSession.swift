@@ -103,6 +103,8 @@ struct AnonymousIOSnapshot:Equatable {
  private var item:AVPlayerItem?
  private var asset:AVURLAsset?
  private var bridge:ResourceBridge?
+ private var recoverySource:(any PlaybackRecoveryControlling)?
+ private var observedSourceRecovery=false
  private var running=false,prepared=false
  private var active=false,sourceFailed=false,paused=false,seeking=false
  private var seekGeneration=UUID(),frameSession=UUID()
@@ -186,13 +188,28 @@ struct AnonymousIOSnapshot:Equatable {
   }
   #endif
  }
- public func stop(){active=false;seekGeneration=UUID();item?.cancelPendingSeeks();player?.pause();asset?.cancelLoading()}
+ public func stop(){
+  active=false;seekGeneration=UUID();item?.cancelPendingSeeks();player?.pause();asset?.cancelLoading()
+  recoverySource?.cancelPlayback();recoverySource=nil;observedSourceRecovery=false
+ }
  private func check()throws {
   try Task.checkCancellation()
   guard active else{throw CancellationError()}
   if sourceFailed {throw Failure.source}
   if item?.status == .failed {throw Failure.player}
-  if (!paused || !prepared) && ProcessInfo.processInfo.systemUptime-lastProgress>stallLimit {throw Failure.stalled}
+  let now=ProcessInfo.processInfo.systemUptime
+  if let recoverySource,recoverySource.isPlaybackRecovering {
+   observedSourceRecovery=true
+   // Only the source's accumulated active time counts. Inactive/background waits
+   // cannot spend or renew this episode's bound, and no AVPlayer state is changed.
+   guard recoverySource.recoveryActiveElapsed<PlaybackSourceRecoveryPolicy.activeBudget else {
+    recoverySource.cancelPlayback()
+    throw Failure.source
+   }
+   return
+  }
+  if observedSourceRecovery {observedSourceRecovery=false;lastProgress=now}
+  if (!paused || !prepared) && now-lastProgress>stallLimit {throw Failure.stalled}
  }
  public func play(file:MediaFile,source:any MediaByteSource,startAt:Double=0,startPaused:Bool=false,
   onInfo:@escaping @MainActor (VideoTrackInfo)->Void,
@@ -203,11 +220,12 @@ struct AnonymousIOSnapshot:Equatable {
   let ext=(file.components.last! as NSString).pathExtension.lowercased()
   guard ["mp4","m4v","mov"].contains(ext) else{throw Failure.unsupported}
   running=true;prepared=false;active=true;sourceFailed=false;paused=startPaused;seeking=false;selectedSpeed=1;frameSession=UUID()
+  recoverySource=source as? any PlaybackRecoveryControlling;observedSourceRecovery=false
   lastProgress=ProcessInfo.processInfo.systemUptime;frames=0;waits=0;maxClockDifference=0;diagnosticUpdate=0;onState(.preparing)
   do {
    requestMetrics.begin("開片",now:ProcessInfo.processInfo.systemUptime)
    let size:UInt64
-   do {size=try await source.fileSize(for:file)}
+   do {size=try await source.fileSize(for:file);lastProgress=ProcessInfo.processInfo.systemUptime}
    catch is CancellationError {throw CancellationError()}
    catch {throw Failure.source}
    try check()
