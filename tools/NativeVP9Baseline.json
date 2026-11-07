@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "version": "0.1.0 (67)",
+  "baseCommit": "fbe5e48b8cc82a5d49aba62d9235bd03bcdcc550",
+  "acceptedOn": "2026-11-07",
+  "scope": "VP9 MP4 playback, seek, speed and headset removal/re-wear accepted by the user. MKV remains unsupported.",
+  "minimumSupplementalRegistrationOS": {
+    "macOS": "11.0",
+    "visionOS": "26.2"
+  },
+  "decoderSelection": "System-managed; hardware/software identity unknown",
+  "fixture": {
+    "path": "Tests/VistaCoreTests/Resources/NativeVP9AV.mp4",
+    "origin": "Project-generated synthetic pixels and audio, reused without re-encoding",
+    "width": 640,
+    "height": 360,
+    "videoCodec": "VP9",
+    "audioCodec": "AAC",
+    "durationSeconds": 4
+  },
+  "files": {
+    ".gitignore": "3e17cd7de4d85abec1e08767422b26d568f7e6d3d76345c54a44aebad2985d5a",
+    "Package.swift": "2c1574635eef45f965402ec125f934a2ba927e5761e6821425988e7b23ded3d8",
+    "Sources/VistaMedia/NativePlaybackSession.swift": "7ead6158fff4b71e495e89a99bc176efe98c57835db8ed9820858f2e72383089",
+    "VistaBrowser.xcodeproj/project.pbxproj": "f12177622808dcbb64e831696dce9e21ec81b8ec4ed8d5d1a36f34417c83d094",
+    "Tests/VistaCoreTests/NativeVP9OptInTests.swift": "6ac76c63761ef87d3e27e2352ca1f693f40a113ea338a3839fd08526aa0dcf01",
+    "Tests/VistaCoreTests/NativeVP9Build66Tests.swift": "52479031630f684f835f387ad390ea33c3eec0b85c8a81ed1832fb9b05296ad1",
+    "Tests/VistaCoreTests/Resources/NativeVP9AV.mp4": "e88e24c5af81be6e1f14a64829e337b1d8e67b845df09c8abe99f7a9852f6e40"
+  }
+}

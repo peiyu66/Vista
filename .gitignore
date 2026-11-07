@@ -59,3 +59,6 @@ TestMedia/
 
 # Project-generated SDR BT.709 fisheye switching fixture
 !Tests/VistaCoreTests/Resources/FisheyeSDR.mp4
+
+# Existing project-generated VP9 + AAC acceptance fixture.
+!Tests/VistaCoreTests/Resources/NativeVP9AV.mp4

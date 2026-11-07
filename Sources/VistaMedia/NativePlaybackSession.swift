@@ -1,6 +1,7 @@
 import Foundation
 @preconcurrency import AVFoundation
 import CoreVideo
+import VideoToolbox
 #if os(visionOS)
 import UIKit
 
@@ -89,6 +90,24 @@ struct AnonymousIOSnapshot:Equatable {
  func snapshot()->AnonymousIOSnapshot {.init(started:started,finished:finished,cancelled:cancelled,failed:failed,inFlight:slots.count,oldAtStart:oldAtStart,oldRemaining:slots.values.filter{$0.epoch != epoch}.count,peak:peak,bytes:bytes,overflow:overflow,maxTotalMS:maxTotalMS,lastOldMS:lastOldMS)}
 }
 #endif
+
+/// Opt in once per process to a system-provided VP9 decoder, when the public API exists.
+/// A requested registration is not evidence that a decoder exists or that playback uses hardware.
+@MainActor enum NativeSupplementalVideoDecoders {
+ static let vp9RegistrationRequested: Bool = {
+  #if os(visionOS)
+  guard #available(visionOS 26.2, *) else { return false }
+  #elseif os(macOS)
+  guard #available(macOS 11.0, *) else { return false }
+  #else
+  return false
+  #endif
+  #if os(visionOS) || os(macOS)
+  VTRegisterSupplementalVideoDecoderIfAvailable(kCMVideoCodecType_VP9)
+  return true
+  #endif
+ }()
+}
 
 /// Controlled AVPlayer candidate. No claim about the internal decoder identity.
 @MainActor public final class NativePlaybackSession {
@@ -244,6 +263,7 @@ struct AnonymousIOSnapshot:Equatable {
    }
    loader.onReadFailure={ [weak self] in self?.sourceFailed=true }
    loader.onReadProgress={ [weak self] in self?.lastProgress=ProcessInfo.processInfo.systemUptime }
+   _ = NativeSupplementalVideoDecoders.vp9RegistrationRequested
    let urlAsset=AVURLAsset(url:URL(string:"vista-media://native/\(UUID().uuidString).\(ext)")!)
    asset=urlAsset;urlAsset.resourceLoader.setDelegate(loader,queue:.main)
    let media=AVPlayerItem(asset:urlAsset);item=media
