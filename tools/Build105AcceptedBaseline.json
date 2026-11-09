@@ -1,0 +1,100 @@
+{
+  "build": 105,
+  "version": "0.1.0",
+  "date": "2026-11-09",
+  "baseCommit": "db30d3f3ae86bb04969af37a5760cb44a125ad01",
+  "sourceStatus": "Installed Build105 accepted by user; only controller UI simplification and project version change.",
+  "inputManifest": "tools/Build105AcceptedInputs.json",
+  "inputManifestSHA256": "5f62346adacee4ac7fc41e5bcdfb6de1f6e25db843a51ae34f871fded7e31185",
+  "originalCandidateInputCount": 396,
+  "applicationInputCount": 394,
+  "byteIdenticalInputCount": 393,
+  "excludedCandidateValidationTools": [
+    "tools/ControllerCleanStatusTestFilter.txt",
+    "tools/ValidateControllerCleanStatus.py"
+  ],
+  "original396ManifestSHA256": "f00c1dda28ec24b58c893b72ef4e4afacbb39f67d27b5ac67fce9e35b1bac112",
+  "changedProductTestFiles": {
+    "VistaApp/VRPresentation.swift": "c5949311b18f9eb1da922478176290b720755b8f0097a992629bae2107c78155",
+    "VistaUITests/BrowserUITests.swift": "cf7d84e033d807e862efcc22a1ab8221cf8d7e9114d53aa40a3517c9c8656a43",
+    "Vista.xcodeproj/project.pbxproj": "e410f5555ba9269ab07d3f7e2ba09d14f815c1fc0044f9c9ead0f76f9aa04a67",
+    "VistaBrowser.xcodeproj/project.pbxproj": "2eae42994bc64b536db46e13bb31aef18a1dd9ee1d78f1be23ec6a18b4fec600"
+  },
+  "metadataExceptions": {
+    "Dependencies/AMSMB2-provenance.json": {
+      "originalSHA256": "5ac730683bc2842f67601a6c1b4611db306f6384faf7c0217c97077cfda8c8c9",
+      "promotedSHA256": "921db491dce8296039f0bdcf971a7f6926785e882905459ca29ab4ce31b9d733",
+      "reason": "Unchanged accepted Build104 provenance retained; not reverted to obsolete candidate metadata. Does not affect compilation."
+    }
+  },
+  "supplementalFiles": {
+    "tools/Build105AcceptedTestFilter.txt": "eb4fdf749e634323caf91a3ca8adc37efcbf8fc9305e864b1e030d407038b413",
+    "tools/VerifyBuild105Baseline.py": "e748bf8d976a2f582527a0c2e41f20ecacf694cbdc2efc0d47870e61c5ae84ed"
+  },
+  "symlinks": {
+    "tools/AMSMB2BoundaryTests/AMSMB2Swift": "../../Dependencies/AMSMB2/AMSMB2",
+    "tools/AMSMB2BoundaryTests/SMB2C": "../../Dependencies/AMSMB2/Dependencies/libsmb2"
+  },
+  "validation": {
+    "staticUIAndVersionContracts": {
+      "passed": 29,
+      "total": 29,
+      "kind": "Original UI contracts adapted to exact 104-to-105 project changes and preserved public Build104 baseline; static only."
+    },
+    "inheritedBehavior": {
+      "tests": 48,
+      "suites": 15,
+      "rerun": false,
+      "sourceFilesCompared": 391,
+      "swiftPMInputsIndependentlyCompared": 366,
+      "processReceiptSHA256": "4c25d4dbf49bb3bc972f8492ae4ba372b471b389aad778a7bdb6786f877191a1",
+      "casesReceiptSHA256": "910b2f102af9ca2ebbf7fca9235bb2f1f6236d1745531fba6f03bcb98a22890c",
+      "filter": "tools/Build105AcceptedTestFilter.txt",
+      "restriction": "Identical compiled SwiftPM sources, dependencies, tests and fixtures. Not new behavior/UI-runtime execution."
+    },
+    "inheritedLegacyRelease": {
+      "build": 105,
+      "rerun": false,
+      "originalExit": 0,
+      "allApplicationInputsMatchExceptNoncompiledMetadata": true,
+      "artifactFilesRehashed": 13,
+      "bundle": "org.peiyu66.Vista",
+      "unsignedBinarySHA256": "c48dad70db9c3bd527a0f633e9542db510567ad07d4953a8378eac3cb3be0ad3",
+      "appAndDSYMUUID": "F13E6EDE-66AC-3565-B05A-66E4386D76F1"
+    },
+    "VistaBrowserRelease": {
+      "passed": true,
+      "newBuild": true,
+      "unsigned": true,
+      "version": "0.1.0",
+      "build": 105,
+      "appAndDSYMUUIDMatch": true,
+      "seconds": 69.384
+    },
+    "UIBuildForTesting": {
+      "passed": true,
+      "newCompile": true,
+      "runtimeExecuted": false,
+      "destination": "generic/platform=visionOS Simulator",
+      "signingAllowed": false,
+      "build": 105,
+      "seconds": 37.478
+    }
+  },
+  "limits": [
+    "Status/error text removed without adding another error display; cleanup and control gates unchanged.",
+    "UI tests compiled only. Injected renderer failure requires existing diagnostic opt-in in app and UI tests.",
+    "No change to playback, recovery, seek, SMB, ring or third-party licenses.",
+    "No MKV or unrelated research included."
+  ],
+  "notRun": [
+    "48 behavior tests (inherited only)",
+    "legacy Release (inherited exact105 evidence)",
+    "vendor boundary tests",
+    "SMB/Admission/restricted concurrency",
+    "NAS/private media",
+    "Simulator runtime",
+    "signing/device installation/launch"
+  ],
+  "publication": "Source-only single promotion commit; no App Store or signed binary release."
+}

@@ -261,6 +261,7 @@ final class VistaUITests:XCTestCase {
             let spinner=app.descendants(matching:.any)["controllerVideoInfoBuffering"]
             let up=app.buttons["immersiveForward"],settings=app.buttons["immersiveSettings"]
             XCTAssertTrue(spinner.waitForExistence(timeout:15))
+            assertNoControllerStatus(app)
             XCTAssertEqual(speed.label,"2.5×");XCTAssertEqual(spinner.label,"等待播放")
             XCTAssertFalse(app.buttons["playbackSpeed"].exists)
             assertSpeedBelowAccelerator(app)
@@ -276,6 +277,7 @@ final class VistaUITests:XCTestCase {
             XCTAssertGreaterThan(speed.frame.minY,up.frame.maxY)
             settings.tap()
             XCTAssertFalse(spinner.exists);XCTAssertFalse(info.exists);XCTAssertEqual(speed.label,"2.5×")
+            assertNoControllerStatus(app)
             assertSpeedBelowAccelerator(app)
             settings.tap();XCTAssertTrue(spinner.waitForExistence(timeout:5))
             app.buttons["indicatorFormatAvailable"].tap();XCTAssertTrue(resetFormat.isEnabled)
@@ -303,6 +305,11 @@ final class VistaUITests:XCTestCase {
                 app.buttons["indicatorResume"].tap();XCTAssertFalse(spinner.exists)
             }
             app.terminate()
+        }
+    }
+    @MainActor private func assertNoControllerStatus(_ app:XCUIApplication,file:StaticString=#filePath,line:UInt=#line) {
+        for identifier in ["playbackSpeedLimit","playbackSpeedMessage","playbackPreparing","vrError","immersiveMessage","immersivePlaybackStatus"] {
+            XCTAssertFalse(app.descendants(matching:.any)[identifier].exists,identifier,file:file,line:line)
         }
     }
     @MainActor private func assertSpeedBelowAccelerator(_ app:XCUIApplication,file:StaticString=#filePath,line:UInt=#line) {
@@ -392,7 +399,8 @@ final class VistaUITests:XCTestCase {
                     up.tap();expectation(for:NSPredicate(format:"label == %@","\(label)× · 暫停"),evaluatedWith:speed);waitForExpectations(timeout:5)
                 }
                 XCTAssertFalse(up.isEnabled)
-            } else {XCTAssertTrue(app.staticTexts["playbackSpeedLimit"].exists)}
+            } else {XCTAssertFalse(app.staticTexts["playbackSpeedLimit"].exists)}
+            assertNoControllerStatus(app)
             normal.tap()
             expectation(for:NSPredicate(format:"exists == false"),evaluatedWith:speed);waitForExpectations(timeout:5)
             XCTAssertFalse(normal.isEnabled)
@@ -473,7 +481,7 @@ final class VistaUITests:XCTestCase {
         let settings = app.buttons["immersiveSettings"]
         XCTAssertTrue(settings.waitForExistence(timeout:25))
         let projection = app.buttons["projection-equirectangular180"]
-        print("FIXTURE_SETTINGS_BEFORE_TAP", "visible", projection.exists, "preparing", app.progressIndicators["playbackPreparing"].exists)
+        print("FIXTURE_SETTINGS_BEFORE_TAP", "visible", projection.exists)
         // First-launch format preparation may already have opened this panel.
         if !projection.exists { settings.tap() }
         XCTAssertTrue(projection.waitForExistence(timeout:10))
@@ -567,12 +575,19 @@ final class VistaUITests:XCTestCase {
         app.buttons["immersiveStop"].tap()
     }
     @MainActor func testSystemFailureStopsAndCanReturn() throws {
+        // Use the existing opt-in diagnostic witness, not an initial "播放" label.
+        // Standard Debug/Release has no error text and must not pass this test early.
+        try requireDiagnosticUI()
         let app=openSystemFixture(extra:["--system-renderer-failure"])
-        let error=app.staticTexts["immersiveMessage"]
-        XCTAssertTrue(error.waitForExistence(timeout:10))
-        XCTAssertTrue(error.label.contains("videoRenderer/injected"),error.label)
-        XCTAssertEqual(app.buttons["immersivePause"].label,"播放")
-        app.buttons["immersiveStop"].tap()
+        let route=app.staticTexts["systemVideoCandidate"]
+        expectation(for:NSPredicate(format:"label CONTAINS %@","videoRenderer/injected"),evaluatedWith:route)
+        waitForExpectations(timeout:10)
+        let pause=app.buttons["immersivePause"],stop=app.buttons["immersiveStop"]
+        expectation(for:NSPredicate(format:"label == %@ AND enabled == true","播放"),evaluatedWith:pause)
+        waitForExpectations(timeout:5)
+        assertNoControllerStatus(app)
+        XCTAssertTrue(stop.isEnabled);XCTAssertTrue(stop.isHittable)
+        stop.tap()
         XCTAssertTrue(app.buttons["entry-控制器互動測試.mp4"].waitForExistence(timeout:15))
     }
     @MainActor func testSystemCandidateRepeatedSpeedAndStop() throws {
@@ -655,16 +670,32 @@ final class VistaUITests:XCTestCase {
         let app=openPreparationFixture("--slow-media-preparation")
         XCTAssertTrue(app.buttons["immersiveStop"].waitForExistence(timeout:15))
         XCTAssertFalse(app.buttons["immersiveNext"].isEnabled)
+        assertNoControllerStatus(app)
         app.buttons["immersiveStop"].tap()
         XCTAssertTrue(app.buttons["entry-H264 播放測試.mp4"].waitForExistence(timeout:10))
         XCTAssertEqual(app.buttons["entry-H264 播放測試.mp4"].value as? String,"已選取")
     }
     @MainActor func testReadFailureKeepsImmersiveStopAvailable() throws {
         let app=openPreparationFixture("--failed-media-preparation")
-        XCTAssertTrue(app.staticTexts["immersiveMessage"].waitForExistence(timeout:15))
-        XCTAssertTrue(app.staticTexts["immersiveMessage"].label.contains("無法讀取影片"))
-        app.buttons["immersiveStop"].tap()
-        XCTAssertTrue(app.buttons["entry-H264 播放測試.mp4"].waitForExistence(timeout:10))
+        let next=app.buttons["immersiveNext"],stop=app.buttons["immersiveStop"]
+        // H264 has HEVC after it. enterVR sets advancing before opening the space;
+        // the forced preparation throw clears it only in catch. Enabled Next is the
+        // completion witness, unlike the initial "播放" label or Stop alone.
+        expectation(for:NSPredicate(format:"exists == true AND enabled == true"),evaluatedWith:next)
+        waitForExpectations(timeout:15)
+        assertNoControllerStatus(app)
+        XCTAssertTrue(stop.isEnabled);XCTAssertTrue(stop.isHittable)
+        next.tap()
+        let title=app.staticTexts["immersiveFileTitle"]
+        expectation(for:NSPredicate(format:"label == %@","HEVC 播放測試.mp4"),evaluatedWith:title)
+        waitForExpectations(timeout:10)
+        // HEVC also has a next file; the same forced failure must finish again.
+        expectation(for:NSPredicate(format:"enabled == true"),evaluatedWith:next)
+        waitForExpectations(timeout:15)
+        assertNoControllerStatus(app)
+        XCTAssertTrue(stop.isEnabled);XCTAssertTrue(stop.isHittable)
+        stop.tap()
+        XCTAssertTrue(app.buttons["entry-HEVC 播放測試.mp4"].waitForExistence(timeout:10))
     }
     @MainActor func testControllerMoveHandleDoesNotReplaceButtons() throws {
         let app=fresh();app.buttons["emptyEdit"].tap();app.buttons["localDemoSource"].tap()

@@ -697,10 +697,6 @@ struct VRImmersiveView: View {
                         .accessibilityLabel("影片格式設定").accessibilityIdentifier("immersiveSettings")
                 }.buttonStyle(.borderless).font(.title3).disabled(presentation.stopping || presentation.scrubbing)
                     .padding(.bottom,speedStatusLineHeight+4)
-                if player.speedStatus.ready,!player.speedStatus.supportsFastForward {
-                    Text("此影片最高 2×").font(.caption2).foregroundStyle(.secondary).accessibilityIdentifier("playbackSpeedLimit")
-                }
-                if let message=player.speedMessage {Text(message).font(.caption).accessibilityIdentifier("playbackSpeedMessage")}
                 #if DEBUG && VISTA_DIAGNOSTIC_UI
                 Button("效能診斷") {presentation.diagnosticsVisible.toggle();presentation.holdControls();if !presentation.diagnosticsVisible {presentation.scheduleHide()}}
                     .accessibilityIdentifier("playbackDiagnostics")
@@ -712,13 +708,6 @@ struct VRImmersiveView: View {
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 #endif
-                if player.isPreparing || presentation.advancing {
-                    ProgressView(player.isSeeking ? "正在跳轉…（保留上一張畫面）":"準備影片…")
-                        .accessibilityIdentifier("playbackPreparing")
-                }
-                if let error = renderer.error { Text(error).font(.caption).accessibilityIdentifier("vrError") }
-                if let message = presentation.message { Text(message).font(.caption).accessibilityIdentifier("immersiveMessage") }
-                if !player.isPlaying, let message = player.message { Text(message).font(.caption).accessibilityIdentifier("immersivePlaybackStatus") }
             }
             if presentation.settingsVisible || presentation.requiresFormatConfirmation {
                 Divider()
