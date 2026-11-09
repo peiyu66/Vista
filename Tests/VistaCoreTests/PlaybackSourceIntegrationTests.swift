@@ -190,11 +190,12 @@ private enum IntegrationReadError:Error,Equatable {case transport,cleanup}
     @Test func activeRecoveryDoesNotResumePausedPlaybackOrReplaceRetainedFrameSession()async throws {
         let data=try fixture(),file=try MediaFile(components:["synthetic.mp4"])
         let borrowed=IntegrationRecoverySource(data:data),fresh=IntegrationRecoverySource(data:data)
-        var connections=0
+        var connections=0,awaitingForeground=false
         let identity=PlaybackSourceIdentity(size:UInt64(data.count),modificationDate:Date(timeIntervalSince1970:100),creationDate:Date(timeIntervalSince1970:50))
         let source=PlaybackRecoveringSource(file:file,initial:borrowed,
             metadata:{_,_ in identity},makeFresh:{connections += 1;return fresh},
-            retire:{$0.cancelPlayback()},shouldRecover:{$0 is IntegrationReadError},isCurrent:{true},diagnostics:nil)
+            retire:{$0.cancelPlayback()},shouldRecover:{$0 is IntegrationReadError},isCurrent:{true},diagnostics:nil,
+            onRecoveryStage:{if $0 == .waitingForActive {awaitingForeground=true}})
         let controller=PlaybackController()
         controller.play(file:file,source:source)
         defer {controller.stop()}
@@ -204,9 +205,14 @@ private enum IntegrationReadError:Error,Equatable {case transport,cleanup}
         let frameSession=try #require(controller.pixelFrame).session,generation=controller.playbackGeneration
         let position=controller.position
         borrowed.failNextRead=true
+        let readsBeforeBackgroundDemand=borrowed.reads
+        awaitingForeground=false
         let pending=Task {try await source.read(file,range:0..<16)}
-        try await wait{source.isPlaybackRecovering}
-        #expect(connections==0)
+        // Background demand parks before transport or recovery. Foreground validation
+        // then allows the original single recovery without changing the paused session.
+        try await wait{awaitingForeground}
+        #expect(connections==0 && borrowed.reads==readsBeforeBackgroundDemand)
+        #expect(!source.isPlaybackRecovering && borrowed.failNextRead)
         controller.setPlaybackSceneActive(true)
         #expect(try await pending.value==data.prefix(16))
         try await Task.sleep(for:.milliseconds(120))
@@ -281,7 +287,7 @@ private enum IntegrationReadError:Error,Equatable {case transport,cleanup}
         #expect(view.contains("guard let source=preparedSource else{return}"))
         #expect(view.contains("sourceFactory != nil && (preparedSourceUsed || preparedSource == nil)"))
         #expect(view.contains("replayAfterPreparation=true;attempt += 1"))
-        #expect(view.contains("cancelPreparedSource();player.stop()\n                autoplayReplacement = true"))
+        #expect(view.contains("cancelPreparedSource();player.stop(discardTrackInfo:true)\n                autoplayReplacement = true"))
         #expect(browser.contains("self.playback?.id==playbackID"))
         #expect(browser.contains("latest.credentialID==source.credentialID"))
         #expect(browser.contains(".permitsDirectoryRecovery(playbackActive:playback != nil)"))

@@ -51,6 +51,62 @@ public enum PlaybackSourceRecoveryPolicy {
     func awaitPlaybackCleanup() async throws
 }
 
+/// Optional capability for the bounded forward-cache layer. A nil epoch forbids cache
+/// use while validation/recovery is incomplete; throws preserve terminal/current checks.
+/// Speculative reads never create a recovery episode or new connection.
+@MainActor public protocol PlaybackCacheSource: PlaybackRecoveryControlling {
+    var supportsRetainedCacheRevalidation: Bool { get }
+    func playbackCacheEpoch() throws -> UInt64?
+    func readForPrefetch(_ file: MediaFile, range: Range<UInt64>) async throws -> Data
+    /// Prefix bytes begin exactly at range.lowerBound and belong to the supplied epoch.
+    /// A source may discard them; usedPrefixBytes reports only bytes actually published.
+    func readCompletingPrefix(_ file: MediaFile, range: Range<UInt64>, prefix: Data, epoch: UInt64) async throws -> PlaybackPrefixReadResult
+    /// Cached slices belong to the supplied epoch. Only qualified intersections may be
+    /// used; all missing ranges share the original demand's single recovery budget.
+    func readCompletingCachedSegments(_ file: MediaFile, range: Range<UInt64>, segments: [PlaybackCachedSegment], epoch: UInt64) async throws -> PlaybackCachedReadResult
+}
+
+public struct PlaybackCachedSegment: Sendable, Equatable {
+    public let range: Range<UInt64>
+    public let data: Data
+
+    public init(range: Range<UInt64>, data: Data) {
+        self.range = range; self.data = data
+    }
+}
+
+public struct PlaybackCachedReadResult: Sendable, Equatable {
+    public let data: Data
+    public let usedCachedBytes: Int
+
+    public init(data: Data, usedCachedBytes: Int) {
+        self.data = data; self.usedCachedBytes = usedCachedBytes
+    }
+}
+
+public struct PlaybackPrefixReadResult: Sendable, Equatable {
+    public let data: Data
+    public let usedPrefixBytes: Int
+
+    public init(data: Data, usedPrefixBytes: Int) {
+        self.data = data; self.usedPrefixBytes = usedPrefixBytes
+    }
+}
+
+public extension PlaybackCacheSource {
+    var supportsRetainedCacheRevalidation: Bool { false }
+
+    /// Sources without atomic prefix/recovery handling retain their ordinary full read.
+    func readCompletingPrefix(_ file: MediaFile, range: Range<UInt64>, prefix: Data, epoch: UInt64) async throws -> PlaybackPrefixReadResult {
+        PlaybackPrefixReadResult(data: try await read(file, range: range), usedPrefixBytes: 0)
+    }
+
+    /// Sources without atomic cached-range/recovery handling retain their ordinary read.
+    func readCompletingCachedSegments(_ file: MediaFile, range: Range<UInt64>, segments: [PlaybackCachedSegment], epoch: UInt64) async throws -> PlaybackCachedReadResult {
+        PlaybackCachedReadResult(data: try await read(file, range: range), usedCachedBytes: 0)
+    }
+}
+
 /// One fresh connection per failed session episode and at most one recovery per public call.
 /// Initial metadata may establish a baseline on a fresh connection only before any identity
 /// or bytes have been delivered. Incomplete initial metadata still permits ordinary playback,
@@ -58,7 +114,8 @@ public enum PlaybackSourceRecoveryPolicy {
 /// fields: an old field cannot disappear. A recovered range is checked by another stat before
 /// publication. This is still a metadata fingerprint, not an atomic snapshot.
 ///
-/// Initial session is borrowed; normal stop must not retire a healthy directory session.
+/// Initial session is borrowed; normal stop closes its playback file through finish,
+/// but must not retire the healthy directory session.
 /// A confirmed failed borrowed session is retired by its owner-supplied closure. Fresh sessions
 /// are private and retired on stop/failure. No directory-map mutation happens in this wrapper.
 ///
@@ -76,7 +133,7 @@ public enum PlaybackSourceRecoveryPolicy {
 /// before any replacement. Factory must drain partial sessions before throwing; retirement must
 /// close admission, await actual operation/callback drain and finish local teardown. A failed
 /// retirement remains terminal; cleanup is never retried on an assumption that it completed.
-@MainActor public final class PlaybackRecoveringSource<Session: AnyObject & MediaByteSource>: PlaybackRecoveryControlling {
+@MainActor public final class PlaybackRecoveringSource<Session: AnyObject & MediaByteSource>: PlaybackCacheSource {
     private enum ReadStateError: Error { case superseded }
 
     @MainActor private final class Slot {
@@ -117,6 +174,7 @@ public enum PlaybackSourceRecoveryPolicy {
     private let metadata: @MainActor (Session, MediaFile) async throws -> PlaybackSourceIdentity
     private let makeFresh: @MainActor () async throws -> Session
     private let retire: @MainActor (Session) async throws -> Void
+    private let finish: @MainActor (Session) async throws -> Void
     private let shouldRecover: @MainActor (any Error) -> Bool
     private let shouldJoinExistingRecovery: @MainActor (any Error) -> Bool
     private let isCurrent: @MainActor () -> Bool
@@ -128,6 +186,9 @@ public enum PlaybackSourceRecoveryPolicy {
     private var identity: PlaybackSourceIdentity?
     private var episode: Episode?
     private var sceneActive = true, stopped = false
+    private var prefetchNeedsDemandValidation = false
+    private var sceneValidationPending = false
+    private var sceneRevision: UInt64 = 0
     private var terminalFailure: (any Error)?
     private var cleanupFailure: (any Error)?
     private var stopRetirement: Task<Void, any Error>?
@@ -140,6 +201,7 @@ public enum PlaybackSourceRecoveryPolicy {
         metadata: @escaping @MainActor (Session, MediaFile) async throws -> PlaybackSourceIdentity,
         makeFresh: @escaping @MainActor () async throws -> Session,
         retire: @escaping @MainActor (Session) async throws -> Void,
+        finish: @escaping @MainActor (Session) async throws -> Void = { _ in },
         shouldRecover: @escaping @MainActor (any Error) -> Bool,
         shouldJoinExistingRecovery: @escaping @MainActor (any Error) -> Bool = { _ in false },
         isCurrent: @escaping @MainActor () -> Bool,
@@ -148,7 +210,7 @@ public enum PlaybackSourceRecoveryPolicy {
         uptime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     ) {
         self.file = file; self.current = Slot(initial, owned: false, epoch: 0)
-        self.metadata = metadata; self.makeFresh = makeFresh; self.retire = retire
+        self.metadata = metadata; self.makeFresh = makeFresh; self.retire = retire; self.finish = finish
         self.shouldRecover = shouldRecover; self.shouldJoinExistingRecovery = shouldJoinExistingRecovery
         self.isCurrent = isCurrent
         self.diagnostics = diagnostics; self.diagnosticTrace = diagnostics?.nextID() ?? 0
@@ -166,6 +228,38 @@ public enum PlaybackSourceRecoveryPolicy {
         return uptime() - elapsed(episode)
     }
 
+    public var supportsRetainedCacheRevalidation: Bool { true }
+
+    public func playbackCacheEpoch() throws -> UInt64? {
+        try checkCurrent()
+        if let terminalFailure { throw terminalFailure }
+        if let cleanupFailure { throw cleanupFailure }
+        guard sceneActive, identity?.isComplete == true, !sceneValidationPending, !prefetchNeedsDemandValidation,
+              current.retirement == nil, episode?.delivered != false else { return nil }
+        return current.epoch
+    }
+
+    public func readForPrefetch(_ requested: MediaFile, range: Range<UInt64>) async throws -> Data {
+        try checkCurrent()
+        guard requested == file else { throw MediaInspectionError.invalidFile }
+        guard range.upperBound - range.lowerBound <= MediaReadPlan.maximumChunkBytes,
+              let identity, range.upperBound <= identity.size else { throw PlaybackSourceRecoveryError.invalidRange }
+        guard let epoch = try playbackCacheEpoch() else { throw CancellationError() }
+        let slot = current
+        let data: Data
+        do {
+            // No beginRequest, metadata, reconnect or retry. A real demand owns recovery.
+            // The wrapper keeps this actual transport completion in its cleanup barrier.
+            data = try await readRange(slot, range: range, recovered: false)
+        } catch {
+            prefetchNeedsDemandValidation = true
+            throw error
+        }
+        // A successful read revoked solely by the scene boundary is not transport loss.
+        guard try playbackCacheEpoch() == epoch else { throw CancellationError() }
+        return data
+    }
+
     public func setPlaybackSceneActive(_ active: Bool) {
         guard !stopped, active != sceneActive else { return }
         if let episode {
@@ -173,6 +267,7 @@ public enum PlaybackSourceRecoveryPolicy {
             episode.activeSince = active && hasLiveRequests && !episode.delivered ? uptime() : nil
         }
         sceneActive = active
+        if !active { sceneRevision &+= 1; sceneValidationPending = true }
         if active { resumeActiveWaiters() }
     }
 
@@ -187,9 +282,16 @@ public enum PlaybackSourceRecoveryPolicy {
             episode.demandWaiter = nil
             complete(episode, with: .failure(failure))
         }
-        if current.owned {
-            let slot = current
-            stopRetirement = Task { @MainActor in try await self.retireSlot(slot, stage: .retiringOwned) }
+        let slot = current
+        stopRetirement = Task { @MainActor in
+            // Join a retirement already underway rather than racing a normal file close
+            // against the recovery path's no-RPC context teardown.
+            if slot.owned || slot.retirement != nil {
+                try await self.retireSlot(slot, stage: .retiringOwned)
+            } else {
+                do { try await self.finish(slot.session) }
+                catch { self.cleanupFailure = error; throw error }
+            }
         }
     }
 
@@ -217,16 +319,54 @@ public enum PlaybackSourceRecoveryPolicy {
     }
 
     public func read(_ file: MediaFile, range: Range<UInt64>) async throws -> Data {
+        try await readDemand(file, range: range).data
+    }
+
+    public func readCompletingPrefix(_ file: MediaFile, range: Range<UInt64>, prefix: Data, epoch: UInt64) async throws -> PlaybackPrefixReadResult {
+        // Preserve the prefix API's all-or-nothing length validation, including overflow.
+        let segments: [PlaybackCachedSegment]
+        if !prefix.isEmpty, UInt64(prefix.count) <= range.upperBound - range.lowerBound {
+            segments = [PlaybackCachedSegment(range: range.lowerBound..<(range.lowerBound + UInt64(prefix.count)), data: prefix)]
+        } else { segments = [] }
+        let result = try await readDemand(file, range: range, segments: segments, epoch: epoch)
+        return PlaybackPrefixReadResult(data: result.data, usedPrefixBytes: result.usedCachedBytes)
+    }
+
+    public func readCompletingCachedSegments(_ file: MediaFile, range: Range<UInt64>, segments: [PlaybackCachedSegment], epoch: UInt64) async throws -> PlaybackCachedReadResult {
+        try await readDemand(file, range: range, segments: segments, epoch: epoch)
+    }
+
+    private func readDemand(_ file: MediaFile, range: Range<UInt64>, segments: [PlaybackCachedSegment] = [], epoch: UInt64? = nil) async throws -> PlaybackCachedReadResult {
         let request = try beginRequest(file)
         defer { endRequest(request) }
         return try await withTaskCancellationHandler {
-            guard range.upperBound - range.lowerBound <= 1_048_576 else { throw PlaybackSourceRecoveryError.invalidRange }
+            guard range.upperBound - range.lowerBound <= MediaReadPlan.maximumChunkBytes else { throw PlaybackSourceRecoveryError.invalidRange }
+            // Capture the exact slot and epoch before suspension. Only explicit same-slot
+            // foreground revalidation can qualify quarantined slices; reconnect cannot.
+            let cachedSlot: Slot?, intersections: [PlaybackCachedSegment]
+            if !segments.isEmpty, let epoch, identity?.isComplete == true,
+               current.epoch == epoch, (!prefetchNeedsDemandValidation || sceneValidationPending),
+               current.retirement == nil, episode?.delivered != false {
+                cachedSlot = current
+                intersections = cachedIntersections(segments, range: range)
+            } else { cachedSlot = nil; intersections = [] }
             let baseline = try await baselineIdentity(request)
             guard range.upperBound <= baseline.size else { throw PlaybackSourceRecoveryError.invalidRange }
             let slot = try await availableSlot(request)
             do {
-                if request.usedRecovery { return try await retryRange(slot, range: range) }
-                return try await readRange(slot, range: range, recovered: false)
+                try await validateForeground(slot)
+                if !request.usedRecovery, !intersections.isEmpty, cachedSlot === slot, let epoch,
+                   try playbackCacheEpoch() == epoch {
+                    if let result = try await completeCachedIntersections(intersections, slot: slot, range: range, epoch: epoch) {
+                        return result
+                    }
+                }
+                let data: Data
+                if request.usedRecovery { data = try await retryRange(slot, range: range) }
+                else { data = try await readRange(slot, range: range, recovered: false) }
+                try await validateForeground(slot)
+                prefetchNeedsDemandValidation = false
+                return PlaybackCachedReadResult(data: data, usedCachedBytes: 0)
             }
             catch {
                 try checkCurrent()
@@ -234,12 +374,93 @@ public enum PlaybackSourceRecoveryPolicy {
                       eligible(error) || canJoinExisting(error, after: slot) else { throw publicError(error) }
                 let fresh = try await recover(after: slot, request: request)
                 // No recursion: even an eligible second failure returns to this caller.
-                return try await retryRange(fresh, range: range)
+                let data = try await retryRange(fresh, range: range)
+                try await validateForeground(fresh)
+                prefetchNeedsDemandValidation = false
+                return PlaybackCachedReadResult(data: data, usedCachedBytes: 0)
             }
         } onCancel: {
             request.cancel()
             Task { @MainActor in self.endRequest(request) }
         }
+    }
+
+    /// Demand-only, on the wrapper's serial pump. Never creates its own recovery request.
+    /// Metadata must perform a fresh observation, not return the cached baselineIdentity.
+    private func validateForeground(_ slot: Slot) async throws {
+        try await waitUntilActive(epoch: slot.epoch)
+        try checkReadable(slot)
+        while sceneValidationPending {
+            let revision = sceneRevision
+            let observed = try await metadata(slot.session, file)
+            try await waitUntilActive(epoch: slot.epoch)
+            try checkReadable(slot)
+            guard revision == sceneRevision else { continue }
+            guard let identity, identity.isComplete, observed.isComplete else {
+                // Ordinary fresh reads remain possible, but no retained bytes are qualified.
+                return
+            }
+            guard observed == identity else {
+                terminalFailure = PlaybackSourceRecoveryError.identityChanged
+                cancelPlayback()
+                throw PlaybackSourceRecoveryError.identityChanged
+            }
+            sceneValidationPending = false
+            prefetchNeedsDemandValidation = false
+        }
+    }
+
+    /// The wrapper supplies recent history and bounded forward fragments. Bound both
+    /// sorting work and slice sizes here as well; malformed inputs never grant cache use.
+    /// Overlaps are trimmed once, so returned accounting cannot count a byte twice.
+    private func cachedIntersections(_ segments: [PlaybackCachedSegment], range: Range<UInt64>) -> [PlaybackCachedSegment] {
+        guard segments.count <= 8 else { return [] }
+        let valid = segments.filter {
+            !$0.range.isEmpty && $0.range.upperBound - $0.range.lowerBound <= MediaReadPlan.maximumChunkBytes &&
+                UInt64($0.data.count) == $0.range.upperBound - $0.range.lowerBound
+        }.sorted {
+            if $0.range.lowerBound == $1.range.lowerBound { return $0.range.upperBound < $1.range.upperBound }
+            return $0.range.lowerBound < $1.range.lowerBound
+        }
+        var result: [PlaybackCachedSegment] = [], cursor = range.lowerBound
+        for segment in valid {
+            let lower = max(cursor, segment.range.lowerBound), upper = min(range.upperBound, segment.range.upperBound)
+            guard lower < upper else { continue }
+            let start = segment.data.startIndex + Int(lower - segment.range.lowerBound)
+            let end = start + Int(upper - lower)
+            result.append(PlaybackCachedSegment(range: lower..<upper, data: segment.data.subdata(in: start..<end)))
+            cursor = upper
+        }
+        return result
+    }
+
+    /// No public reads here: all head/middle/tail transport reads remain in one Request.
+    /// A failure escapes to that request's whole-range recovery, dropping every piece.
+    private func completeCachedIntersections(_ segments: [PlaybackCachedSegment], slot: Slot, range: Range<UInt64>, epoch: UInt64) async throws -> PlaybackCachedReadResult? {
+        var data = Data(), cursor = range.lowerBound, usedCachedBytes = 0
+        data.reserveCapacity(Int(range.upperBound - range.lowerBound))
+        for segment in segments {
+            try await validateForeground(slot)
+            guard slot.epoch == epoch, !sceneValidationPending, !prefetchNeedsDemandValidation else { return nil }
+            if cursor < segment.range.lowerBound {
+                let gap = try await readRange(slot, range: cursor..<segment.range.lowerBound, recovered: false)
+                try await validateForeground(slot)
+                guard slot.epoch == epoch, !sceneValidationPending, !prefetchNeedsDemandValidation else { return nil }
+                data.append(gap)
+            }
+            data.append(segment.data)
+            usedCachedBytes += segment.data.count
+            cursor = segment.range.upperBound
+        }
+        if cursor < range.upperBound {
+            let tail = try await readRange(slot, range: cursor..<range.upperBound, recovered: false)
+            data.append(tail)
+        }
+        // A scene transition during any gap quarantines even already assembled pieces.
+        try await validateForeground(slot)
+        guard slot.epoch == epoch, !sceneValidationPending, !prefetchNeedsDemandValidation else { return nil }
+        guard UInt64(data.count) == range.upperBound - range.lowerBound else { throw PlaybackSourceRecoveryError.invalidResponse }
+        return PlaybackCachedReadResult(data: data, usedCachedBytes: usedCachedBytes)
     }
 
     private func retryRange(_ slot: Slot, range: Range<UInt64>) async throws -> Data {
@@ -295,6 +516,8 @@ public enum PlaybackSourceRecoveryPolicy {
         let slot = try await availableSlot(request)
         if let identity { return identity }
         do {
+            try await waitUntilActive(epoch: slot.epoch)
+            try checkReadable(slot)
             let observed = try await metadata(slot.session, file)
             try checkReadable(slot)
             if let identity, identity != observed { throw PlaybackSourceRecoveryError.identityChanged }

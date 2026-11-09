@@ -193,7 +193,7 @@ import Testing
             #expect(h.creates == 0)
         }
         let h = Harness()
-        await expectFailure(PlaybackSourceRecoveryError.invalidRange) { _ = try await h.read(0..<1_048_577) }
+        await expectFailure(PlaybackSourceRecoveryError.invalidRange) { _ = try await h.read(0..<(MediaReadPlan.maximumChunkBytes+1)) }
         #expect(h.metadataCalls.isEmpty && h.old.reads.isEmpty)
     }
 
@@ -225,7 +225,8 @@ import Testing
         let waiting = Signal(); h.stageBody = { if $0 == .waitingForActive { waiting.send() } }
         let task = Task { @MainActor in try await h.read() }
         await waiting.wait()
-        #expect(h.creates == 0 && h.retired.isEmpty && h.source.isPlaybackRecovering)
+        #expect(h.creates == 0 && h.retired.isEmpty && !h.source.isPlaybackRecovering)
+        #expect(h.old.reads.isEmpty)
         #expect(h.source.recoveryActiveStartedAt == nil)
         h.source.setPlaybackSceneActive(true)
         #expect(try await task.value == Data(repeating: 2, count: 12))
@@ -561,9 +562,14 @@ import Testing
 
     @Test func firstMetadataFallbackCannotPublishSizeOrStartHeaderReadWhileInactive() async throws {
         let h = Harness(), freshMetadata = Completion<PlaybackSourceIdentity>(), waiting = Signal()
+        var awaitedFreshMetadata = false
         h.metadataBody = { session in
             if session === h.old { throw Failure.transport }
-            return try await freshMetadata.wait()
+            if !awaitedFreshMetadata {
+                awaitedFreshMetadata = true
+                return try await freshMetadata.wait()
+            }
+            return h.identity
         }
         h.stageBody = { if $0 == .waitingForActive { waiting.send() } }
         var sizeDelivered = false, bytesDelivered = false
@@ -617,4 +623,45 @@ import Testing
         try await h.source.awaitPlaybackCleanup()
     }
 
+}
+
+extension PlaybackSourceRecoveryTests {
+    @Test func prefetchHookNeedsValidatedActiveSourceAndNeverConnects() async throws {
+        let h = Harness()
+        #expect(try h.source.playbackCacheEpoch() == nil)
+        _ = try await h.source.fileSize(for:h.file)
+        #expect(try h.source.playbackCacheEpoch() == 0)
+        #expect(try await h.source.readForPrefetch(h.file,range:0..<16) == Data(repeating:1,count:16))
+        #expect(h.creates == 0 && h.metadataCalls == [1])
+        h.source.setPlaybackSceneActive(false)
+        #expect(try h.source.playbackCacheEpoch() == nil)
+        await expectCancellation { _ = try await h.source.readForPrefetch(h.file,range:16..<32) }
+        #expect(h.old.reads == [0..<16])
+        h.source.cancelPlayback()
+        #expect(throws:CancellationError.self) { try h.source.playbackCacheEpoch() }
+        try await h.source.awaitPlaybackCleanup()
+    }
+
+    @Test func speculativeFailureWaitsForRealDemandBeforeRecoveryAndChangesEpoch() async throws {
+        let h = Harness();_ = try await h.source.fileSize(for:h.file);h.failOld()
+        await expectFailure(Failure.transport) { _ = try await h.source.readForPrefetch(h.file,range:16..<32) }
+        #expect(h.creates == 0 && h.retired.isEmpty && !h.source.isPlaybackRecovering)
+        #expect(try h.source.playbackCacheEpoch() == nil)
+        #expect(try await h.read(16..<32) == Data(repeating:2,count:16))
+        #expect(h.creates == 1 && h.retired == [1])
+        #expect(try h.source.playbackCacheEpoch() == 1)
+        try await h.source.awaitPlaybackCleanup()
+    }
+
+    @Test func speculativeFailureCannotMaskLaterChangedIdentity() async throws {
+        let h = Harness();_ = try await h.source.fileSize(for:h.file);h.failOld()
+        await expectFailure(Failure.transport) { _ = try await h.source.readForPrefetch(h.file,range:16..<32) }
+        h.metadataBody = { session in
+            PlaybackSourceIdentity(size:128,modificationDate:Date(timeIntervalSince1970:session.number == 1 ? 100:200),creationDate:Date(timeIntervalSince1970:50))
+        }
+        await expectFailure(PlaybackSourceRecoveryError.identityChanged) { _ = try await h.read(16..<32) }
+        #expect(try h.source.playbackCacheEpoch() == nil)
+        #expect(h.creates == 1 && h.fresh.reads.isEmpty)
+        try await h.source.awaitPlaybackCleanup()
+    }
 }

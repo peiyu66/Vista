@@ -1456,6 +1456,13 @@ public class SMB2Manager: NSObject, NSSecureCoding, Codable, NSCopying, CustomRe
             monitorItem(atPath: path, for: filter, completionHandler: asyncHandler(continuation))
         }
     }
+
+    /// Opens one read-only playback handle on the existing authenticated client.
+    /// Overridable for offline transports; no implicit connect or retry is performed.
+    open func openReadOnlyHandle(atPath path: String) async throws -> any SMB2ReadOnlyHandle {
+        try await openPersistentReadOnlyHandle(atPath: path)
+    }
+
 }
 
 extension SMB2Manager {
@@ -1792,5 +1799,220 @@ extension SMB2Manager {
         }
 
         try file.fsync()
+    }
+}
+
+// MARK: Narrow persistent read-only playback API (local Vista integration)
+
+public protocol SMB2ReadOnlyHandle: Sendable {
+    func attributes() async throws -> [URLResourceKey: any Sendable]
+    func read(range: Range<UInt64>) async throws -> Data
+    /// Waits for earlier work and its C callbacks. Failure is not remote-close success.
+    func close() async throws
+}
+
+public enum SMB2ReadOnlyHandleError: Error, Sendable, Equatable {
+    case unsupportedCapability
+    case invalidRange
+    case closed
+
+    // Only an explicit CREATE response may permit per-range fallback. Do not
+    // treat access denial, missing files, transport failures or EINVAL as support.
+    static func isUnsupportedCreate(_ error: any Error) -> Bool {
+        guard let failure = error as? SMB2OperationFailure,
+              failure.origin == .response else { return false }
+        return failure.ntStatus == 0xC00000BB || failure.ntStatus == 0xC0000002
+    }
+}
+
+private final class SMB2ReadCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+    func cancel() { lock.lock(); cancelled = true; lock.unlock() }
+    func check() throws {
+        lock.lock(); let value = cancelled; lock.unlock()
+        if value { throw CancellationError() }
+    }
+}
+
+extension SMB2Manager {
+    // Count work when submitted, not when its serial executor eventually starts.
+    // Count covers continuation delivery as well as all synchronous C callbacks.
+    fileprivate func queueReadHandle(on queue: DispatchQueue, _ body: @Sendable @escaping () -> Void) {
+        operationLock.lock()
+        operationCount += 1
+        operationLock.unlock()
+        queue.async {
+            body()
+            self.operationLock.lock()
+            self.operationCount -= 1
+            self.operationLock.broadcast()
+            self.operationLock.unlock()
+        }
+    }
+
+    /// Uses only this manager's existing authenticated client. No reconnect,
+    /// prefetch, write access or restrictive-share fallback is performed here.
+    private func openPersistentReadOnlyHandle(atPath path: String) async throws -> any SMB2ReadOnlyHandle {
+        let cancellation = SMB2ReadCancellation()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                queue {
+                    let result = Result<any SMB2ReadOnlyHandle, any Error> {
+                        try cancellation.check()
+                        self.connectLock.lock()
+                        let originalClient = self.client
+                        self.connectLock.unlock()
+                        guard let originalClient else {
+                            throw SMB2OperationFailure(origin: .contextUnavailable, posixCode: ENOTCONN)
+                        }
+                        // CREATE reply, local C-handle construction and initial fstat
+                        // share one original-context lifetime against disconnect.
+                        return try originalClient.withThreadSafeContext { _ in
+                            let file: SMB2FileHandle
+                            do {
+                                file = try SMB2FileHandle(
+                                    path: path, desiredAccess: [.readData, .fileReadEA, .fileReadAttributes],
+                                    shareAccess: [.read, .write, .delete],
+                                    createDisposition: .open, createOptions: .nonDirectoryFile, on: originalClient
+                                )
+                            } catch {
+                                if SMB2ReadOnlyHandleError.isUnsupportedCreate(error) {
+                                    throw SMB2ReadOnlyHandleError.unsupportedCapability
+                                }
+                                throw error
+                            }
+                            do {
+                                try cancellation.check()
+                                var attributes = [URLResourceKey: any Sendable]()
+                                try file.readOnlyOperation { try file.fstat() }.populateResourceValue(&attributes)
+                                try cancellation.check()
+                                return SMB2PersistentReadHandle(manager: self, file: file, initialAttributes: attributes)
+                            } catch {
+                                // Still counted by the opening operation. Never leave a
+                                // restrictive handle behind or report a successful open.
+                                try? file.closeReadOnlyThrowing()
+                                throw error
+                            }
+                        }
+                    }
+                    continuation.resume(with: result)
+                }
+            }
+        } onCancel: { cancellation.cancel() }
+    }
+}
+
+final class SMB2PersistentReadHandle: SMB2ReadOnlyHandle, @unchecked Sendable {
+    private let manager: SMB2Manager
+    private let executor = DispatchQueue(label: "AMSMB2.read-only-handle")
+    // All mutable state below is confined to executor. SMB2FileHandle retains
+    // the exact original client; it never consults manager.client again.
+    private var file: SMB2FileHandle?
+    private var initialAttributes: [URLResourceKey: any Sendable]?
+    private var closeFailure: (any Error)?
+
+    init(manager: SMB2Manager, file: SMB2FileHandle, initialAttributes: [URLResourceKey: any Sendable]) {
+        self.manager = manager
+        self.file = file
+        self.initialAttributes = initialAttributes
+    }
+
+    deinit {
+        if let file {
+            manager.queueReadHandle(on: executor) { try? file.closeReadOnlyThrowing() }
+        }
+    }
+
+    private func perform<T: Sendable>(
+        _ body: @Sendable @escaping (SMB2ReadCancellation) throws -> T
+    ) async throws -> T {
+        let cancellation = SMB2ReadCancellation()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                manager.queueReadHandle(on: executor) {
+                    continuation.resume(with: Result { try body(cancellation) })
+                }
+            }
+        } onCancel: { cancellation.cancel() }
+    }
+
+    func attributes() async throws -> [URLResourceKey: any Sendable] {
+        try await perform { cancellation in
+            try cancellation.check()
+            guard let file = self.file else { throw SMB2ReadOnlyHandleError.closed }
+            if let initial = self.initialAttributes {
+                self.initialAttributes = nil
+                return initial
+            }
+            var result = [URLResourceKey: any Sendable]()
+            try file.readOnlyOperation { try file.fstat() }.populateResourceValue(&result)
+            try cancellation.check()
+            return result
+        }
+    }
+
+    func read(range: Range<UInt64>) async throws -> Data {
+        guard range.upperBound - range.lowerBound <= 2 * 1024 * 1024 else {
+            throw SMB2ReadOnlyHandleError.invalidRange
+        }
+        return try await perform { cancellation in
+            try cancellation.check()
+            guard let file = self.file else { throw SMB2ReadOnlyHandleError.closed }
+            if range.isEmpty { return Data() }
+            let maximum = file.maxReadSize
+            guard maximum > 0 else {
+                throw SMB2OperationFailure(origin: .contextUnavailable, posixCode: ENOTCONN)
+            }
+            return try SMB2ReadOnlyRanges.read(range: range, maximum: maximum,
+                checkCancellation: { try cancellation.check() },
+                chunk: { offset, length in
+                    try file.readOnlyOperation { try file.pread(offset: offset, length: length) }
+                })
+        }
+    }
+
+    func close() async throws {
+        // Cancellation must never skip close or release the pointer early.
+        try await perform { _ in
+            guard let file = self.file else {
+                if let failure = self.closeFailure { throw failure }
+                return
+            }
+            self.file = nil
+            self.initialAttributes = nil
+            do {
+                try file.closeReadOnlyThrowing()
+            } catch {
+                self.closeFailure = error
+                throw error
+            }
+        }
+    }
+}
+
+// Pure bounded loop shared with offline tests. No backend or thread is created.
+enum SMB2ReadOnlyRanges {
+    static func read(range: Range<UInt64>, maximum: Int,
+                     checkCancellation: () throws -> Void,
+                     chunk: (UInt64, Int) throws -> Data) throws -> Data {
+        guard range.upperBound - range.lowerBound <= 2 * 1024 * 1024, maximum > 0 else {
+            throw SMB2ReadOnlyHandleError.invalidRange
+        }
+        var result = Data()
+        var offset = range.lowerBound
+        while offset < range.upperBound {
+            try checkCancellation()
+            let length = min(maximum, Int(range.upperBound - offset))
+            let data = try chunk(offset, length)
+            try checkCancellation()
+            guard data.count <= length else {
+                throw SMB2OperationFailure(origin: .response, posixCode: EIO)
+            }
+            if data.isEmpty { break }
+            result.append(data)
+            offset += UInt64(data.count)
+        }
+        return result
     }
 }

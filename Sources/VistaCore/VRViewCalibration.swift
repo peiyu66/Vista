@@ -61,9 +61,12 @@ public enum VRInitialViewCompensation {
     }
     /// Zero this file's entire direction offset without taking another pose sample.
     public func resetDirection(_ manual: inout VRSettings) {
+        generation += 1
         automaticPitchDegrees = 0
         manual.yawDegrees = 0; manual.pitchDegrees = 0; manual.rollDegrees = 0
     }
+    /// Invalidates an in-flight manual edit after file, pose, or reset changes.
+    public var directionGeneration: Int { generation }
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var compensateNextCapture = true
     public init() {}
@@ -395,5 +398,53 @@ public struct VRControllerResetRequest:Sendable {
     public mutating func finish(_ ticket:Int)->Bool {
         guard pending==ticket else{return false}
         pending=nil;return true
+    }
+}
+
+
+/// Unbounded 15-degree manual rotation; ruler edges are only a moving display window.
+public enum VRManualAngleDrag {
+    public static func value(start:Double,translation:Double,vertical:Bool)->Double {
+        guard start.isFinite,translation.isFinite else{return start.isFinite ? start:0}
+        let steps=(translation / (vertical ? 30:60) * (vertical ? -1:1)).rounded()
+        let result=start+steps*15
+        return result.isFinite ? result:start
+    }
+}
+
+/// Owns only the edited manual axis, never the displayed automatic + manual total.
+/// An invalidated physical drag stays invalid until its end; it cannot restart on the next file.
+public struct VRManualAngleDragTransaction<Context:Equatable> {
+    public let start:Double
+    private let context:Context
+    public private(set) var lastValue:Double
+    public private(set) var invalidated=false
+    public init(manual:Double,context:Context) {start=manual;lastValue=manual;self.context=context}
+    public mutating func update(translation:Double,vertical:Bool,manual:Double,context:Context,enabled:Bool)->Double? {
+        guard !invalidated,self.context==context,manual==lastValue else {invalidated=true;return nil}
+        guard enabled else{return nil}
+        let value=VRManualAngleDrag.value(start:start,translation:translation,vertical:vertical)
+        lastValue=value
+        return value
+    }
+    public mutating func invalidate() {invalidated=true}
+    public func restoredValue(manual:Double,context:Context)->Double? {
+        // Never overwrite an intervening button edit, reset, calibration, or new file.
+        !invalidated && self.context==context && manual==lastValue ? start:nil
+    }
+}
+
+
+/// Only the active pointer may release the shared background / move-handle exclusion.
+public struct VRManualAngleDragOwnership {
+    public private(set) var owner:UUID?
+    public init() {}
+    @discardableResult public mutating func acquire(_ token:UUID)->Bool {
+        guard owner == nil || owner == token else{return false}
+        owner=token;return true
+    }
+    @discardableResult public mutating func release(_ token:UUID)->Bool {
+        guard owner == token else{return false}
+        owner=nil;return true
     }
 }

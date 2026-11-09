@@ -132,6 +132,20 @@ public struct VideoTrackInfo: Sendable, Equatable {
     public let height: Int32
     public let duration: Double
     public let hasAudio: Bool
+    /// AVAssetTrack's estimated average video-track rate, in bits/s. Excludes audio/container.
+    public let estimatedDataRate: Double?
+    public init(codec:String,width:Int32,height:Int32,duration:Double,hasAudio:Bool,estimatedDataRate:Double?=nil) {
+        self.codec=codec;self.width=width;self.height=height;self.duration=duration;self.hasAudio=hasAudio
+        self.estimatedDataRate=estimatedDataRate.flatMap { $0.isFinite && $0>0 ? $0:nil }
+    }
+    public var averageBitrateText:String {
+        guard let rate=estimatedDataRate else{return "— Mbps"}
+        let locale=Locale(identifier:"en_US_POSIX")
+        if rate>=1_000_000 {return String(format:"≈%.1f Mbps",locale:locale,rate/1_000_000)}
+        if rate>=100_000 {return String(format:"≈%.2f Mbps",locale:locale,rate/1_000_000)}
+        if rate>=1_000 {return String(format:"≈%.3f Mbps",locale:locale,rate/1_000_000)}
+        return "<0.001 Mbps"
+    }
 }
 /// Retains one decoded buffer; never stores source identifiers. Only the isolated renderer experiment requests it.
 public final class DecodedVideoFrame: @unchecked Sendable {
@@ -210,9 +224,35 @@ public struct PlaybackReport: Sendable {
     private var tasks: [ObjectIdentifier: Task<Void, Never>] = [:]
     private var stopped = false
     private var cleanup = false
+    /// Live task ownership, including cancelled tasks until their defer drains.
+    /// Counters detect work that starts and ends between two main-loop samples.
+    struct RecoveryActivity: Equatable {
+        let available: Bool, activeRequests: Int
+        let requests: UInt64, chunks: UInt64, cancellations: UInt64, deliveredBytes: UInt64
+        let returns: UInt64, responses: UInt64
+        var idle: Bool { available && activeRequests == 0 }
+    }
+    private var recoveryCancellations: UInt64 = 0, recoveryReturns: UInt64 = 0, recoveryResponses: UInt64 = 0
+    var recoveryActivity: RecoveryActivity {
+        .init(available: !stopped && !cleanup, activeRequests: tasks.count,
+              requests: diagnosticRequest, chunks: diagnosticChunk,
+              cancellations: recoveryCancellations, deliveredBytes: deliveredBytes,
+              returns: recoveryReturns, responses: recoveryResponses)
+    }
     private var traceIDs:[ObjectIdentifier:Int]=[:]
+    private static var nextDiagnosticSession: UInt64 = 0
+    private let diagnosticSession: UInt64
+    private var diagnosticRequest: UInt64 = 0, diagnosticChunk: UInt64 = 0
+    private var rangeDiagnostics = PlaybackBridgeDiagnostics()
+    func rangeDiagnosticSnapshot() -> PlaybackBridgeDiagnostics.Snapshot { rangeDiagnostics.snapshot(session: diagnosticSession) }
     private let trace:ReadCancellationTrace?
     private let chunkBytes:UInt64
+    var demandChunkLimit: UInt64 { chunkBytes }
+    private(set) var rawDataRequests = 0, rawRequestsAtLeast512 = 0, rawRequestsToEnd = 0
+    private(set) var rawMaximumBytes: UInt64 = 0
+    private(set) var smallDemandReads = 0, largeDemandReads = 0, maximumDemandReads = 0
+    private(set) var largeDemandBytes: UInt64 = 0
+    private(set) var deliveredBytes: UInt64 = 0
     var onReadFailure:(()->Void)?
     var onReadProgress:(()->Void)?
     // Aggregate diagnostics only; never include a URL, path, or payload.
@@ -224,6 +264,7 @@ public struct PlaybackReport: Sendable {
     #endif
     init(source: any MediaByteSource, file: MediaFile, size: UInt64, contentType: String,trace:ReadCancellationTrace? = nil,chunkBytes:UInt64 = MediaReadPlan.chunkLimit) {
         self.source = source; self.file = file; self.size = size; self.contentType = contentType;self.trace=trace;self.chunkBytes=chunkBytes
+        Self.nextDiagnosticSession &+= 1; diagnosticSession = Self.nextDiagnosticSession
     }
     nonisolated func resourceLoader(_ loader: AVAssetResourceLoader, shouldWaitForLoadingOfRequestedResource request: AVAssetResourceLoadingRequest) -> Bool {
         MainActor.assumeIsolated { load(request) }
@@ -234,10 +275,15 @@ public struct PlaybackReport: Sendable {
     private func load(_ request: AVAssetResourceLoadingRequest) -> Bool {
         guard !stopped, tasks.count < 8 else { if !stopped {onReadFailure?()};request.finishLoading(with: PlaybackFailure.readFailed); return true }
         let id = ObjectIdentifier(request)
+        diagnosticRequest &+= 1; let requestID = diagnosticRequest
+        rangeDiagnostics.accepted(requestID, now: ProcessInfo.processInfo.systemUptime)
         let traceID=trace?.begin()
         traceIDs[id]=traceID
         tasks[id] = Task {
-            defer { tasks[id] = nil;traceIDs[id]=nil;if let traceID {trace?.finish(traceID)} }
+            defer {
+                rangeDiagnostics.ended(requestID, cancelled: Task.isCancelled || stopped || request.isCancelled, now: ProcessInfo.processInfo.systemUptime)
+                tasks[id] = nil;traceIDs[id]=nil;if let traceID {trace?.finish(traceID)}
+            }
             do {
                 try Task.checkCancellation()
                 request.contentInformationRequest?.contentType = contentType
@@ -248,15 +294,33 @@ public struct PlaybackReport: Sendable {
                                                  currentOffset: dataRequest.currentOffset,
                                                  requestedLength: dataRequest.requestedLength,
                                                  toEnd: dataRequest.requestsAllDataToEndOfResource, fileSize: size,chunkBytes:chunkBytes)
-                    for range in plan {
+                    rangeDiagnostics.planned(requestID, range: plan.range)
+                    rawDataRequests += 1
+                    let requestedBytes = plan.range.upperBound - plan.range.lowerBound
+                    rawMaximumBytes = max(rawMaximumBytes, requestedBytes)
+                    if requestedBytes >= 524_288 { rawRequestsAtLeast512 += 1 }
+                    if dataRequest.requestsAllDataToEndOfResource { rawRequestsToEnd += 1 }
+                    var cursor = plan.range.lowerBound
+                    while cursor < plan.range.upperBound {
                         try Task.checkCancellation()
+                        let range = cursor..<(cursor + min(chunkBytes, plan.range.upperBound - cursor))
+                        if range.count == Int(MediaReadPlan.nativeChunkBytes) { maximumDemandReads += 1 }
+                        if range.count > Int(262_144) { largeDemandReads += 1 }
+                        else { smallDemandReads += 1 }
                         let data:Data
                         if let traceID {trace?.reading(traceID,true)}
                         let epoch=onRangeBegin?() ?? 0,started=ProcessInfo.processInfo.systemUptime
+                        diagnosticChunk &+= 1
+                        let correlation = PlaybackReadCorrelation(bridge: diagnosticSession, request: requestID, chunk: diagnosticChunk, seek: epoch)
+                        rangeDiagnostics.began(correlation, range: range, now: started)
                         #if VISTA_ANON_IO_EXPERIMENT
                         let anonymousID=onAnonymousBegin?()
                         #endif
-                        do {data=try await source.read(file,range:range)}
+                        do {
+                            data=try await PlaybackReadDiagnosticContext.$correlation.withValue(correlation) { try await source.read(file,range:range) }
+                            recoveryReturns &+= 1
+                            rangeDiagnostics.returned(correlation, bytes: data.count, now: ProcessInfo.processInfo.systemUptime)
+                        }
                         catch {
                             #if VISTA_ANON_IO_EXPERIMENT
                             let cancelled=error is CancellationError || Task.isCancelled || stopped || request.isCancelled
@@ -274,6 +338,11 @@ public struct PlaybackReport: Sendable {
                         guard !stopped,!request.isCancelled else{throw CancellationError()}
                         guard data.count == Int(range.upperBound - range.lowerBound) else { throw PlaybackFailure.readFailed }
                         dataRequest.respond(with: data)
+                        recoveryResponses &+= 1
+                        rangeDiagnostics.responded(correlation, bytes: data.count, now: ProcessInfo.processInfo.systemUptime)
+                        deliveredBytes += UInt64(data.count)
+                        cursor = range.upperBound
+                        if range.count > Int(262_144) { largeDemandBytes += UInt64(data.count) }
                         onReadProgress?()
                         if let traceID {trace?.delivered(traceID,data.count)}
                         // Let cancellation/seek callbacks run before issuing more speculative I/O.
@@ -292,6 +361,7 @@ public struct PlaybackReport: Sendable {
     nonisolated func resourceLoader(_ loader: AVAssetResourceLoader, didCancel request: AVAssetResourceLoadingRequest) {
         MainActor.assumeIsolated {
             let id=ObjectIdentifier(request)
+            recoveryCancellations &+= 1
             if let traceID=traceIDs[id] {trace?.cancel(traceID,cleanup:cleanup)}
             tasks[id]?.cancel()
         }
@@ -437,7 +507,8 @@ public actor HardwarePlayback {
             guard audioFormats.count == 1, let audioFormat = audioFormats.first,
                   AudioPlayback.supported(audioFormat) else { throw PlaybackFailure.audioFailed.diagnosed(.audioFormat) }
         }
-        await onInfo(VideoTrackInfo(codec: codecName, width: dimensions.width, height: dimensions.height, duration: duration, hasAudio: !audioTracks.isEmpty))
+        let estimatedDataRate=try? await track.load(.estimatedDataRate)
+        await onInfo(VideoTrackInfo(codec: codecName, width: dimensions.width, height: dimensions.height, duration: duration, hasAudio: !audioTracks.isEmpty, estimatedDataRate: estimatedDataRate.map(Double.init)))
         await onPreparation?(.metadata)
         try Task.checkCancellation()
         var session: VTDecompressionSession?

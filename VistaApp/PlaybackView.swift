@@ -35,6 +35,7 @@ struct PlaybackView: View {
     @State private var player = PlaybackController()
     @State private var scrubTime = 0.0
     @State private var isScrubbing = false
+    @State private var scrubInteraction = PlaybackScrubInteraction()
     @State private var pixelPreview:CGImage?
     @State private var previewContext=CIContext()
     private var previewImage:CGImage? {player.frame?.image ?? pixelPreview}
@@ -84,12 +85,29 @@ struct PlaybackView: View {
                         Button("重試") { attempt += 1 }
                     } else { ProgressView("讀取檔案資訊…") }
                     if let trackInfo = player.trackInfo {
+                        let scrubOwner = player.playbackGeneration
                         Text("\(trackInfo.codec) · \(trackInfo.width) × \(trackInfo.height)").accessibilityIdentifier("videoTrackInfo")
-                        Slider(value: $scrubTime, in: 0...trackInfo.duration,
-                               onEditingChanged: { editing in
-                                   isScrubbing = editing
-                                   if !editing { player.seek(to: scrubTime) }
-                               })
+                        Slider(value: Binding(get: { scrubTime }, set: { value in
+                            guard player.playbackGeneration == scrubOwner else { return }
+                            scrubInteraction.update(value, owner: scrubOwner, initialPosition: scrubTime)
+                            scrubTime = value; isScrubbing = true
+                        }), in: 0...trackInfo.duration, onEditingChanged: { editing in
+                            guard player.playbackGeneration == scrubOwner else { return }
+                            if editing {
+                                scrubInteraction.begin(owner: scrubOwner, position: scrubTime)
+                                isScrubbing = true
+                            } else {
+                                isScrubbing = false
+                                let submitted = scrubInteraction.finish(owner: scrubOwner) { target in
+                                    player.seek(to: target)
+                                }
+                                if !submitted { scrubTime = player.position }
+                            }
+                        })
+                            .id(scrubOwner)
+                            .onDisappear {
+                                if scrubInteraction.owner == scrubOwner {scrubInteraction.cancel();isScrubbing=false}
+                            }
                             .accessibilityLabel("播放位置").accessibilityIdentifier("playbackPosition")
                         Text("\(timeLabel(isScrubbing ? scrubTime : player.position)) / \(timeLabel(trackInfo.duration))")
                             .monospacedDigit().accessibilityIdentifier("playbackTime")
@@ -122,15 +140,15 @@ struct PlaybackView: View {
                     }
                     if let message = vr.message { Text(message) }
                     if let trackInfo = player.trackInfo, !trackInfo.hasAudio { Text("影片無音軌").font(.caption) }
-                    Text(player.speedStatus.text).font(.caption.monospacedDigit()).accessibilityIdentifier("flatPlaybackSpeed")
+                    PlaybackSpeedIndicator(status:player.speedStatus,identifier:"flatPlaybackSpeed",buffering:player.isBuffering && !player.isPaused)
                     if player.speedStatus.ready,!player.speedStatus.supportsFastForward {Text("此影片最高 2×").font(.caption2)}
                     if let message=player.speedMessage {Text(message).font(.caption)}
-                    if let playbackMessage = player.message { Text(playbackMessage).accessibilityIdentifier("playbackStatus") }
+                    if !player.isBuffering, let playbackMessage = player.message { Text(playbackMessage).accessibilityIdentifier("playbackStatus") }
                     HStack {
                         if player.trackInfo != nil {
                             Button("恢復 1 倍速") { player.resetSpeed() }
                                 .disabled(!player.canResetSpeed).accessibilityIdentifier("skipBackward")
-                            Button("加速 1 倍", systemImage: "forward.fill") { player.increaseSpeed() }
+                            Button("加速 0.5 倍", systemImage: "forward.fill") { player.increaseSpeed() }
                                 .disabled(!player.canIncreaseSpeed).labelStyle(.iconOnly).accessibilityIdentifier("skipForward")
                         }
                         if player.isPlaying {
@@ -156,9 +174,14 @@ struct PlaybackView: View {
         }
         .onAppear { vr.settings = VRSettings(); vr.message = nil; vr.calibration.resetForNewFile() }
         .onDisappear {
+            scrubInteraction.cancel();isScrubbing=false
             advanceTask?.cancel(); vr.openRequest = nil
             cancelPreparedSource();player.stop()
             if vr.active { Task { await dismissVR() } }
+        }
+        .onChange(of: player.playbackGeneration) { _, owner in
+            scrubInteraction.retainOnly(owner: owner);isScrubbing=scrubInteraction.isActive
+            if !isScrubbing {scrubTime=player.position}
         }
         .onChange(of: player.position) { _, position in
             if !isScrubbing { scrubTime = position }
@@ -313,7 +336,7 @@ struct PlaybackView: View {
                     vr.endControllerNavigation()
                     return
                 }
-                cancelPreparedSource();player.stop()
+                cancelPreparedSource();player.stop(discardTrackInfo:true)
                 autoplayReplacement = true;replayAfterPreparation=false
                 vr.calibration.resetForNewFile();vr.calibrationRequest += 1
                 replacement = next
@@ -380,6 +403,26 @@ struct PlaybackView: View {
                 preparedSourceUsed=true
                 player.play(file: file, source: source, sourceKind:isDemo ? .synthetic : source is LocalDirectoryProvider ? .local : .smb); vr.revealControls()
             }
+        }
+    }
+}
+
+/// The flat player keeps its compact, accessible waiting indicator beside the rate.
+struct PlaybackSpeedIndicator:View {
+    let status:PlaybackSpeedStatus
+    let identifier:String
+    var buffering:Bool?=nil
+    var body:some View {
+        HStack(spacing:6) {
+            Text(status.text).font(.caption.monospacedDigit()).accessibilityIdentifier(identifier)
+            // Reserve the same slot while hidden so the speed text never shifts.
+            ZStack {
+                if buffering ?? status.showsBufferingIndicator {
+                    ProgressView().controlSize(.mini)
+                        .accessibilityLabel("等待播放")
+                        .accessibilityIdentifier(identifier + "Buffering")
+                }
+            }.frame(width:14,height:14)
         }
     }
 }

@@ -169,6 +169,35 @@ public actor SMBDirectoryProvider: DirectoryProvider, MediaByteSource {
         self.mediaReader = SMBMediaReader(transport: AMSMBRangeTransport(manager: manager),diagnostics:diagnostics,session:session,leases:leases)
     }
 
+    /// Immutable Sendable dependencies let a playback session own a separate file transport.
+    /// The shared admission gate still prevents all new work once this provider retires.
+    nonisolated func makePlaybackReader() -> (reader: SMBMediaReader, transport: SMBPlaybackHandleTransport) {
+        let transport = SMBPlaybackHandleTransport(manager: manager)
+        return (SMBMediaReader(transport: transport, diagnostics: diagnostics,
+                              session: diagnosticSession, leases: operationLeases), transport)
+    }
+
+    func finishPlaybackTransport(_ transport: SMBPlaybackHandleTransport) async throws {
+        if operationLeases.acquire() {
+            defer { operationLeases.release() }
+            try await transport.close()
+        } else {
+            // A retirement that closed admission owns the context. Join it before the
+            // file wrapper performs its now-local cleanup; do not race a fresh close RPC.
+            if let retirement {
+                try await retirement.value
+                try await transport.closeAfterProviderRetirement()
+            } else {
+                try await transport.close()
+            }
+        }
+    }
+
+    func playbackFailure(_ error: any Error) -> SMBPlaybackReadFailure {
+        let failure = SMBPlaybackSession.recoveryDisposition(for: error)
+        return failure == .retired ? playbackRetirementFailure : failure
+    }
+
     public static func connect(input: ConnectionInput, password: String) async throws -> SMBDirectoryProvider {
         try await connect(input:input,password:password,freshRecovery:false)
     }

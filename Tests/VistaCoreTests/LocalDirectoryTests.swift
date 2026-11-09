@@ -25,7 +25,7 @@ struct LocalDirectoryTests {
         #expect(try await provider.fileSize(for:file)==4)
         #expect(try await provider.read(file,range:1..<3)==Data([2,3]))
         await #expect(throws:(any Error).self) {try await provider.read(file,range:0..<5)}
-        await #expect(throws:(any Error).self) {try await provider.read(file,range:0..<1_048_577)}
+        await #expect(throws:(any Error).self) {try await provider.read(file,range:0..<(MediaReadPlan.maximumChunkBytes+1))}
         #expect(try await provider.page(at:.init(["Child"]),offset:0).entries.isEmpty)
         try FileManager.default.removeItem(at:root.appendingPathComponent("movie.mp4"))
         await provider.invalidate()

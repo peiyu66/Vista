@@ -335,7 +335,7 @@ import Observation
                 }
                 sourceFactory={ [weak self] file in
                     guard let self,stillCurrent() else{throw CancellationError()}
-                    return PlaybackRecoveringSource(file:file,initial:SMBPlaybackSession(provider:borrowed),
+                    let recovering = PlaybackRecoveringSource(file:file,initial:SMBPlaybackSession(provider:borrowed),
                         metadata:{session,file in try await session.metadata(for:file)},
                         makeFresh:{ [weak self] in
                             guard let self,stillCurrent() else{throw CancellationError()}
@@ -345,9 +345,11 @@ import Observation
                                 input:ConnectionInput(server:source.server,share:share,username:source.username),password:secret)
                             return SMBPlaybackSession(provider:fresh)
                         },retire:{session in try await session.retireForPlaybackRecovery()},
+                        finish:{session in try await session.finishPlayback()},
                         shouldRecover:{SMBPlaybackSession.recoveryDisposition(for:$0).allowsFreshRecovery},
                         shouldJoinExistingRecovery:{($0 as? SMBPlaybackReadFailure) == .retired},
                         isCurrent:stillCurrent)
+                    return PlaybackPrefetchSource(file:file,source:recovering)
                 }
             } else {sourceFactory=nil}
             notice=nil

@@ -191,13 +191,52 @@ struct VRSettingsView: View {
     }
 }
 
+// Observes SwiftUI control policy only. Uptime is observation/callback time,
+// not the instant a disabled appearance reached the compositor or display.
+@MainActor private final class ImmersiveControllerUIDiagnosticState {
+    private var trace=PlaybackControllerUIDiagnostics()
+    static func state(_ presentation:VRPresentation)->PlaybackControllerUIState {
+        let player=presentation.player
+        return PlaybackControllerUIState(stopping:presentation.stopping,scrubbing:presentation.scrubbing,
+            preparing:player?.isPreparing ?? false,advancing:presentation.advancing,
+            requiresFormatConfirmation:presentation.requiresFormatConfirmation,
+            canResetSpeed:player?.canResetSpeed ?? false,canIncreaseSpeed:player?.canIncreaseSpeed ?? false,
+            canGoBack:presentation.canGoBack,canAdvance:presentation.canAdvance,
+            hasDuration:PlaybackProgress.duration(player?.trackInfo?.duration) != nil)
+    }
+    func record(_ action:PlaybackControllerUIDiagnostics.Action = .stateChanged,presentation:VRPresentation) {
+        guard let values=trace.update(state:Self.state(presentation),action:action) else{return}
+        if let player=presentation.player {
+            let projection=VRProjection.allCases.firstIndex(of:presentation.settings.projection) ?? 0
+            let layout=VRLayout.allCases.firstIndex(of:presentation.settings.layout) ?? 0
+            let route=presentation.settings.projection == .equidistantFisheye180 ? 1:0
+            player.persistDiagnostics(event:.controllerUI,projection:projection,layout:layout,route:route,rendererValues:values)
+        } else {
+            // finishSession may already have released the player; retain the terminal edge.
+            PlaybackLogStore.shared.enqueue(PlaybackLogRecord(event:.controllerUI,values:values))
+        }
+    }
+    func currentValues(presentation:VRPresentation)->[PlaybackLogField:Double] {
+        record(presentation:presentation)
+        return trace.snapshot()
+    }
+}
+
 struct VRImmersiveView: View {
+    #if DEBUG
+    // Presentation-only overrides for the synthetic controller fixture.
+    var reviewSpeedStatus:PlaybackSpeedStatus?=nil
+    var reviewVideoInfo:VideoTrackInfo?=nil
+    var reviewProgressDurationText:String?=nil
+    #endif
     @Environment(VRPresentation.self) private var presentation
     @Environment(\.dismissImmersiveSpace) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @ScaledMetric(relativeTo:.caption) private var speedStatusLineHeight:CGFloat=22
     @State private var renderer = VRRenderer()
     @State private var systemRenderer = SystemVideoPresenter()
     @State private var playbackBoundaries=ImmersivePlaybackBoundaryState()
+    @State private var controllerUIDiagnostics=ImmersiveControllerUIDiagnosticState()
     @State private var placement = Entity()
     @State private var controllerEntryPose:VRInitialPose?
     @State private var controllerReference:Entity = {let entity=Entity();entity.position=[0,1.5,0];return entity}()
@@ -209,6 +248,7 @@ struct VRImmersiveView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var controlVisual=ControllerVisualState()
     @State private var scrubPosition=0.0
+    @State private var scrubInteraction=PlaybackScrubInteraction()
     @State private var draggingControls = false
     private var controlEntity:Entity? {controlVisual.entity}
     @State private var moveHandle: ModelEntity = {
@@ -346,6 +386,7 @@ struct VRImmersiveView: View {
                 updateDraggedPosition(controls)
                 placeControls(controls)
             }.onEnded { _ in
+                guard draggingControls else{return}
                 draggingControls=false;presentation.movingControls=false
                 controlVisual.poseTask?.cancel();controlVisual.poseTask=nil
                 controlVisual.dragPointer=nil
@@ -382,21 +423,31 @@ struct VRImmersiveView: View {
         .onChange(of: presentation.message) {_,message in if message != nil {presentation.endControllerNavigation(showError:true);presentation.holdControls()}}
         .onChange(of: presentation.settings) { _, _ in cancelControllerResetSample();updateControllerReference() }
         .onChange(of: presentation.calibrationRequest) { _, _ in cancelControllerResetSample() }
-        .onChange(of: presentation.player.map(ObjectIdentifier.init)) { _, _ in cancelControllerResetSample() }
+        .onChange(of: presentation.player.map(ObjectIdentifier.init)) { _, _ in cancelControllerResetSample();synchronizeScrubOwner() }
         .onChange(of: presentation.advancing) { _, value in if value {cancelControllerResetSample()} }
         .onChange(of: presentation.scrubbing) { _, value in if value {cancelControllerResetSample()} }
         .onChange(of: presentation.settingsVisible) { _, _ in presentation.revealControls() }
         .onAppear { presentation.revealControls() }
     }
-    private var immersiveBody:some View {
+    private var scrubObservedContent:some View {
         observedContent
+        .onChange(of: presentation.player?.playbackGeneration) { _, _ in synchronizeScrubOwner() }
+        .onDisappear {cancelScrubInteraction()}
+    }
+    private var immersiveBody:some View {
+        scrubObservedContent
+        .onChange(of:ImmersiveControllerUIDiagnosticState.state(presentation),initial:true) {_,_ in
+            controllerUIDiagnostics.record(presentation:presentation)
+        }
         .task {
             while !Task.isCancelled {
-                if let player=presentation.player,player.isPlaying || player.isPreparing {
+                if let player=presentation.player,player.isPlaying || player.isPreparing || presentation.scrubbing || presentation.stopping {
                     let projection=VRProjection.allCases.firstIndex(of:presentation.settings.projection) ?? 0
                     let layout=VRLayout.allCases.firstIndex(of:presentation.settings.layout) ?? 0
                     let route=presentation.settings.projection == .equidistantFisheye180 ? 1:0
-                    player.persistDiagnostics(projection:projection,layout:layout,route:route,rendererValues:renderer.logValues)
+                    var values=renderer.logValues
+                    values.merge(controllerUIDiagnostics.currentValues(presentation:presentation)){_,new in new}
+                    player.persistDiagnostics(projection:projection,layout:layout,route:route,rendererValues:values)
                 }
                 do {try await Task.sleep(for:.seconds(1))}catch{return}
             }
@@ -488,6 +539,7 @@ struct VRImmersiveView: View {
             }
         }
         .onAppear{
+            controllerUIDiagnostics.record(.viewAppeared,presentation:presentation)
             presentation.player?.setPlaybackSceneActive(scenePhase == .active)
             playbackBoundaries.begin(1)
             playbackBoundaries.record(.sceneEntered,player:presentation.player,fields:[.outcome:scenePhase.diagnosticValue,.active:scenePhase == .active ? 1:0])
@@ -495,6 +547,7 @@ struct VRImmersiveView: View {
             playbackBoundaries.record(.sceneReturned,player:presentation.player,fields:[.outcome:scenePhase.diagnosticValue,.active:scenePhase == .active ? 1:0])
         }
         .onDisappear {
+            controllerUIDiagnostics.record(.viewDisappeared,presentation:presentation)
             playbackBoundaries.begin(5)
             playbackBoundaries.record(.stopEntered,player:presentation.player)
             defer {playbackBoundaries.record(.stopReturned,player:presentation.player)}
@@ -509,6 +562,7 @@ struct VRImmersiveView: View {
             controlVisual.dragPointer=nil;draggingControls=false
             presentation.player?.setPlaybackSceneActive(false)
             renderer.stop();systemRenderer.stop(); presentation.finishSession()
+            controllerUIDiagnostics.record(.stopCompleted,presentation:presentation)
         }
     }
     private var submittedAccessibilityValue:String {
@@ -533,21 +587,68 @@ struct VRImmersiveView: View {
         }
         return systemRenderer.ready ? label+"：送入 renderer，尚非雙眼驗收":label+"：準備中"
     }
+    private var displayedSpeedStatus:PlaybackSpeedStatus {
+        #if DEBUG
+        if let reviewSpeedStatus {return reviewSpeedStatus}
+        #endif
+        return presentation.player?.speedStatus ?? PlaybackSpeedStatus()
+    }
+    private var displayedBuffering:Bool {
+        #if DEBUG
+        if let reviewSpeedStatus {return reviewSpeedStatus.showsBufferingIndicator}
+        #endif
+        return presentation.player.map {$0.isBuffering && !$0.isPaused} ?? false
+    }
+    private var displayedVideoInfo:VideoTrackInfo? {
+        #if DEBUG
+        if let reviewVideoInfo {return reviewVideoInfo}
+        #endif
+        return presentation.player?.trackInfo
+    }
+    private func progressDurationText(_ player:PlaybackController?)->String {
+        #if DEBUG
+        if let reviewProgressDurationText {return reviewProgressDurationText}
+        #endif
+        return PlaybackProgress.time(PlaybackProgress.duration(player?.trackInfo?.duration))
+    }
+    private var speedStatusBelowButton:some View {
+        // The empty 1× slot keeps the control row stable without a hidden text/AX node.
+        // Overlay sizing never changes the accelerator or its neighbours' hit regions.
+        ZStack {
+            if displayedSpeedStatus.selected>1 {
+                Text(displayedSpeedStatus.text).font(.caption.monospacedDigit())
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .accessibilityIdentifier("playbackSpeed")
+            }
+        }.frame(width:176,height:speedStatusLineHeight)
+            .allowsHitTesting(false).hoverEffectDisabled()
+    }
     @ViewBuilder private var playerControls: some View {
         VStack(spacing: 12) {
-            HStack {
+            HStack(alignment:.top,spacing:8) {
                 Button {
                     guard !presentation.stopping else { return }
                     presentation.stopping = true
+                    let diagnosticState=controllerUIDiagnostics
+                    diagnosticState.record(.stopBegan,presentation:presentation)
                     presentation.onCancelNavigation?()
                     presentation.player?.stop()
-                    Task { await dismiss(); presentation.finishSession() }
+                    Task {
+                        await dismiss(); presentation.finishSession()
+                        diagnosticState.record(.stopCompleted,presentation:presentation)
+                    }
                 } label: { Image(systemName:"chevron.backward") }
                 .accessibilityLabel("停止並返回瀏覽").accessibilityIdentifier("immersiveStop")
-                .disabled(presentation.stopping)
-                Text(presentation.fileTitle).font(.caption).lineLimit(1)
-                .frame(maxWidth:.infinity).padding(.vertical,6).contentShape(Rectangle())
-                .accessibilityIdentifier("immersiveFileTitle").accessibilityValue(submittedAccessibilityValue)
+                .disabled(presentation.stopping).frame(height:44)
+                HStack(alignment:.top,spacing:0) {
+                    ControllerFilenameTitle(title:presentation.fileTitle,readiness:submittedAccessibilityValue)
+                        .frame(minWidth:0,maxWidth:.infinity,alignment:.leading)
+                        .padding(.leading,8).padding(.vertical,6).contentShape(Rectangle())
+                    // Match the progress row's fixed duration width and 10pt gap, then inset 16pt.
+                    Text(progressDurationText(presentation.player))
+                        .font(.caption.monospacedDigit()).fixedSize()
+                        .hidden().accessibilityHidden(true).padding(.leading,26)
+                }
             }
             #if DEBUG && VISTA_DIAGNOSTIC_UI
             #if VISTA_SYSTEM_VIDEO_EXPERIMENT
@@ -583,16 +684,19 @@ struct VRImmersiveView: View {
                         .accessibilityIdentifier("immersivePause")
                         .disabled(player.isPreparing || presentation.advancing || presentation.requiresFormatConfirmation)
                     Button { presentation.revealControls(); player.increaseSpeed() } label: { Image(systemName:"forward.fill") }
-                        .accessibilityLabel("加速 1 倍").accessibilityIdentifier("immersiveForward")
-                        .accessibilityHint("最高 3 倍速，依影片支援能力開放")
+                        .accessibilityLabel("加速 0.5 倍").accessibilityIdentifier("immersiveForward")
+                        .accessibilityHint("最高 \(PlaybackSpeedStatus.upperLimit) 倍速，依影片支援能力開放")
                         .disabled(!player.canIncreaseSpeed || presentation.advancing || presentation.requiresFormatConfirmation)
+                        .overlay(alignment:.bottom) {
+                            speedStatusBelowButton.alignmentGuide(.bottom) {$0[.top]-4}
+                        }
                     Button { presentation.onNext?(); presentation.holdControls() } label: { Image(systemName: "forward.end.fill") }
                         .accessibilityLabel("下一個影片").accessibilityIdentifier("immersiveNext")
                         .disabled(!presentation.canAdvance || presentation.advancing)
                     Button { presentation.settingsVisible.toggle(); presentation.revealControls() } label: { Image(systemName: "slider.horizontal.3") }
                         .accessibilityLabel("影片格式設定").accessibilityIdentifier("immersiveSettings")
                 }.buttonStyle(.borderless).font(.title3).disabled(presentation.stopping || presentation.scrubbing)
-                Text(player.speedStatus.text).font(.caption.monospacedDigit()).accessibilityIdentifier("playbackSpeed")
+                    .padding(.bottom,speedStatusLineHeight+4)
                 if player.speedStatus.ready,!player.speedStatus.supportsFastForward {
                     Text("此影片最高 2×").font(.caption2).foregroundStyle(.secondary).accessibilityIdentifier("playbackSpeedLimit")
                 }
@@ -614,7 +718,7 @@ struct VRImmersiveView: View {
                 }
                 if let error = renderer.error { Text(error).font(.caption).accessibilityIdentifier("vrError") }
                 if let message = presentation.message { Text(message).font(.caption).accessibilityIdentifier("immersiveMessage") }
-                if !player.isPlaying || player.isBuffering, let message = player.message { Text(message).font(.caption).accessibilityIdentifier("immersivePlaybackStatus") }
+                if !player.isPlaying, let message = player.message { Text(message).font(.caption).accessibilityIdentifier("immersivePlaybackStatus") }
             }
             if presentation.settingsVisible || presentation.requiresFormatConfirmation {
                 Divider()
@@ -623,23 +727,16 @@ struct VRImmersiveView: View {
                     Button("使用目前格式並播放") { presentation.onFormatChanged?(); presentation.onReplay?() }
                         .accessibilityIdentifier("immersiveConfirmFormat")
                 }
-                VStack(spacing:4) {
-                    Text("水平 \(VRManualAngleDisplay.text(presentation.videoSettings.yawDegrees))")
-                        .accessibilityIdentifier("manualHorizontalAngle")
-                    Text("← −15°　│　0°　│　+15° →").foregroundStyle(.secondary)
-                }.font(.caption).padding(.leading,56)
+                angleRuler(vertical:false).padding(.leading,56)
                 HStack(spacing:8) {
-                    VStack(spacing:8) {
-                        Text("垂直")
-                        Text(VRManualAngleDisplay.text(presentation.videoSettings.pitchDegrees))
-                            .accessibilityIdentifier("manualVerticalAngle")
-                        Text("上\n+15°\n│\n0°\n│\n−15°\n下").foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
-                    }.font(.caption).multilineTextAlignment(.center).frame(width:48).fixedSize(horizontal:false,vertical:true)
+                    angleRuler(vertical:true)
                     ZStack {
                     ringControl("重設影片方向", angle: -90, outer: true, identifier: "recenterVideo", hint: "以目前觀看方向重新置中影片，成功後清除自動補償與手動轉向；也可長按影片背景", action:resetVideoDirection).disabled(!canAdjustManualDirection)
                     ringControl("重設\n影片格式", angle: -165, outer: true, identifier: "clearVRFormat", hint: "清除此片保存格式，不重設方向或控制器位置") {
                         presentation.onClearFormat?(); presentation.holdControls()
                     }.disabled(!presentation.canClearFormat || presentation.advancing)
+                        .opacity(!presentation.canClearFormat || presentation.advancing ? 0.35:1)
+                        .hoverEffectDisabled(!presentation.canClearFormat || presentation.advancing)
                     ringControl("重設\n控制器\n位置", angle: -15, outer: true, identifier: "resetControllerPosition", hint: "也可雙擊影片背景", action: resetControllerPosition)
                     ringControl("arrowtriangle.up.fill", angle: -90, outer: false, identifier: "directionUp", hint: "向上轉，每次15度") { adjustManualDirection(pitch: 15) }.disabled(!canAdjustManualDirection)
                     ringControl("arrowtriangle.left.fill", angle: -180, outer: false, identifier: "directionLeft", hint: "向左轉，每次15度") { adjustManualDirection(yaw: -15) }.disabled(!canAdjustManualDirection)
@@ -659,8 +756,22 @@ struct VRImmersiveView: View {
                     .fixedSize(horizontal:false,vertical:true)
                     .font(.caption).foregroundStyle(.secondary)
                     .accessibilityIdentifier("resetControllerGestureHint")
-                if let info=presentation.player?.trackInfo {
-                    Text("\(info.codec) · \(info.width) × \(info.height)").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("controllerVideoInfo")
+                if let info=displayedVideoInfo {
+                    HStack(spacing:6) {
+                        Text("\(info.codec) · \(info.width) × \(info.height) · \(info.averageBitrateText)")
+                            .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true)
+                            .accessibilityIdentifier("controllerVideoInfo")
+                            .accessibilityHint("位元率是視訊軌平均估計值，不含音訊與容器，不是即時位元率；破折號表示未知")
+                        // Keep the info text stable across brief waits; absent when collapsed.
+                        ZStack {
+                            if displayedBuffering {
+                                ProgressView().controlSize(.mini)
+                                    .accessibilityLabel("等待播放")
+                                    .accessibilityIdentifier("controllerVideoInfoBuffering")
+                            }
+                        }.frame(width:14,height:14)
+                    }
                     if !info.hasAudio {Text("影片無音軌").font(.caption).foregroundStyle(.secondary)}
                 }
 
@@ -670,6 +781,14 @@ struct VRImmersiveView: View {
             .allowsHitTesting(presentation.controlsVisible)
             .accessibilityHidden(!presentation.controlsVisible)
             .onHover { hovering in if hovering { presentation.holdControls() } else { presentation.scheduleHide() } }
+    }
+    private var angleReadoutAvailable:Bool {
+        canAdjustManualDirection && presentation.controlsVisible && !presentation.stopping &&
+        !presentation.movingControls && !presentation.scrubbing && scenePhase == .active
+    }
+    private func angleRuler(vertical:Bool)->some View {
+        AngleRulerReadout(value:vertical ? presentation.videoSettings.pitchDegrees:presentation.videoSettings.yawDegrees,
+            vertical:vertical,available:angleReadoutAvailable)
     }
     private func ringControl(_ title:String,angle:Double,outer:Bool,identifier:String,hint:String,action:@escaping ()->Void)->some View {
         let segment=RemoteRingSegment(inner:outer ? 104:43,outer:outer ? 160:94,angle:angle,span:outer ? (angle == -90 ? 80:70):90,gap:10)
@@ -698,30 +817,49 @@ struct VRImmersiveView: View {
             .accessibilityLabel(label).accessibilityIdentifier(identifier)
             .accessibilityHint("每次調整15度")
     }
+    private func cancelScrubInteraction() {
+        scrubInteraction.cancel();presentation.scrubbing=false
+    }
+    private func synchronizeScrubOwner() {
+        scrubInteraction.retainOnly(owner:presentation.player?.playbackGeneration)
+        presentation.scrubbing=scrubInteraction.isActive
+    }
     @ViewBuilder private func playbackProgress(_ player:PlaybackController)->some View {
         let duration=PlaybackProgress.duration(player.trackInfo?.duration)
+        let scrubOwner=player.playbackGeneration
         let enabled=duration != nil && !player.isPreparing && !presentation.advancing && !presentation.stopping && !presentation.requiresFormatConfirmation
         HStack(spacing:10) {
             Text(PlaybackProgress.time(presentation.scrubbing ? scrubPosition:player.position))
                 .accessibilityIdentifier("playbackElapsed")
             Slider(value:Binding(get:{presentation.scrubbing ? scrubPosition:PlaybackProgress.clamp(player.position,duration:duration)},set:{value in
-                if !presentation.scrubbing {presentation.scrubbing=true;presentation.holdControls()}
+                guard presentation.player === player,player.playbackGeneration==scrubOwner else{return}
+                scrubInteraction.update(value,owner:scrubOwner,initialPosition:PlaybackProgress.clamp(player.position,duration:duration))
+                if !presentation.scrubbing {
+                    presentation.scrubbing=true;presentation.holdControls()
+                    controllerUIDiagnostics.record(.sliderValueBegan,presentation:presentation)
+                }
                 scrubPosition=value
             }),in:0...(duration ?? 1),onEditingChanged:{ editing in
+                guard presentation.player === player,player.playbackGeneration==scrubOwner else{return}
                 if editing {
+                    scrubInteraction.begin(owner:scrubOwner,position:PlaybackProgress.clamp(player.position,duration:duration))
                     if !presentation.scrubbing {scrubPosition=PlaybackProgress.clamp(player.position,duration:duration)}
                     presentation.scrubbing=true;presentation.holdControls()
+                    controllerUIDiagnostics.record(.sliderEditingBegan,presentation:presentation)
                 }
                 else {
-                    let target=scrubPosition;presentation.scrubbing=false
-                    if enabled,presentation.active,!presentation.stopping,presentation.player === player {player.seek(to:target)}
+                    let target=scrubInteraction.finish(owner:scrubOwner);presentation.scrubbing=false
+                    controllerUIDiagnostics.record(.sliderEnded,presentation:presentation)
+                    if let target,enabled,presentation.active,!presentation.stopping,presentation.player === player {player.seek(to:target)}
                     presentation.revealControls()
                 }
             }).disabled(!enabled)
+                .id(scrubOwner)
+                .onDisappear {if scrubInteraction.owner==scrubOwner {cancelScrubInteraction()}}
                 .accessibilityLabel("播放進度")
                 .accessibilityIdentifier("playbackSeek")
                 .accessibilityHint("拖曳後放開以跳轉。")
-            Text(PlaybackProgress.time(duration)).accessibilityIdentifier("playbackDuration")
+            Text(progressDurationText(player)).accessibilityIdentifier("playbackDuration")
         }.font(.caption.monospacedDigit())
     }
     private func updateFade(_ controls:Entity,visible:Bool) {
@@ -1140,3 +1278,101 @@ private struct ControllerReviewPose: VRInitialPoseProvider {
     }
 }
 #endif
+
+
+
+/// Use native text layout, not character count, to keep a complete title large whenever one line fits.
+private struct ControllerFilenameTitle:View {
+    let title:String
+    let readiness:String
+    var body:some View {
+        Group {
+            if title.contains(where:\.isNewline) {
+                compactTitle
+            } else {
+                ViewThatFits(in:.horizontal) {
+                    titleText(font:.title3,mode:"large")
+                        .lineLimit(1).fixedSize(horizontal:true,vertical:true)
+                    compactTitle
+                }
+            }
+        }.multilineTextAlignment(.leading)
+    }
+    private var compactTitle:some View {
+        titleText(font:.caption,mode:"compact")
+            .lineLimit(nil).fixedSize(horizontal:false,vertical:true)
+    }
+    private func titleText(font:Font,mode:String)->some View {
+        Text(title).font(font)
+            .accessibilityLabel(title)
+            .accessibilityIdentifier("immersiveFileTitle")
+            .accessibilityValue(reviewValue(mode:mode))
+    }
+    private func reviewValue(mode:String)->String {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--review-file-title-layout") {
+            return readiness+";titleLayout="+mode
+        }
+        #endif
+        return readiness
+    }
+}
+
+/// Display-only angle ruler. Direction changes remain on the existing 15-degree buttons.
+private struct AngleRulerReadout:View {
+    let value:Double
+    let vertical:Bool
+    let available:Bool
+    private let extent:CGFloat=240
+    private var tickStep:CGFloat {vertical ? 30:60}
+    private var centre:Double {
+        let visible=vertical ? 60.0:30.0
+        return value-min(max(value,-visible),visible)
+    }
+    var body:some View {
+        VStack(spacing:4) {
+            // Retain the original two-line header height so the track and controls do not move.
+            VStack(spacing:4) {
+                Text(vertical ? "垂直":"水平")
+                Text(VRManualAngleDisplay.text(value)).fixedSize()
+            }.hidden().accessibilityHidden(true)
+                .frame(width:vertical ? 56:nil)
+                .overlay(alignment:vertical ? .leading:.bottom) {
+                    HStack(alignment:.firstTextBaseline,spacing:6) {
+                        Text(vertical ? "垂直":"水平")
+                            .accessibilityIdentifier(vertical ? "manualVerticalTitle":"manualHorizontalTitle")
+                        Text(VRManualAngleDisplay.text(value))
+                            .accessibilityIdentifier(vertical ? "manualVerticalAngle":"manualHorizontalAngle")
+                    }.fixedSize(horizontal:true,vertical:false)
+                }
+            ZStack(alignment:.topLeading) {
+                Path { p in
+                    if vertical {p.move(to:.init(x:42,y:0));p.addLine(to:.init(x:42,y:extent))}
+                    else {p.move(to:.init(x:0,y:28));p.addLine(to:.init(x:extent,y:28))}
+                }.stroke(.secondary,lineWidth:1)
+                ForEach(-4...4,id:\.self) { index in
+                    let pos=extent/2+CGFloat(index)*tickStep
+                    if pos>=0 && pos<=extent {
+                        let angle=centre+Double(index*15)*(vertical ? -1:1)
+                        Group {
+                            if vertical {
+                                Rectangle().fill(.secondary).frame(width:8,height:1).position(x:42,y:pos)
+                                if index%2 == 0 {Text(VRManualAngleDisplay.text(angle)).font(.caption2).fixedSize().position(x:15,y:pos)}
+                            } else {
+                                Rectangle().fill(.secondary).frame(width:1,height:8).position(x:pos,y:28)
+                                if index%2 == 0 {Text(VRManualAngleDisplay.text(angle)).font(.caption2).fixedSize().position(x:pos,y:46)}
+                            }
+                        }.allowsHitTesting(false).accessibilityHidden(true)
+                    }
+                }
+                let offset=CGFloat(value-centre)/15*tickStep*(vertical ? -1:1)
+                Image(systemName:vertical ? "arrowtriangle.right.fill":"arrowtriangle.down.fill")
+                    .font(.caption).foregroundStyle(.primary)
+                    .position(x:vertical ? 30:extent/2+offset,y:vertical ? extent/2+offset:14)
+            }.frame(width:vertical ? 56:extent,height:vertical ? extent:60)
+                .accessibilityHidden(true)
+        }.font(.caption).frame(width:vertical ? 56:nil)
+            .opacity(available ? 1:0.35)
+            .allowsHitTesting(false)
+    }
+}

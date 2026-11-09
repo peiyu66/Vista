@@ -37,6 +37,8 @@ private actor ImmutableExperimentSource: MediaByteSource {
   let task=Task {try await session.play(file:MediaFile(components:["synthetic.mp4"]),source:healthy,onInfo:{_ in},onState:{_ in},onFrame:{_ in count += 1;if count==3 {session.stop()}})}
   await #expect(throws:CancellationError.self){try await task.value}
   let healthyFailures=await healthy.failures();#expect(count==3 && healthyFailures==0)
+  let normalStop=session.anonymousLogValues()
+  #expect(Int(normalStop[.resumeContext] ?? -1) & 1 == 0 && normalStop[.playerClock]==nil)
  }
  @Test @MainActor func slowSourceAndNoProgressAreDifferent()async throws {
   let data=try Data(contentsOf:Bundle.module.url(forResource:"SyntheticSeek",withExtension:"mp4")!)
@@ -62,5 +64,7 @@ private actor ImmutableExperimentSource: MediaByteSource {
   #expect(last>=2.9 && last<=4.1)
   task.cancel();await #expect(throws:CancellationError.self){try await task.value}
   let stopped=count;try await Task.sleep(for:.milliseconds(100));let sourceFailures=await source.failures();#expect(count==stopped && sourceFailures==0)
+  let cancelled=session.anonymousLogValues()
+  #expect(Int(cancelled[.resumeContext] ?? -1) & 1 == 0 && cancelled[.playerClock]==nil)
  }
 }

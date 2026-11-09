@@ -252,29 +252,151 @@ final class VistaUITests:XCTestCase {
         app.buttons["immersiveStop"].tap()
         XCTAssertTrue(app.buttons["entry-控制器互動測試.mp4"].waitForExistence(timeout:15))
     }
+    @MainActor func testBufferingIndicatorInExpandedFooterAndSpeedBelowAccelerator() throws {
+        for large in [false,true] {
+            let app=XCUIApplication()
+            app.launchArguments=["--shortcut-ui-tests","--buffering-indicator-review","--controller-layout-review"]+(large ? ["--review-max-text"]:[])
+            app.launch()
+            let speed=app.staticTexts["playbackSpeed"],info=app.staticTexts["controllerVideoInfo"]
+            let spinner=app.descendants(matching:.any)["controllerVideoInfoBuffering"]
+            let up=app.buttons["immersiveForward"],settings=app.buttons["immersiveSettings"]
+            XCTAssertTrue(spinner.waitForExistence(timeout:15))
+            XCTAssertEqual(speed.label,"2.5×");XCTAssertEqual(spinner.label,"等待播放")
+            XCTAssertFalse(app.buttons["playbackSpeed"].exists)
+            assertSpeedBelowAccelerator(app)
+            XCTAssertGreaterThan(spinner.frame.midX,info.frame.maxX)
+            XCTAssertEqual(spinner.frame.midY,info.frame.midY,accuracy:1)
+            XCTAssertGreaterThan(info.frame.minY,app.staticTexts["resetControllerGestureHint"].frame.maxY)
+            XCTAssertFalse(app.descendants(matching:.any)["playbackSpeedBuffering"].exists)
+            XCTAssertFalse(app.staticTexts.containing(NSPredicate(format:"label CONTAINS %@","緩衝中")).firstMatch.exists)
+            let resetFormat=app.buttons["clearVRFormat"],resetCount=app.staticTexts["indicatorFormatResetCount"]
+            XCTAssertFalse(resetFormat.isEnabled);XCTAssertEqual(resetCount.label,"0")
+            resetFormat.tap();XCTAssertEqual(resetCount.label,"0")
+            let waitingSpeedFrame=speed.frame,waitingInfoFrame=info.frame
+            XCTAssertGreaterThan(speed.frame.minY,up.frame.maxY)
+            settings.tap()
+            XCTAssertFalse(spinner.exists);XCTAssertFalse(info.exists);XCTAssertEqual(speed.label,"2.5×")
+            assertSpeedBelowAccelerator(app)
+            settings.tap();XCTAssertTrue(spinner.waitForExistence(timeout:5))
+            app.buttons["indicatorFormatAvailable"].tap();XCTAssertTrue(resetFormat.isEnabled)
+            resetFormat.tap();XCTAssertEqual(resetCount.label,"1")
+            app.buttons["indicatorFormatAvailable"].tap();XCTAssertFalse(resetFormat.isEnabled)
+            resetFormat.tap();XCTAssertEqual(resetCount.label,"1")
+            app.buttons["indicatorFormatAvailable"].tap();XCTAssertTrue(resetFormat.isEnabled)
+            resetFormat.tap();XCTAssertEqual(resetCount.label,"2")
+            app.buttons["indicatorTransition"].tap()
+            XCTAssertFalse(spinner.exists);XCTAssertEqual(speed.label,"2.5×")
+            XCTAssertEqual(speed.frame.width,waitingSpeedFrame.width,accuracy:0.5)
+            XCTAssertEqual(info.frame.minX,waitingInfoFrame.minX,accuracy:0.5)
+            app.buttons["indicatorWait"].tap();XCTAssertTrue(spinner.waitForExistence(timeout:5))
+            app.buttons["indicatorPause"].tap()
+            XCTAssertFalse(spinner.exists);XCTAssertEqual(speed.label,"2.5× · 暫停")
+            assertSpeedBelowAccelerator(app)
+            app.buttons["indicatorWait"].tap();XCTAssertTrue(spinner.waitForExistence(timeout:5))
+            app.buttons["indicatorResume"].tap()
+            XCTAssertFalse(spinner.exists);XCTAssertEqual(speed.label,"2.5×")
+            app.buttons["indicatorRate"].tap();XCTAssertEqual(speed.label,"3×")
+            for _ in 0..<2 {
+                app.buttons["indicatorWait"].tap();XCTAssertTrue(spinner.waitForExistence(timeout:5))
+                settings.tap();XCTAssertFalse(spinner.exists);XCTAssertEqual(speed.label,"3×")
+                settings.tap();XCTAssertTrue(spinner.waitForExistence(timeout:5))
+                app.buttons["indicatorResume"].tap();XCTAssertFalse(spinner.exists)
+            }
+            app.terminate()
+        }
+    }
+    @MainActor private func assertSpeedBelowAccelerator(_ app:XCUIApplication,file:StaticString=#filePath,line:UInt=#line) {
+        let speed=app.staticTexts["playbackSpeed"],up=app.buttons["immersiveForward"]
+        XCTAssertTrue(speed.exists,file:file,line:line)
+        XCTAssertFalse(app.buttons["playbackSpeed"].exists,file:file,line:line)
+        XCTAssertGreaterThan(speed.frame.minY,up.frame.maxY,file:file,line:line)
+        XCTAssertEqual(speed.frame.midX,up.frame.midX,accuracy:1,file:file,line:line)
+        let buttons=["immersivePrevious","immersiveBack","immersivePause","immersiveForward","immersiveNext","immersiveSettings"]
+        for identifier in buttons {XCTAssertFalse(speed.frame.intersects(app.buttons[identifier].frame),identifier,file:file,line:line)}
+        XCTAssertGreaterThan(speed.frame.minY,app.staticTexts["immersiveFileTitle"].frame.maxY,file:file,line:line)
+    }
+    @MainActor func testSpeedStatusBelowAcceleratorHidesNormalRateWithoutLayoutShift() throws {
+        for large in [false,true] {
+            let app=XCUIApplication()
+            app.launchArguments=["--shortcut-ui-tests","--buffering-indicator-review","--controller-layout-review","--review-normal-speed"]+(large ? ["--review-max-text"]:[])
+            app.launch()
+            let settings=app.buttons["immersiveSettings"],speed=app.staticTexts["playbackSpeed"]
+            XCTAssertTrue(settings.waitForExistence(timeout:15))
+            let controls=["immersivePrevious","immersiveBack","immersivePause","immersiveForward","immersiveNext","immersiveSettings"]
+            for expanded in [true,false] {
+                if !expanded {settings.tap()}
+                // Move focus away from the just-pressed settings button before measuring.
+                // visionOS press/hover presentation is not a controller layout change.
+                app.buttons["indicatorNormalRate"].tap()
+                expectation(for:NSPredicate {_,_ in
+                    abs(settings.frame.midY-app.buttons["immersiveForward"].frame.midY)<0.5
+                },evaluatedWith:settings)
+                waitForExpectations(timeout:5)
+                let before=controls.map {app.buttons[$0].frame},enabled=controls.map {app.buttons[$0].isEnabled}
+                let title=app.staticTexts["immersiveFileTitle"].frame
+                let footer=expanded ? app.staticTexts["controllerVideoInfo"].frame : .zero
+                XCTAssertFalse(app.descendants(matching:.any)["playbackSpeed"].exists)
+                for (identifier,label) in [("indicatorHalfRate","2.5×"),("indicatorPause","2.5× · 暫停"),("indicatorMaximumRate","5× · 暫停"),("indicatorResume","5×"),("indicatorNormalRate","")] {
+                    app.buttons[identifier].tap()
+                    if label.isEmpty {XCTAssertFalse(app.descendants(matching:.any)["playbackSpeed"].exists)}
+                    else {XCTAssertEqual(speed.label,label);assertSpeedBelowAccelerator(app)}
+                    for (index,control) in controls.enumerated() {
+                        let current=app.buttons[control].frame
+                        XCTAssertEqual(current.minX,before[index].minX,accuracy:0.5,control)
+                        XCTAssertEqual(current.minY,before[index].minY,accuracy:0.5,control)
+                        XCTAssertEqual(current.width,before[index].width,accuracy:0.5,control)
+                        XCTAssertEqual(current.height,before[index].height,accuracy:0.5,control)
+                        XCTAssertEqual(app.buttons[control].isEnabled,enabled[index],control)
+                    }
+                    XCTAssertEqual(app.staticTexts["immersiveFileTitle"].frame,title)
+                    if expanded {XCTAssertEqual(app.staticTexts["controllerVideoInfo"].frame,footer)}
+                }
+                // Normal speed is neither visible nor announced even in pause/wait transitions.
+                for identifier in ["indicatorPause","indicatorWait","indicatorResume"] {
+                    app.buttons[identifier].tap();XCTAssertFalse(app.descendants(matching:.any)["playbackSpeed"].exists)
+                }
+                print("SPEED_BELOW_ACCELERATOR",large ? "max":"default",expanded ? "expanded":"collapsed",before)
+            }
+            app.terminate()
+        }
+    }
     @MainActor func testPlaybackSpeedButtonsPauseResumeAndLimits() throws {
         for large in [false,true] {
             let app=openSystemFixture(extra:(large ? ["-UIPreferredContentSizeCategoryName","UICTContentSizeCategoryAccessibilityXXXL"]:[]))
             let pause=app.buttons["immersivePause"],up=app.buttons["immersiveForward"],normal=app.buttons["immersiveBack"],speed=app.staticTexts["playbackSpeed"]
             expectation(for:NSPredicate(format:"label == %@ AND enabled == true","暫停"),evaluatedWith:pause);waitForExpectations(timeout:20)
-            XCTAssertEqual(up.label,"加速 1 倍");XCTAssertEqual(normal.label,"恢復 1 倍速")
+            XCTAssertEqual(up.label,"加速 0.5 倍");XCTAssertEqual(normal.label,"恢復 1 倍速")
             XCTAssertFalse(normal.isEnabled);XCTAssertTrue(up.isEnabled)
+            let info=app.staticTexts["controllerVideoInfo"],title=app.staticTexts["immersiveFileTitle"]
+            XCTAssertFalse(app.staticTexts["immersiveAverageBitrate"].exists)
+            XCTAssertTrue(info.waitForExistence(timeout:5))
+            XCTAssertTrue(info.label.contains("≈") && info.label.contains(" Mbps"),info.label)
+            XCTAssertGreaterThanOrEqual(info.frame.minY,app.staticTexts["resetControllerGestureHint"].frame.maxY)
+            XCTAssertGreaterThan(title.frame.width,200)
+            print("BITRATE_FOOTER",large ? "large":"default",info.label,"title",title.frame,"info",info.frame)
+            app.buttons["immersiveSettings"].tap();XCTAssertFalse(info.exists)
+            app.buttons["immersiveSettings"].tap();XCTAssertTrue(info.waitForExistence(timeout:5))
             let controls=["immersivePrevious","immersiveBack","immersivePause","immersiveForward","immersiveNext"].map {app.buttons[$0]}
             for index in 1..<controls.count {XCTAssertGreaterThan(controls[index].frame.midX,controls[index-1].frame.midX)}
             XCTAssertTrue(app.sliders["playbackSeek"].exists)
             pause.tap()
-            expectation(for:NSPredicate(format:"label == %@","1× · 暫停"),evaluatedWith:speed);waitForExpectations(timeout:5)
+            expectation(for:NSPredicate(format:"exists == false"),evaluatedWith:speed);waitForExpectations(timeout:5)
+            up.tap()
+            expectation(for:NSPredicate(format:"label == %@","1.5× · 暫停"),evaluatedWith:speed);waitForExpectations(timeout:5)
             up.tap()
             expectation(for:NSPredicate(format:"label == %@","2× · 暫停"),evaluatedWith:speed);waitForExpectations(timeout:5)
             XCTAssertTrue(normal.isEnabled)
             if up.isEnabled {
-                up.tap();expectation(for:NSPredicate(format:"label == %@","3× · 暫停"),evaluatedWith:speed);waitForExpectations(timeout:5)
+                for label in ["2.5","3","3.5","4","4.5","5"] {
+                    XCTAssertTrue(up.isEnabled)
+                    up.tap();expectation(for:NSPredicate(format:"label == %@","\(label)× · 暫停"),evaluatedWith:speed);waitForExpectations(timeout:5)
+                }
                 XCTAssertFalse(up.isEnabled)
             } else {XCTAssertTrue(app.staticTexts["playbackSpeedLimit"].exists)}
             normal.tap()
-            expectation(for:NSPredicate(format:"label == %@","1× · 暫停"),evaluatedWith:speed);waitForExpectations(timeout:5)
+            expectation(for:NSPredicate(format:"exists == false"),evaluatedWith:speed);waitForExpectations(timeout:5)
             XCTAssertFalse(normal.isEnabled)
-            up.tap();pause.tap()
+            up.tap();up.tap();pause.tap()
             expectation(for:NSPredicate(format:"label == %@","2×"),evaluatedWith:speed);waitForExpectations(timeout:10)
             pause.tap()
             expectation(for:NSPredicate(format:"label == %@","2× · 暫停"),evaluatedWith:speed);waitForExpectations(timeout:5)
@@ -282,6 +404,65 @@ final class VistaUITests:XCTestCase {
             app.buttons["immersiveStop"].tap()
             XCTAssertTrue(app.buttons["entry-控制器互動測試.mp4"].waitForExistence(timeout:15))
             app.terminate()
+        }
+    }
+    @MainActor func testControllerFilenameFitsBeforeReducingFontAndReservesSliderEnd() throws {
+        let narrow=String(repeating:"i",count:24)+".mp4"
+        let wide=String(repeating:"W",count:24)+".mp4"
+        let cases:[(String,String,String?)]=[
+            ("short","短片.mp4","large"),
+            ("long-narrow",narrow,"large"),
+            ("same-count-wide",wide,"compact"),
+            ("mixed",String(repeating:"長檔名測試 Long filename 2026 ",count:4)+".mp4","compact"),
+            ("unbroken",String(repeating:"ABCDEFGHIJKLMNOPQRSTUVWXYZ",count:4)+".mp4","compact"),
+            ("line-feed","短片\nSecond.mp4","compact"),
+            ("unicode-line-separator","短片\u{2028}Second.mp4","compact")
+        ]
+        for large in [false,true] {
+            for (caseName,name,expectedMode) in cases {
+                let app=XCUIApplication()
+                app.launchArguments=["--controller-layout-review","--review-file-title-layout"]+(large ? ["--review-large-text"]:[])
+                app.launchEnvironment["VISTA_REVIEW_FILE_TITLE"]=name
+                app.launchEnvironment["VISTA_REVIEW_DURATION_TEXT"]=["long-narrow","same-count-wide"].contains(caseName) ? "0:00":"12:34:56"
+                app.launch()
+                let titles=app.staticTexts.matching(identifier:"immersiveFileTitle")
+                let title=titles.firstMatch,back=app.buttons["immersiveStop"],seek=app.sliders["playbackSeek"]
+                XCTAssertTrue(title.waitForExistence(timeout:15));XCTAssertEqual(titles.count,1)
+                XCTAssertEqual(title.label,name);XCTAssertTrue(back.isHittable);XCTAssertTrue(seek.exists)
+                XCTAssertGreaterThanOrEqual(title.frame.minX,back.frame.maxX+8)
+                XCTAssertLessThan(title.frame.maxX,seek.frame.maxX)
+                XCTAssertGreaterThan(title.frame.height,0)
+                if let expectedMode {XCTAssertTrue((title.value as? String ?? "").hasSuffix("titleLayout="+expectedMode))}
+                XCTAssertFalse(app.staticTexts["playbackSpeed"].exists)
+                print("FILENAME_NATIVE_FIT",large ? "xxxLarge":"default",caseName,"title",title.frame,"slider",seek.frame,"selection",title.value ?? "nil")
+                if caseName == "short" || caseName == "same-count-wide" {
+                    let shot=XCTAttachment(screenshot:XCUIScreen.main.screenshot());shot.name="Filename-\(large ? "xxxLarge":"normal")-\(caseName)";shot.lifetime = .keepAlways;add(shot)
+                }
+                app.terminate()
+            }
+        }
+    }
+    @MainActor func testControllerFilenameFitRespondsToAvailableWidth() throws {
+        let name=String(repeating:"M",count:13)+".mp4"
+        for large in [false,true] {
+            var modes:[String]=[]
+            for duration in ["0:00","12:34:56"] {
+                let app=XCUIApplication()
+                app.launchArguments=["--controller-layout-review","--review-file-title-layout"]+(large ? ["--review-large-text"]:[])
+                app.launchEnvironment["VISTA_REVIEW_FILE_TITLE"]=name
+                app.launchEnvironment["VISTA_REVIEW_DURATION_TEXT"]=duration
+                app.launch()
+                let title=app.staticTexts["immersiveFileTitle"]
+                XCTAssertTrue(title.waitForExistence(timeout:15));XCTAssertEqual(title.label,name)
+                XCTAssertEqual(app.staticTexts["playbackDuration"].label,duration)
+                XCTAssertLessThan(title.frame.maxX,app.sliders["playbackSeek"].frame.maxX)
+                let mode=(title.value as? String ?? "").components(separatedBy:"titleLayout=").last ?? ""
+                XCTAssertTrue(["large","compact"].contains(mode));modes.append(mode)
+                print("FILENAME_WIDTH_FIT",large ? "xxxLarge":"default",duration,mode,title.frame)
+                app.terminate()
+            }
+            // Narrowing the available width must never promote an already-compact title.
+            if modes.first == "compact" {XCTAssertEqual(modes.last,"compact")}
         }
     }
     @MainActor private func openSystemFixture(extra:[String]=[])->XCUIApplication {
@@ -530,6 +711,46 @@ final class VistaUITests:XCTestCase {
         right.coordinate(withNormalizedOffset:CGVector(dx:0.65,dy:0.25)).tap()
         XCTAssertTrue((zero.value as? String ?? "").contains("yaw=15"))
     }
+    @MainActor func testAngleRulerReadoutHeadersAndDirectionButtons() throws {
+        for large in [false,true] {
+            let app=XCUIApplication()
+            app.launchArguments=["--controller-layout-review","--review-auto-pitch"]+(large ? ["--review-large-text"]:[])
+            app.launch()
+            let zero=app.buttons["directionZero"]
+            XCTAssertTrue(zero.waitForExistence(timeout:10))
+            XCTAssertEqual(XCTWaiter.wait(for:[XCTNSPredicateExpectation(predicate:NSPredicate(format:"enabled == true"),object:zero)],timeout:5),.completed)
+            let horizontal=app.staticTexts["manualHorizontalAngle"],vertical=app.staticTexts["manualVerticalAngle"]
+            func checkHeaders() {
+                for (title,value) in [(app.staticTexts["manualHorizontalTitle"],horizontal),(app.staticTexts["manualVerticalTitle"],vertical)] {
+                    XCTAssertTrue(title.exists);XCTAssertTrue(value.exists)
+                    XCTAssertLessThanOrEqual(title.frame.maxX,value.frame.minX)
+                    XCTAssertGreaterThan(min(title.frame.maxY,value.frame.maxY),max(title.frame.minY,value.frame.minY))
+                }
+            }
+            XCTAssertFalse(app.descendants(matching:.any).matching(identifier:"manualHorizontalPointer").firstMatch.exists)
+            XCTAssertFalse(app.descendants(matching:.any).matching(identifier:"manualVerticalPointer").firstMatch.exists)
+            XCTAssertEqual(horizontal.label,"0°");XCTAssertEqual(vertical.label,"+15°")
+            checkHeaders()
+            app.buttons["directionRight"].tap();XCTAssertEqual(horizontal.label,"+15°")
+            app.buttons["directionLeft"].tap();XCTAssertEqual(horizontal.label,"0°")
+            app.buttons["directionUp"].tap();XCTAssertEqual(vertical.label,"+30°")
+            app.buttons["directionDown"].tap();XCTAssertEqual(vertical.label,"+15°")
+            zero.tap();XCTAssertEqual(zero.value as? String,"yaw=0,pitch=0,roll=0")
+            for _ in 0..<12 {app.buttons["directionLeft"].tap();app.buttons["directionDown"].tap()}
+            XCTAssertEqual(horizontal.label,"-180°");XCTAssertEqual(vertical.label,"-180°")
+            checkHeaders()
+            app.buttons["directionRight"].tap();app.buttons["directionUp"].tap()
+            XCTAssertEqual(horizontal.label,"-165°");XCTAssertEqual(vertical.label,"-165°")
+            checkHeaders()
+            let shot=XCTAttachment(screenshot:XCUIScreen.main.screenshot());shot.name=large ? "Readout-xxxLarge-negative":"Readout-normal-negative";shot.lifetime = .keepAlways;add(shot)
+            zero.tap();zero.tap();XCTAssertEqual(zero.value as? String,"yaw=0,pitch=0,roll=0")
+            for _ in 0..<12 {app.buttons["directionRight"].tap();app.buttons["directionUp"].tap()}
+            XCTAssertEqual(horizontal.label,"+180°");XCTAssertEqual(vertical.label,"+180°")
+            checkHeaders()
+            app.terminate()
+        }
+    }
+
     @MainActor func testAutomaticAndManualDirectionTotal() throws {
         for large in [false, true] {
             let app=XCUIApplication()

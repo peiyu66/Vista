@@ -19,6 +19,8 @@ import Glibc
 final class SMB2Client: CustomDebugStringConvertible, CustomReflectable, @unchecked Sendable {
     var context: UnsafeMutablePointer<smb2_context>?
     private var _context_lock = NSRecursiveLock()
+    // Protected by the context lock; changes before any C file handles are freed.
+    private(set) var fileHandleGeneration: UInt64 = 0
     var timeout: TimeInterval
 
     init(timeout: TimeInterval) throws {
@@ -41,6 +43,7 @@ final class SMB2Client: CustomDebugStringConvertible, CustomReflectable, @unchec
         defer { _context_lock.unlock() }
         guard let context else { return }
         self.context = nil
+        fileHandleGeneration &+= 1
         smb2_destroy_context(context)
     }
 
@@ -251,6 +254,7 @@ extension SMB2Client {
 
     func disconnect() throws {
         try async_await { context, cbPtr -> Int32 in
+            fileHandleGeneration &+= 1
             smb2_free_all_dirs(context)
             smb2_free_all_fhs(context)
             return smb2_disconnect_share_async(context, SMB2Client.generic_handler, cbPtr)

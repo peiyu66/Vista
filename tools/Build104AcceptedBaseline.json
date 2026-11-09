@@ -1,0 +1,95 @@
+{
+  "build": 104,
+  "version": "0.1.0",
+  "date": "2026-11-09",
+  "baseCommit": "8b305ba28f3b44c5fc249c6de8756b176a447a16",
+  "sourceStatus": "Installed Build104 accepted by the user; controlled full-source promotion, not a different Build104 product.",
+  "sourceScopeDocument": "docs/已驗收基底.md",
+  "inputManifest": "tools/Build104AcceptedInputs.json",
+  "inputManifestSHA256": "e55d653560383df43dde40b7249a557cf7d1656a6168e2b916e3e20f2d442e21",
+  "inputCount": 394,
+  "byteIdenticalInputCount": 393,
+  "metadataExceptions": {
+    "Dependencies/AMSMB2-provenance.json": {
+      "originalSHA256": "5ac730683bc2842f67601a6c1b4611db306f6384faf7c0217c97077cfda8c8c9",
+      "promotedSHA256": "921db491dce8296039f0bdcf971a7f6926785e882905459ca29ab4ce31b9d733",
+      "reason": "Noncompiled provenance: accepted status, current documentation, license explanation and validation scope only."
+    }
+  },
+  "supplementalFiles": {
+    "DependencyPatches/AMSMB2-4.0.3-persistent-readonly-handle.patch": "396ac685bb44d698993f9f39283b6d221eeb0a593c90e64a158a20c37b22ae06",
+    "tools/AMSMB2BoundaryTests/Tests/PersistentReadOnlyTests.swift": "c54d34d26c81aab535e3c93506041a7fb77b88dc30b8f764013262800a8b5220",
+    "tools/AMSMB2BoundaryTests/verify_contracts.py": "3ea673c6d754b7911cd2134faaddf4f65dfb3b9878ec8209e0e0314e9ab20aba",
+    "tools/Build104AcceptedTestFilter.txt": "cd711f62685e717f905e0cad5898693015e716e0f8df02545e3a94780a8a7279",
+    "tools/VerifyBuild104Baseline.py": "59f51232ee8a108603ce38e79cb901f9cef3c569595ae6b40e08b43c5e68b48d"
+  },
+  "symlinks": {
+    "tools/AMSMB2BoundaryTests/AMSMB2Swift": "../../Dependencies/AMSMB2/AMSMB2",
+    "tools/AMSMB2BoundaryTests/SMB2C": "../../Dependencies/AMSMB2/Dependencies/libsmb2"
+  },
+  "validation": {
+    "focusedTests": {
+      "tests": 35,
+      "suites": 11,
+      "passed": true,
+      "seconds": 2.923,
+      "filter": "tools/Build104AcceptedTestFilter.txt",
+      "flags": [
+        "-DVISTA_NATIVE_PLAYER_EXPERIMENT",
+        "-DVISTA_ANON_IO_EXPERIMENT"
+      ],
+      "fixture": "Tests/VistaCoreTests/Resources/SyntheticControls.mp4",
+      "execution": "Serial, fresh scratch directory. Initial manifest sandbox failure ran no tests; same scope completed after normal permission review."
+    },
+    "sourceContracts": {
+      "passed": 34,
+      "total": 34,
+      "kind": "Static text and hashes, not runtime tests"
+    },
+    "patchChain": {
+      "status": "Independent read-only reconstruction verified all six changed vendor source files against pinned upstream objects and the three patches."
+    },
+    "VistaBrowserRelease": {
+      "passed": true,
+      "unsigned": true,
+      "version": "0.1.0",
+      "build": "104",
+      "appAndDSYMUUIDMatch": true,
+      "seconds": 70.963
+    },
+    "VistaRelease": {
+      "passed": true,
+      "unsigned": true,
+      "version": "0.1.0",
+      "build": "104",
+      "appAndDSYMUUIDMatch": true,
+      "seconds": 55.86
+    },
+    "UIBuildForTesting": {
+      "passed": true,
+      "runtimeExecuted": false,
+      "destination": "generic/platform=visionOS Simulator",
+      "signingAllowed": false,
+      "seconds": 47.761
+    },
+    "buildEnvironment": "Initial VistaBrowser package manifest failed before build under the default sandbox; unchanged command completed after normal permission review. Other build commands used the same approved environment path. No sandbox or test checks disabled."
+  },
+  "notRun": [
+    "24 vendor boundary runtime tests",
+    "socket probes",
+    "upstream tests",
+    "SMB/Admission/restricted concurrency research",
+    "NAS/private media",
+    "simulator runtime",
+    "signing/device install/launch",
+    "broad historical suites"
+  ],
+  "historicalEvidence": "Build64/66 18-test and Build78 24-test dependency boundary results retained as historical only; not counted as Build104 reruns.",
+  "knownLimits": [
+    "Speed investigation temporarily closed with unresolved stalls retained for natural reproduction and bounded diagnostics.",
+    "No controlled physical seek latency benchmark.",
+    "MKV not integrated; metadata fingerprints are not immutable snapshots.",
+    "No binary reproducibility, remote handle cleanup or all-media/network safety claim."
+  ],
+  "publication": "Source-only promotion; no App Store or signed binary release. Commit and remote identity are verified separately."
+}

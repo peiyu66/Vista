@@ -90,7 +90,7 @@ struct SMBRangeTests {
         #expect(data.count == 10)
         #expect(await transport.calls == [range])
         #expect(try await reader.read(file, range: 5..<5).isEmpty)
-        await #expect(throws: MediaInspectionError.self) { try await reader.read(file, range: 0..<1_048_577) }
+        await #expect(throws: MediaInspectionError.self) { try await reader.read(file, range: 0..<(MediaReadPlan.maximumChunkBytes+1)) }
         await #expect(throws: MediaInspectionError.self) { try await reader.read(file, range: UInt64(Int64.max)..<UInt64(Int64.max) + 1) }
         #expect(await transport.calls.count == 1)
     }

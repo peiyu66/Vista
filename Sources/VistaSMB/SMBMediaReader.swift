@@ -49,7 +49,7 @@ actor SMBMediaReader: MediaByteSource {
     func read(_ file: MediaFile, range: Range<UInt64>) async throws -> Data {
         try Task.checkCancellation()
         guard !closed else { throw MediaInspectionError.unavailable }
-        guard range.upperBound <= Int64.max, range.upperBound - range.lowerBound <= 1_048_576 else {
+        guard range.upperBound <= Int64.max, range.upperBound - range.lowerBound <= MediaReadPlan.maximumChunkBytes else {
             throw MediaInspectionError.invalidResponse
         }
         if range.isEmpty { return Data() }
@@ -120,7 +120,7 @@ actor SMBMediaReader: MediaByteSource {
     func playbackRead(_ file: MediaFile, range: Range<UInt64>) async throws -> Data {
         try Task.checkCancellation()
         guard !closed else { throw SMBPlaybackReadFailure.retired }
-        guard range.upperBound <= Int64.max, range.upperBound - range.lowerBound <= 1_048_576 else {
+        guard range.upperBound <= Int64.max, range.upperBound - range.lowerBound <= MediaReadPlan.maximumChunkBytes else {
             throw SMBPlaybackReadFailure.invalidRange
         }
         if range.isEmpty { return Data() }

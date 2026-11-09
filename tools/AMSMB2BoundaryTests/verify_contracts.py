@@ -56,6 +56,16 @@ for name in ["Package.swift", "Package@swift-6.0.swift"]:
     relative = "Dependencies/AMSMB2/" + name
     checks["dependency_manifest_unchanged_" + name] = hashlib.sha256((source / relative).read_bytes()).hexdigest() == baseline[relative]
 
+persistent = manager.split("// MARK: Narrow persistent read-only playback API", 1)[1]
+checks["playback_open_read_access_all_share_flags_open_only"] = "desiredAccess: [.readData, .fileReadEA, .fileReadAttributes]" in persistent and "shareAccess: [.read, .write, .delete]" in persistent and "createDisposition: .open" in persistent
+checks["playback_open_holds_context_across_create_and_initial_fstat"] = persistent.index("return try originalClient.withThreadSafeContext") < persistent.index("file = try SMB2FileHandle") < persistent.index("try file.readOnlyOperation { try file.fstat() }")
+checks["playback_open_no_reconnect"] = "self.connect(" not in persistent and "connectShare(" not in persistent
+checks["playback_operations_counted_before_enqueue_and_after_callback"] = persistent.index("operationCount += 1") < persistent.index("queue.async") < persistent.index("body()") < persistent.index("operationCount -= 1")
+checks["playback_close_uses_original_context_and_generation"] = "client.fileHandleGeneration == readOnlyGeneration" in file_handle and "try client.async_await" in file_handle.split("func closeReadOnlyThrowing()", 1)[1].split("func readOnlyOperation", 1)[0]
+checks["disconnect_invalidates_generation_before_freeing_handles"] = context.index("fileHandleGeneration &+= 1", context.index("func disconnect()")) < context.index("smb2_free_all_fhs(context)")
+checks["playback_bounded_loop_and_cancellation"] = "2 * 1024 * 1024" in persistent and "offset += UInt64(data.count)" in persistent and "try checkCancellation()" in persistent
+checks["playback_no_actor_blocking_io"] = "actor " not in persistent and 'DispatchQueue(label: "AMSMB2.read-only-handle")' in persistent
+
 result = {"checks": checks, "passed": sum(checks.values()), "total": len(checks)}
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--output", type=Path, default=Path(__file__).parent / ".build/source-contracts.json")

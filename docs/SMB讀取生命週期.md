@@ -1,3 +1,5 @@
+現行Build104主列表播放的持續handle與ring路由見 [播放供給與速度](播放供給與速度.md)，不是下方未接入產品的SMBReadSession／Admission契約。
+
 # SMB 讀取生命週期契約
 
 本頁保留 2026-11-03 的 MKV 前置 session 契約與驗證歷史，不是現行主列表的恢復規格。2026-11-07 正式目錄恢復及本地 AMSMB2 修補見 [SMB 目錄恢復](SMB目錄恢復.md)，Build66 播放專用 wrapper 見 [播放中斷恢復](播放中斷恢復.md)。該 wrapper 的觀測 metadata 指紋不是本頁的不可變快照，未接入本頁的 SMBReadSession／Admission，也不代表 MKV 產品整合已完成。

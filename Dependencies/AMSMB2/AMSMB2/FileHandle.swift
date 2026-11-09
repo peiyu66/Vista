@@ -20,6 +20,7 @@ let O_SYMLINK: Int32 = O_NOFOLLOW
 final class SMB2FileHandle: @unchecked Sendable {
     private var client: SMB2Client
     private var handle: smb2fh?
+    private var readOnlyGeneration: UInt64 = 0
 
     convenience init(forReadingAtPath path: String, on client: SMB2Client) throws {
         try self.init(path, flags: O_RDONLY, on: client)
@@ -94,9 +95,11 @@ final class SMB2FileHandle: @unchecked Sendable {
     init(fileDescriptor: smb2_file_id, on client: SMB2Client) throws {
         self.client = client
         var fileDescriptor = fileDescriptor
-        self.handle = try client.withThreadSafeContext { context in
-            smb2_fh_from_file_id(context, &fileDescriptor)
+        let owned = try client.withThreadSafeContext { context in
+            (smb2_fh_from_file_id(context, &fileDescriptor), client.fileHandleGeneration)
         }
+        self.handle = owned.0
+        self.readOnlyGeneration = owned.1
     }
 
     // This initializer does not support O_SYMLINK.
@@ -140,6 +143,29 @@ final class SMB2FileHandle: @unchecked Sendable {
         self.handle = nil
         _ = try? client.withThreadSafeContext { context in
             smb2_close(context, handle)
+        }
+    }
+
+    /// Playback-only explicit close. Clear ownership first, including on failure.
+    /// async_await checks the original context before using the C handle.
+    func closeReadOnlyThrowing() throws {
+        guard let handle else { return }
+        self.handle = nil
+        try client.async_await { context, cbPtr -> Int32 in
+            guard client.fileHandleGeneration == readOnlyGeneration, smb2_get_fd(context) >= 0 else {
+                throw SMB2OperationFailure(origin: .contextUnavailable, posixCode: ENOTCONN)
+            }
+            return smb2_close_async(context, handle, SMB2Client.generic_handler, cbPtr)
+        }
+    }
+
+    /// Keep generation validation and pointer use under one original-client lock.
+    func readOnlyOperation<T>(_ body: () throws -> T) throws -> T {
+        try client.withThreadSafeContext { context in
+            guard client.fileHandleGeneration == readOnlyGeneration, smb2_get_fd(context) >= 0 else {
+                throw SMB2OperationFailure(origin: .contextUnavailable, posixCode: ENOTCONN)
+            }
+            return try body()
         }
     }
 

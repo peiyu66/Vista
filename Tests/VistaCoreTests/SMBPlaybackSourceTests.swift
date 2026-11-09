@@ -48,6 +48,9 @@ private final class PlaybackManagerFixture: SMB2Manager, @unchecked Sendable {
     let state = PlaybackManagerState()
     let queueDrain = SMBOperationLeases()
 
+    override func openReadOnlyHandle(atPath path: String) async throws -> any SMB2ReadOnlyHandle {
+        throw SMB2ReadOnlyHandleError.unsupportedCapability
+    }
     override func attributesOfItem(atPath path: String) async throws -> [URLResourceKey: any Sendable] {
         playbackAttributes()
     }
@@ -235,7 +238,7 @@ struct SMBPlaybackSourceTests {
         #expect(try await reader.playbackRead(file, range: range) == Data([1, 2, 3, 4]))
         #expect(try await reader.playbackRead(file, range: 5..<5).isEmpty)
         await #expect(throws: SMBPlaybackReadFailure.invalidRange) {
-            try await reader.playbackRead(file, range: 0..<1_048_577)
+            try await reader.playbackRead(file, range: 0..<(MediaReadPlan.maximumChunkBytes+1))
         }
         await #expect(throws: SMBPlaybackReadFailure.invalidRange) {
             try await reader.playbackRead(file, range: UInt64(Int64.max)..<UInt64(Int64.max) + 1)

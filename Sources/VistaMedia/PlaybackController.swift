@@ -24,14 +24,14 @@ import VistaCore
     public var playbackGeneration:UUID {generation}
     public var canIncreaseSpeed:Bool {isPlaying && !isPreparing && speedStatus.canIncrease}
     public var canResetSpeed:Bool {isPlaying && !isPreparing && speedStatus.canReset}
-    public func increaseSpeed() {changeSpeed(to:speedStatus.selected+1)}
+    public func increaseSpeed() {changeSpeed(to:speedStatus.selected+PlaybackSpeedStatus.increment)}
     public func resetSpeed() {changeSpeed(to:1)}
-    private func changeSpeed(to rate:Int) {
+    private func changeSpeed(to rate:Double) {
         guard isPlaying,!isPreparing else{return}
         #if VISTA_NATIVE_PLAYER_EXPERIMENT
         guard let nativeSession else{return}
         guard nativeSession.setSpeed(rate) else {
-            if rate<=3 {speedMessage="此影片不支援 \(rate)× 播放。"};return
+            if rate<=Double(PlaybackSpeedStatus.upperLimit) {speedMessage="此影片不支援 \(PlaybackSpeedStatus.label(rate))× 播放。"};return
         }
         speedStatus=nativeSession.speedStatus;speedMessage=nil
         #endif
@@ -102,6 +102,7 @@ import VistaCore
     public func setPlaybackSceneActive(_ active:Bool) {
         playbackSceneActive=active
         preparedRecoverySource?.setPlaybackSceneActive(active)
+        nativeSession?.setPlaybackSceneActive(active)
     }
     @ObservationIgnored private let engine: HardwarePlayback
     @ObservationIgnored private let nearbySeeking:Bool
@@ -222,12 +223,14 @@ import VistaCore
         recordBoundary(.submitReturned,fields:[.outcome:0],context:seekBoundary)
     }
     public func skip(by interval: Double) { seek(to: position + interval,minimum:interval>0 ? position:0) }
-    public func togglePause() {
+    // Keep the zero-argument API bindable as a SwiftUI Button action.
+    public func togglePause() { togglePause(userInitiated:true) }
+    private func togglePause(userInitiated:Bool) {
         #if VISTA_NATIVE_PLAYER_EXPERIMENT
         if let nativeSession,isPlaying,!isPreparing {
             beginBoundary(.togglePause)
             recordBoundary(.upstreamPauseEntered,fields:[.cause:Double(BoundaryCause.togglePause.rawValue)])
-            if isPaused {nativeSession.resume()}else{nativeSession.pause()};isPaused.toggle()
+            if isPaused {nativeSession.resume()}else{nativeSession.pause(userInitiated:userInitiated)};isPaused.toggle()
             recordBoundary(.upstreamPauseReturned,fields:[.outcome:isPaused ? 5:6]);return
         }
         #endif
@@ -250,10 +253,10 @@ import VistaCore
             recordBoundary(.pauseReturned,fields:[.outcome:1],context:pauseBoundary);return
         }
         if isPreparing {stop();recordBoundary(.pauseReturned,fields:[.outcome:4],context:pauseBoundary);return}
-        togglePause()
+        togglePause(userInitiated:false)
         recordBoundary(.pauseReturned,fields:[.outcome:isPaused ? 5:0],context:pauseBoundary)
     }
-    public func stop() {
+    public func stop(discardTrackInfo:Bool=false) {
         beginBoundary(.stop)
         recordBoundary(.stopEntered,fields:[.cause:Double(BoundaryCause.stop.rawValue)])
         if isPlaying || isPreparing {persistDiagnostics(event:.stopped)}
@@ -262,6 +265,7 @@ import VistaCore
         speedStatus=PlaybackSpeedStatus();speedMessage=nil
         finishMetrics()
         generation = UUID()
+        if discardTrackInfo {trackInfo=nil}
         changedBoundaryGeneration(.stop)
         timeline?.stopAudio()
         task?.cancel()
@@ -393,6 +397,7 @@ import VistaCore
             await old?.value
             guard generation==id,!Task.isCancelled else{return}
             let session=NativePlaybackSession();nativeSession=session
+            session.setPlaybackSceneActive(playbackSceneActive)
             var terminalFailure:LifecycleFailure?
             do {
                 try await session.play(file:file,source:source,startAt:startAt,startPaused:startPaused,onInfo:{ [weak self] info in

@@ -39,12 +39,14 @@ enum BrowserWindowPreferences {
     var body:some Scene {
         WindowGroup {
             #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("--packing-renderer-review") {
+            if ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests"), ProcessInfo.processInfo.arguments.contains("--buffering-indicator-review") {
+                BufferingIndicatorReview().frame(width:900,height:1200).glassBackgroundEffect()
+            } else if ProcessInfo.processInfo.arguments.contains("--packing-renderer-review") {
                 PackingRendererReview().frame(width:700,height:700)
             } else if ProcessInfo.processInfo.arguments.contains("--controller-layout-review") {
-                VRImmersiveView().frame(width:600,height:1000)
-                    .dynamicTypeSize(ProcessInfo.processInfo.arguments.contains("--review-large-text") ? .xxxLarge:.large).onAppear {
-                    vr.canClearFormat=true;vr.onClearFormat={vr.settings.projection = .equirectangular180;vr.settings.layout = .sideBySide};vr.settingsVisible=true;vr.fileTitle="合成控制器版面檢視";vr.player=PlaybackController()
+                VRImmersiveView(reviewProgressDurationText:ProcessInfo.processInfo.environment["VISTA_REVIEW_DURATION_TEXT"]).frame(width:600,height:1000)
+                    .dynamicTypeSize(ProcessInfo.processInfo.arguments.contains("--review-max-text") ? .accessibility5:ProcessInfo.processInfo.arguments.contains("--review-large-text") ? .xxxLarge:.large).onAppear {
+                    vr.canClearFormat=true;vr.onClearFormat={vr.settings.projection = .equirectangular180;vr.settings.layout = .sideBySide};vr.settingsVisible=ProcessInfo.processInfo.environment["VISTA_REVIEW_FILE_TITLE"] == nil;vr.fileTitle=ProcessInfo.processInfo.environment["VISTA_REVIEW_FILE_TITLE"] ?? "合成控制器版面檢視";vr.player=PlaybackController()
                     if ProcessInfo.processInfo.arguments.contains("--review-fisheye") {vr.settings.projection = .equidistantFisheye180}
                 }
             } else if ProcessInfo.processInfo.arguments.contains("--device-media-self-test") {
@@ -138,3 +140,44 @@ private struct DeviceMediaSelfTestView: View {
         }
     }
 }
+
+#if DEBUG
+/// Presentation-only synthetic fixture. No media, credentials or network access.
+private struct BufferingIndicatorReview:View {
+    @Environment(VRPresentation.self) private var vr
+    @State private var status=PlaybackSpeedStatus(selected:2.5,ready:true,supportsFastForward:true,waiting:true)
+    @State private var clearFormatCount=0
+    private let info=VideoTrackInfo(codec:"HEVC",width:3840,height:1920,duration:60,hasAudio:true,estimatedDataRate:20_000_000)
+    var body:some View {
+        HStack(spacing:20) {
+            VRImmersiveView(reviewSpeedStatus:status,reviewVideoInfo:info)
+                .dynamicTypeSize(ProcessInfo.processInfo.arguments.contains("--review-max-text") ? .accessibility5:.large)
+            VStack(spacing:20) {
+            HStack {
+                Button("等待") {status.paused=false;status.waiting=true;status.effectiveRate=0}.accessibilityIdentifier("indicatorWait")
+                Button("暫停") {status.paused=true;status.waiting=false;status.effectiveRate=0}.accessibilityIdentifier("indicatorPause")
+                Button("繼續") {status.paused=false;status.waiting=false;status.effectiveRate=status.selected}.accessibilityIdentifier("indicatorResume")
+            }
+            HStack {
+                Button("速率過渡") {status.paused=false;status.waiting=false;status.effectiveRate=0}.accessibilityIdentifier("indicatorTransition")
+                Button("3倍") {status.selected=3}.accessibilityIdentifier("indicatorRate")
+            }
+            HStack {
+                Button("1倍") {status.selected=1}.accessibilityIdentifier("indicatorNormalRate")
+                Button("2.5倍") {status.selected=2.5}.accessibilityIdentifier("indicatorHalfRate")
+                Button("5倍") {status.selected=5}.accessibilityIdentifier("indicatorMaximumRate")
+            }
+            HStack {
+                Button("格式可重設") {vr.canClearFormat.toggle()}.accessibilityIdentifier("indicatorFormatAvailable")
+                Text("\(clearFormatCount)").accessibilityIdentifier("indicatorFormatResetCount")
+            }
+            }
+        }.padding(30).onAppear {
+            if ProcessInfo.processInfo.arguments.contains("--review-normal-speed") {status.selected=1}
+            if ProcessInfo.processInfo.arguments.contains("--review-paused-speed") {status.paused=true;status.waiting=false}
+            vr.settingsVisible = !ProcessInfo.processInfo.arguments.contains("--review-collapsed");vr.fileTitle="合成控制器版面檢視";vr.player=PlaybackController()
+            vr.canClearFormat=ProcessInfo.processInfo.arguments.contains("--review-format-available");vr.onClearFormat={clearFormatCount += 1}
+        }
+    }
+}
+#endif

@@ -99,7 +99,7 @@ public actor LocalDirectoryProvider: DirectoryProvider, MediaByteSource {
     }
     public func read(_ file: MediaFile, range: Range<UInt64>) async throws -> Data {
         try Task.checkCancellation()
-        guard range.count <= 1_048_576, range.upperBound <= Int64.max else { throw LocalFolderFailure.invalidPath }
+        guard range.count <= Int(MediaReadPlan.maximumChunkBytes), range.upperBound <= Int64.max else { throw LocalFolderFailure.invalidPath }
         return try access(file.components) { url in
             guard try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else { throw LocalFolderFailure.invalidPath }
             let handle=try FileHandle(forReadingFrom:url);defer {try? handle.close()}

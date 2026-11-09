@@ -14,7 +14,7 @@
     "AMSMB2/FileHandle.swift",
     "AMSMB2/OperationFailure.swift"
   ],
-  "scope": "Accepted Build64 socket-local SO_NOSIGPIPE, typed failure origins, local callback/C-handle lifetime protection and one-attempt read-only directory recovery; original manager queue and configured timeout unchanged",
+  "scope": "Accepted Build104 cumulative source: existing Build64/66 recovery and persistent read-only playback handle. Existing C, security, timeout and ordinary read paths retained.",
   "noGlobalSignalDispositionChanges": true,
   "candidateOnly": false,
   "licenseFile": "Dependencies/AMSMB2/LICENSE",
@@ -28,23 +28,36 @@
       "path": "DependencyPatches/AMSMB2-4.0.3-readonly-recovery.patch",
       "sha256": "81bca3550a701a1a965583c841b386d843f57dd59285bb46baa7ae70da2e1a45",
       "scope": "Build64 typed failure provenance, one-connect recovery entry, local retirement after callbacks drain, callback and C-handle lifetime protection"
+    },
+    {
+      "path": "DependencyPatches/AMSMB2-4.0.3-persistent-readonly-handle.patch",
+      "sha256": "396ac685bb44d698993f9f39283b6d221eeb0a593c90e64a158a20c37b22ae06",
+      "scope": "Playback-owned read-only handle, delete sharing, same-client positioned reads, explicit lifecycle and narrow unsupported-capability fallback; incremental over existing accepted patches"
     }
   ],
   "noTimeoutValueChanges": true,
   "waitFailureCleanupChanged": true,
   "excludedHistoricalSMBTimeoutExperiment": true,
   "timeoutNote": "The configured duration, poll interval and existing comparison are unchanged. Failure cleanup now invalidates before callback storage leaves scope.",
-  "acceptedDate": "2026-11-07",
   "baselineDocument": "docs/已驗收基底.md",
-  "behaviorDocument": "docs/SMB目錄恢復.md",
+  "behaviorDocument": "docs/播放供給與速度.md",
   "licenseFiles": [
     "Dependencies/AMSMB2/LICENSE",
     "Dependencies/AMSMB2/Dependencies/libsmb2/COPYING",
     "Dependencies/AMSMB2/Dependencies/libsmb2/LICENCE-LGPL-2.1.txt"
   ],
   "validationScope": {
-    "installedBuild64": "User accepted directory-switch recovery and the source-editor Done label. Four observed service invalidations recovered through fresh, non-cached directory listings. No matching termination report proves SIGPIPE causation.",
-    "integratedSource": "Targeted local validation passed: 135 core tests in 33 suites, 18 dependency tests with 30 cases, 22 socket checks, 26 source contracts, 3 simulator UI tests, and both visionOS Release builds. Keeps main background-only pause; this recombination has not been retested on a physical device.",
-    "limits": "No broad concurrency-safety, complete network-recovery, video-recovery, or all-crashes-fixed claim."
+    "historical": "Build64/66 and Build78 boundary results remain historical; 24 dependency runtime tests not rerun for Build104 promotion.",
+    "current": "See tools/Build104AcceptedBaseline.json for static contracts, source equivalence, exact 35-test filter and unsigned build results.",
+    "limits": "No broad concurrency safety, complete network recovery, remote close, all-crashes-fixed or binary-distribution-compliance claim."
+  },
+  "acceptedBaseDate": "2026-11-07",
+  "acceptedBuild": 104,
+  "acceptedDate": "2026-11-09",
+  "patchDocument": "DependencyPatches/AMSMB2-4.0.3-persistent-readonly-handle.md",
+  "licenseScope": {
+    "AMSMB2SwiftHeaders": "MIT notices retained; upstream README and LICENSE designate combined project LGPL v2.1.",
+    "libsmb2Library": "LGPL-2.1-or-later",
+    "libsmb2Examples": "BSD-2-Clause"
   }
 }

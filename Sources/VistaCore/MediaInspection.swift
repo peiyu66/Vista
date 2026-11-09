@@ -98,7 +98,7 @@ public struct DemoMediaSource: MediaByteSource {
     public func read(_ file: MediaFile, range: Range<UInt64>) async throws -> Data {
         try Task.checkCancellation()
         let data = try bytes(for: file)
-        guard range.upperBound <= data.count, range.count <= 1_048_576 else { throw MediaInspectionError.invalidResponse }
+        guard range.upperBound <= data.count, range.count <= Int(MediaReadPlan.maximumChunkBytes) else { throw MediaInspectionError.invalidResponse }
         return data.subdata(in: Int(range.lowerBound)..<Int(range.upperBound))
     }
 }

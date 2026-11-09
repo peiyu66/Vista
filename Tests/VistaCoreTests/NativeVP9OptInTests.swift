@@ -93,7 +93,7 @@ struct NativeVP9OptInTests {
                 try await Task.sleep(for: .milliseconds(80))
                 #expect(frames.count == stoppedCount)
                 let counters = await source.counters()
-                #expect(counters.1 > 0 && counters.2 <= 262_144)
+                #expect(counters.1 > 0 && counters.2 <= MediaReadPlan.nativeChunkBytes)
                 print("NATIVE_VP9_CANDIDATE", "cycle", cycle, "frames", frames.count,
                       "seekFirstPTS", frames[seekStart], "reads", counters.1,
                       "maxRange", counters.2, "decoder", "unknown", "realSMB", false)
