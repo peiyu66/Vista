@@ -54,13 +54,14 @@ private struct ControllerBackgroundTarget:Component {}
     }
     func scheduleHide() {
         hideTask?.cancel()
-        guard active, !movingControls, !scrubbing, message == nil, !testPattern, !settingsVisible, !diagnosticsVisible, !requiresFormatConfirmation, !advancing,
-              let player, player.isPlaying, !player.isPaused, !player.isPreparing else { return }
+        guard active, navigationVisibility == nil, !movingControls, !scrubbing, message == nil, !testPattern, !settingsVisible, !diagnosticsVisible, !requiresFormatConfirmation, !advancing,
+              let player, player.isPlaying, !player.isPaused, !player.isPreparing, player.speedStatus.selected <= 1 else { return }
         hideTask = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(3)) } catch { return }
-            guard let self, !Task.isCancelled, self.active, !self.settingsVisible, !self.diagnosticsVisible,
+            guard let self, !Task.isCancelled, self.active, self.navigationVisibility == nil, !self.settingsVisible, !self.diagnosticsVisible,
                   !self.requiresFormatConfirmation, !self.advancing, !self.scrubbing,
-                  self.player?.isPlaying == true, self.player?.isPaused == false else { return }
+                  self.player?.isPlaying == true, self.player?.isPaused == false,
+                  let selectedRate = self.player?.speedStatus.selected, selectedRate <= 1 else { return }
             self.controlsVisible = false
         }
     }
@@ -403,6 +404,8 @@ struct VRImmersiveView: View {
             else {presentation.revealControls()}
         }
         .onChange(of: presentation.player?.isPlaying) { _, _ in presentation.revealControls() }
+        // Re-evaluate the timer without revealing controls hidden by the user.
+        .onChange(of: presentation.player?.speedStatus.selected) { _, _ in presentation.scheduleHide() }
         .onChange(of: renderer.error) { _, error in
             if let error {presentation.player?.persistDiagnostics(event:.rendererFailed);presentation.message=error;presentation.holdControls()}
         }

@@ -1,0 +1,99 @@
+{
+  "build": 106,
+  "version": "0.1.0",
+  "date": "2026-11-10",
+  "baseCommit": "68c28ead61f0f5dec6748a8014acf960b49f7d5f",
+  "sourceStatus": "Installed Build106 accepted by user; selected-rate auto-hide exception only.",
+  "inputManifest": "tools/Build106AcceptedInputs.json",
+  "inputManifestSHA256": "eaf157f3573f5723244a3e2ced2bd83ac945bdaddd82d88f0ee7e78ff4c42ffe",
+  "applicationInputCount": 394,
+  "byteIdenticalInputCount": 393,
+  "changedProductFiles": {
+    "Vista.xcodeproj/project.pbxproj": "44bf78b89797f1e7ae21a82095e23d15c9131f0fc51d280e6d169671ffe6cf09",
+    "VistaApp/VRPresentation.swift": "0bc6bb73f3ec37aa769edf2410c1ac01ff90c8a3a71d8083b2fc1a2adaa56857",
+    "VistaBrowser.xcodeproj/project.pbxproj": "cd0e956cb1cb524d4fd676a11911af00cdd9e2ffffc03d007adbf8cd8d9d37dc"
+  },
+  "metadataExceptions": {
+    "Dependencies/AMSMB2-provenance.json": {
+      "originalSHA256": "5ac730683bc2842f67601a6c1b4611db306f6384faf7c0217c97077cfda8c8c9",
+      "promotedSHA256": "921db491dce8296039f0bdcf971a7f6926785e882905459ca29ab4ce31b9d733",
+      "reason": "Unchanged accepted Build104 provenance retained; not reverted to obsolete candidate metadata. Does not affect compilation."
+    }
+  },
+  "supplementalFiles": {
+    "tools/Build106AcceptedTestFilter.txt": "eb4fdf749e634323caf91a3ca8adc37efcbf8fc9305e864b1e030d407038b413",
+    "tools/Build106ControllerTimerTests.swift": "652d1fb9c077e00047d7b906f44f8f7740f6c19893af7bb59ef5959889a13200",
+    "tools/RunBuild106ControllerTimers.py": "b2a39ac96faca4c569d50b71a89791d9dd8ab7ff35fd03a725060469192a8fee",
+    "tools/VerifyBuild106Baseline.py": "be773f8202edf44d3768a6b57e7dcef9c01a36baf48009baef7eacf62741ddd4"
+  },
+  "symlinks": {
+    "tools/AMSMB2BoundaryTests/AMSMB2Swift": "../../Dependencies/AMSMB2/AMSMB2",
+    "tools/AMSMB2BoundaryTests/SMB2C": "../../Dependencies/AMSMB2/Dependencies/libsmb2"
+  },
+  "validation": {
+    "sourceContracts": {
+      "passed": 13,
+      "total": 13,
+      "freshRun": true
+    },
+    "controllerTimers": {
+      "passedAssertions": 47,
+      "freshRun": true,
+      "exactProductionClass": true,
+      "playerAndPoseSubstitutes": true,
+      "SwiftUISubscriptionRuntime": false
+    },
+    "inheritedBehavior": {
+      "tests": 48,
+      "suites": 15,
+      "rerun": false,
+      "compiledInputFilesCompared": 366,
+      "processReceiptSHA256": "d534d40859e5159e3e917e02d34ee75187233142850db5470595fb11d1f069a8",
+      "casesReceiptSHA256": "835b70710a5ec1e99b03a599e3e1b4c88e46e4bb99ad18afb43ac81cbb49aca1",
+      "filter": "tools/Build106AcceptedTestFilter.txt"
+    },
+    "inheritedTaskAllocation": {
+      "assertions": 4,
+      "rerun": false,
+      "probeSHA256": "d497638e76c71d8c50d57f670d552a78513349c303f0a60eb00d33117c3c5ddc",
+      "resultSHA256": "ba2294512a91b62d29bf37cafb53560c7a224e7ec651948fb14488a5b1f0ce76"
+    },
+    "VistaBrowserRelease": {
+      "passed": true,
+      "newBuild": true,
+      "unsigned": true,
+      "version": "0.1.0",
+      "build": 106,
+      "bundle": "org.peiyu66.Vista.BrowserPrototype",
+      "executableSHA256": "05613421a073c30dc37d1508a8de3b9d9a1e045600b422475380f7d38fb57125",
+      "dSYMUUID": "D55F9325-6D58-3A08-8202-0879336089E4"
+    },
+    "UIBuildForTesting": {
+      "passed": true,
+      "newBuild": true,
+      "runtimeExecuted": false
+    },
+    "inheritedLegacyRelease": {
+      "build": 106,
+      "rerun": false,
+      "allApplicationInputsMatchExceptNoncompiledMetadata": true,
+      "artifactFilesRehashed": 13,
+      "bundle": "org.peiyu66.Vista",
+      "executableSHA256": "fe14c27ca4f934ffd3ac375c164a97aa57969913f3f4216e1d103b7ea9c278e3",
+      "dSYMUUID": "414EB8B0-6A13-3B85-9EBA-232EEF4EE1B2"
+    },
+    "notAdditive": true,
+    "notPerformed": [
+      "SwiftUI event subscription runtime",
+      "Simulator UI interactions",
+      "NAS or restricted SMB concurrent/Admission tests",
+      "New signing, installation or device launch",
+      "MKV or hide-button candidate adoption"
+    ]
+  },
+  "exclusions": [
+    "No extra buffering/waiting persistence",
+    "No new hide button",
+    "No MKV or other strategy change"
+  ]
+}
