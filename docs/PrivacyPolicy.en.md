@@ -1,3 +1,7 @@
+---
+lang: en
+---
+
 # Vista Privacy Policy
 
 [繁體中文](隱私權聲明.md)
