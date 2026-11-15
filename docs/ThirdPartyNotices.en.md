@@ -4,7 +4,7 @@ lang: en
 
 # Third-party copyrights and licenses
 
-[繁體中文](../THIRD_PARTY_NOTICES.md)
+[中文](../THIRD_PARTY_NOTICES.md)
 
 Vista’s own code is licensed under the [MIT License](../LICENSE). The components below retain their own licenses. We thank their authors and contributors. The original license documents and corresponding source files contain the full terms and individual copyright notices.
 

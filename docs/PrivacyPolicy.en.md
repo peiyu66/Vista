@@ -4,7 +4,7 @@ lang: en
 
 # Vista Privacy Policy
 
-[繁體中文](隱私權聲明.md)
+[中文](隱私權聲明.md)
 
 Updated: November 15, 2026. This policy describes how Vista currently handles data.
 

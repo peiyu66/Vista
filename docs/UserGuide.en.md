@@ -4,7 +4,7 @@ lang: en
 
 # User guide and compatibility
 
-[繁體中文](使用說明.md)
+[中文](使用說明.md)
 
 ## Choose a video
 
