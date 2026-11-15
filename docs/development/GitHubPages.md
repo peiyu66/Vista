@@ -1,6 +1,6 @@
 # GitHub Pages 文件網站
 
-網站使用 GitHub Pages 的 `main` 分支根目錄與 Jekyll Primer 版型，對照 simStock3 的實際 `main`／根目錄部署及 Primer 網站。沒有獨立首頁正文；`jekyll-readme-index` 直接把繁體中文 `README.md` 產生成首頁。更新 README 後，Pages 會重新建置。
+網站使用 GitHub Pages 的 `main` 分支根目錄與 Jekyll Primer 版型，對照 simStock3 的實際 `main`／根目錄部署及 Primer 網站。保留 Primer 的單欄 Markdown 排版；精簡 layout 讓 HTML 的 `lang` 依頁面區分繁中／英文。沒有獨立首頁正文；`jekyll-readme-index` 直接把繁體中文 `README.md` 產生成首頁。更新 README 後，Pages 會重新建置。
 
 `jekyll-relative-links` 把網站內 Markdown 文件連結轉成對應 HTML。程式、修補與建置材料不發佈為網站靜態附件，相關連結指向 GitHub 原檔；原始第三方許可文字保持不變。網站不是 App 安裝下載或 App Store 發布。
 

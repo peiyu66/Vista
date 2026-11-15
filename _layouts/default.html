@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="{{ page.lang | default: site.lang | default: 'zh-Hant' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% seo %}
+  <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}?v={{ site.github.build_revision }}">
+</head>
+<body>
+  <main class="container-lg px-3 my-5 markdown-body">
+    {% unless page.url == '/' %}<p><a href="{{ '/' | relative_url }}">Vista</a></p>{% endunless %}
+    {{ content }}
+    <footer class="border-top border-gray-light mt-5 pt-3">
+      <a href="https://github.com/peiyu66/Vista">GitHub</a>
+    </footer>
+  </main>
+</body>
+</html>
