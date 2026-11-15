@@ -14,9 +14,9 @@
 
 ## 固定來源與測試基線
 
-[NativeVP9Baseline.json](../tools/NativeVP9Baseline.json) 記錄本次基底提交、已接受範圍、OS guard、專案自造 VP9＋AAC 素材及 7 份產品／測試／版號檔的 SHA-256。這些檔案與已安裝驗收 Build67 的來源逐位元相同；不保證重建 App 二進位相同。依賴雜湊 baseline 沿用，沒有更新接受不同 vendor 內容。
+[NativeVP9Baseline.json](https://github.com/peiyu66/Vista/blob/main/tools/NativeVP9Baseline.json) 記錄本次基底提交、已接受範圍、OS guard、專案自造 VP9＋AAC 素材及 7 份產品／測試／版號檔的 SHA-256。這些檔案與已安裝驗收 Build67 的來源逐位元相同；不保證重建 App 二進位相同。依賴雜湊 baseline 沿用，沒有更新接受不同 vendor 內容。
 
-[固定精選集合](../tools/NativeVP9TestFilter.txt) 為 49 項／9 suites。除 VP9 播放外，包含 H.264／HEVC 正控制、來源失敗、暫停／seek／停止／重開、速度能力、背景保持暫停，以及 renderer／source 恢復交界。另以全新測試程序先執行 VP9 播放案例，避免先跑註冊探測造成假通過；同一案例不重複計為獨立覆蓋。
+[固定精選集合](https://github.com/peiyu66/Vista/blob/main/tools/NativeVP9TestFilter.txt) 為 49 項／9 suites。除 VP9 播放外，包含 H.264／HEVC 正控制、來源失敗、暫停／seek／停止／重開、速度能力、背景保持暫停，以及 renderer／source 恢復交界。另以全新測試程序先執行 VP9 播放案例，避免先跑註冊探測造成假通過；同一案例不重複計為獨立覆蓋。
 
 VP9 合成素材為 640×360、4 秒、VP9＋AAC，直接沿用專案既有生成檔，未讀取或轉碼私人影片。素材最初由 FFmpeg lavfi `testsrc2=size=640x360:rate=24` 與 `sine=frequency=440:sample_rate=48000` 生成，使用 libvpx-vp9、yuv420p、24 幀 GOP 與 AAC 96k；FFmpeg 不加入 App。原生測試以靜音方式檢查影格與控制，不宣稱自動驗證聲音聽感。恢復交界使用記憶體替身：450 ms 來源恢復超過普通 200 ms stall 界線但在 grace 內，成功後保持暫停，暫停中設 2× 與 seek 不自動播放，明確 resume 才前進。這不是實際 SMB 恢復測試。
 

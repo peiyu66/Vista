@@ -13,6 +13,6 @@ Vista 是 Apple Vision Pro 的 VR 影片播放器，讓你從自己的 SMB 伺�
 
 ## 更多資訊
 
-[隱私權聲明](docs/隱私權聲明.md) · [第三方版權與授權](THIRD_PARTY_NOTICES.md) · [問題回報](https://github.com/peiyu66/Vista/issues) · [開發文件](docs/開發文件入口.md)
+[隱私權聲明](docs/隱私權聲明.md) · [第三方版權與授權](THIRD_PARTY_NOTICES.md) · [問題回報](https://github.com/peiyu66/Vista/issues) · [開發文件](docs/development/開發文件入口.md)
 
 Vista 自有程式採 [MIT License](LICENSE)。第三方元件保留各自的著作權及授權條件。

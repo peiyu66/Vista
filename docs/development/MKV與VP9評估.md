@@ -45,7 +45,7 @@ libwebm 的同步位置讀取需與非同步 SMB 協調：避免在主執行緒�
 
 ## libwebm 隔離原型結果（2026-11-03）
 
-來源固定為官方 `libwebm-1.0.0.32`，commit `f2a982d748b80586ae53b89a2e6ebbc305848b8c`。只採原樣 mkvparser.cc、mkvparser.h、common/webmids.h，合計 230,595 bytes；原始 BSD-3-Clause、PATENTS 與 AUTHORS 一併保存，逐檔 SHA-256 可核對。來源與聲明見 [原型 vendor](../Experiments/MKVParser/vendor/libwebm/UPSTREAM.md)。沒有改變 Vista 自有 MIT，也沒有引入解碼器、套件管理器安裝或 App 依賴。
+來源固定為官方 `libwebm-1.0.0.32`，commit `f2a982d748b80586ae53b89a2e6ebbc305848b8c`。只採原樣 mkvparser.cc、mkvparser.h、common/webmids.h，合計 230,595 bytes；原始 BSD-3-Clause、PATENTS 與 AUTHORS 一併保存，逐檔 SHA-256 可核對。來源與聲明見 [原型 vendor](https://github.com/peiyu66/Vista/blob/main/Experiments/MKVParser/vendor/libwebm/UPSTREAM.md)。沒有改變 Vista 自有 MIT，也沒有引入解碼器、套件管理器安裝或 App 依賴。
 
 以 C++11、`-O2` 編譯單一 parser，macOS arm64 靜態 archive 227,728 bytes、visionOS simulator arm64 229,816 bytes、visionOS device arm64 229,168 bytes；硬解 Swift 探針也通過三個 SDK typecheck。數字是本次原型 archive，包含物件／符號成本，不能視為 App 安裝體積增量。Mac parser 可執行檔僅連結系統 libc++／libSystem。這證明當前工具鏈可編譯，不是上游正式保證所有 Apple 平台，也不是實機執行成功。
 

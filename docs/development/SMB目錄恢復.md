@@ -40,7 +40,7 @@ Darwin 的每個新建 SMB client TCP socket 在 connect 及協定寫入前設�
 
 ## 依賴與局部 C handle 保護
 
-AMSMB2 上游仍為 4.0.3，revision `1726aaaf7adf63d7d1d2a0c5d1b0e635028215c0`；libsmb2 仍為 `aff9fa6ba9f41cfd3c15d184554601ec3f6d8d03`。SwiftPM 與兩個 Xcode 入口共用本地 `Dependencies/AMSMB2`，取代遠端 AMSMB2 pin。來源、修改檔及兩份 patch 的 SHA-256 見 [provenance](../Dependencies/AMSMB2-provenance.json)。
+AMSMB2 上游仍為 4.0.3，revision `1726aaaf7adf63d7d1d2a0c5d1b0e635028215c0`；libsmb2 仍為 `aff9fa6ba9f41cfd3c15d184554601ec3f6d8d03`。SwiftPM 與兩個 Xcode 入口共用本地 `Dependencies/AMSMB2`，取代遠端 AMSMB2 pin。來源、修改檔及兩份 patch 的 SHA-256 見 [provenance](https://github.com/peiyu66/Vista/blob/main/Dependencies/AMSMB2-provenance.json)。
 
 第一份 patch 為每個 socket 的 SO_NOSIGPIPE；第二份為 typed error origins、單次連線入口、本地排空退役及回呼／C handle 生命週期保護：
 

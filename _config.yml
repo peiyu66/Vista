@@ -1,0 +1,40 @@
+title: Vista
+lang: zh-Hant
+theme: jekyll-theme-primer
+url: https://peiyu66.github.io
+baseurl: /Vista
+# GitHub Pages renders README.md as the homepage; no second introduction.
+plugins:
+  - jekyll-readme-index
+  - jekyll-relative-links
+readme_index:
+  enabled: true
+  remove_originals: false
+relative_links:
+  enabled: true
+  collections: false
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+  - scope:
+      path: "docs/*.en.md"
+    values:
+      lang: en
+exclude:
+  - Dependencies
+  - DependencyPatches
+  - Experiments
+  - Sources
+  - Tests
+  - VistaApp
+  - VistaUITests
+  - Vista.xcodeproj
+  - VistaBrowser.xcodeproj
+  - Package.swift
+  - Package.resolved
+  - tools
+  - engine
+  - NativeBuild
+  - Resources
