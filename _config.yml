@@ -18,6 +18,10 @@ defaults:
       path: ""
     values:
       layout: default
+  - scope:
+      path: "README.en.md"
+    values:
+      lang: en
 exclude:
   - Dependencies
   - DependencyPatches

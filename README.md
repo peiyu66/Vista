@@ -1,5 +1,7 @@
 # Vista
 
+[English](README.en.md)
+
 Vista 是 Apple Vision Pro 的 VR 影片播放器，讓你從自己的 SMB 伺服器或已授權的本機資料夾選片，依影片調整觀看方式。
 
 ## 觀看與操作
