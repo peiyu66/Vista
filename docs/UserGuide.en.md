@@ -30,4 +30,6 @@ HEVC and VP9 have been tested through the MKV playback path, but this does not m
 
 There is currently no App Store download. For the public source and development validation scope, see the [development documents](development/開發文件入口.md).
 
-When reporting a problem, include the app version, steps, and symptoms. Do not publish credentials, private file names, or unreviewed full logs. See the [privacy policy](PrivacyPolicy.en.md).
+## Report a problem
+
+Describe the app version, steps, and symptoms in [GitHub Issues](https://github.com/peiyu66/Vista/issues). Vista support does not ask you to upload diagnostic logs. Do not attach logs, credentials, private videos, or private file names and paths. Issues and your public account information are visible to maintainers and other people. See the [privacy policy](PrivacyPolicy.en.md) for details.
