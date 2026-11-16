@@ -2,7 +2,7 @@
 
 [English](docs/ThirdPartyNotices.en.md)
 
-[返回 README](README.md)
+[返回首頁](README.md)
 
 Vista 自有程式採 [MIT License](LICENSE)。下列元件不因與 Vista 一起使用而改採 Vista 的授權。感謝各上游作者與貢獻者；完整條件及個別著作權以原始授權文件和對應來源檔為準。
 
