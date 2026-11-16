@@ -6,6 +6,8 @@ lang: en
 
 [中文](../THIRD_PARTY_NOTICES.md)
 
+[Back to parent](../README.en.md) · [Back to README](../README.en.md)
+
 Vista’s own code is licensed under the [MIT License](../LICENSE). The components below retain their own licenses. We thank their authors and contributors. The original license documents and corresponding source files contain the full terms and individual copyright notices.
 
 This list covers components used by Vista. See the [component and distribution review](development/元件與分發核對.md) for the status of their integration into the public source and distribution materials.

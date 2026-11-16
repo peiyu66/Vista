@@ -6,6 +6,8 @@ lang: en
 
 [中文](使用說明.md)
 
+[Back to parent](../README.en.md) · [Back to README](../README.en.md)
+
 ## Choose a video
 
 Add an SMB server using credentials you are authorized to use, or authorize a local folder through the system picker. You can create shortcuts to frequently used folders. Connection settings are saved; SMB passwords are stored separately in the system Keychain. Removing a source does not delete the original videos.

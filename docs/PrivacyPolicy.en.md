@@ -6,6 +6,8 @@ lang: en
 
 [中文](隱私權聲明.md)
 
+[Back to parent](../README.en.md) · [Back to README](../README.en.md)
+
 Updated: November 15, 2026. This policy describes how Vista currently handles data.
 
 ## Videos and connections
