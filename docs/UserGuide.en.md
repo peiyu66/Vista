@@ -6,7 +6,7 @@ lang: en
 
 [中文](使用說明.md)
 
-[Back to parent](../README.en.md) · [Back to README](../README.en.md)
+[Back to README](../README.en.md)
 
 ## Choose a video
 
