@@ -1,0 +1,27 @@
+Ess-Na-Crub Waterfall — VR360 Mono
+
+Original title: 20180407 132600 Ess-Na-Crub Waterfall
+Creator: Bernard Ladenthin
+Original recording date: 7 April 2018
+Source: https://commons.wikimedia.org/wiki/File:20180407_132600_Ess-Na-Crub_Waterfall.webm
+Original download: https://upload.wikimedia.org/wikipedia/commons/0/03/20180407_132600_Ess-Na-Crub_Waterfall.webm
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+License URL: https://creativecommons.org/licenses/by/4.0/
+Legal text: https://creativecommons.org/licenses/by/4.0/legalcode
+
+Changes for this Vista demonstration download:
+- Transcoded the existing VP9 video to H.264 High, yuv420p, preserving the 2560 x 1280 full-sphere equirectangular image.
+- Regularized the source's approximately 59.94 fps timestamps to 60000/1001 fps. No motion interpolation or invented imagery.
+- Transcoded the original two-channel Opus audio to AAC-LC, 48 kHz, 192 kbit/s. No added music, narration or gain adjustment.
+- Added Spherical Video V2 metadata for monoscopic, uncropped equirectangular 360-degree video.
+- Moved the MP4 movie header to the start for progressive reading; added author/license information and a descriptive filename.
+- No crop, stereo conversion, scene generation or camera-motion change. Original and candidate durations differ by less than 0.01 second due to frame/audio timing.
+
+This footage remains CC BY 4.0; it is not covered by Vista's code license. Retain this credit, source and license link when providing the file. No endorsement by the original creator is implied.
+
+中文說明
+原片作者：Bernard Ladenthin。作品名稱、來源及 CC BY 4.0 授權連結如上。
+此檔案僅轉換為 H.264／AAC MP4、規整約 59.94 fps 時序並加入 360°／單眼標記；保留原始全景構圖與雙聲道音軌，未新增音樂或調整音量。
+這是可轉頭觀看的 360° 單眼全景，不是雙眼立體影片。公開提供下載時應一併提供本署名與轉檔說明，不得將原片改列為 Vista 的 MIT 素材。
+
+This is a separate public demonstration download, not a built-in Vista video catalog. Headset viewing comfort has not been verified.
