@@ -8,6 +8,10 @@
 
 Add an SMB server using credentials you are authorized to use, or authorize a local folder through the system picker. You can create shortcuts to frequently used folders. Connection settings are saved; SMB passwords are stored separately in the system Keychain. Removing a source does not delete the original videos.
 
+## Demo videos
+
+Download a [demo video](DemoVideo.en.md) and follow the steps on that page to play it in Vista. The waterfall clip is a 360° monoscopic panorama, not side-by-side stereo; the download page also provides its source and license.
+
 ## Playback
 
 Select a video, then use the playback controller to pause, play, switch videos, or seek. Drag the timeline to choose a playback position. Available playback speeds depend on the video. High speeds or demanding videos may still stall; reduce the speed if needed.
