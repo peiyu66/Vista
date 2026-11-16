@@ -16,7 +16,7 @@ SHA-256: `40c5b59cc1009b43e75231100094ff7e0471d975a9e10348bf8dda43d3c04615`
 
 ## Color-pattern playback test
 
-[Download Color Patterns (MP4, 3.6 MB)](../assets/demo/color-patterns-v1.mp4)
+[Download Color Patterns — Mono (MP4, 3.6 MB)](../assets/demo/color-patterns-mono-v1.mp4)
 
 This public color-pattern clip was generated for the Vista project with FFmpeg `testsrc2`, for users and App Store reviewers. No sign-in is required to download it. It is an 8-second, silent H.264 video at 1280 × 720 and 24 fps, containing no private footage, people, credentials, or private source information. This is playback input, not a recording of Vista. It does not demonstrate stereo depth, audio, or MKV performance.
 
@@ -24,13 +24,13 @@ This public color-pattern clip was generated for the Vista project with FFmpeg `
 
 1. Download the video and save it in a folder accessible through Files on Apple Vision Pro.
 2. In Vista, select Edit Shortcuts, then Authorize a Local Folder. Select the folder, add its shortcut using Add Shortcut, then select Done.
-3. Open the shortcut and select the video. For the waterfall, confirm **360° / Mono**. For Color Patterns, select **Mono** manually; it is not panoramic or stereoscopic footage, and should not be viewed as left-right stereo.
+3. Open the shortcut and select the video. For the waterfall, confirm **360° / Mono**. Keep the Color Patterns filename: `mono` lets Vista select **Mono** automatically on first use, unless a saved manual choice takes precedence. Its projection still defaults to 180°; the pattern is not panoramic or stereoscopic footage and should not be viewed as left-right stereo.
 4. Try play/pause and the progress slider. These clips are short; replay as needed.
 
 No Vista account or SMB server is required. This is a separate download, not a built-in video catalog, and it is not automatically added to your folders.
 
 ## Color-pattern source and use
 
-The clip is procedurally generated, with no third-party footage or music. It is provided with this project under the [MIT License](../LICENSE). This versioned file remains unchanged; different future samples will use new file names.
+The clip is procedurally generated, with no third-party footage or music. It is provided with this project under the [MIT License](../LICENSE).
 
 SHA-256: `2bd5b9745087b98995c05b9ad36f2bbb043e7fdf007349b0ce83acf2a71f8a00`
