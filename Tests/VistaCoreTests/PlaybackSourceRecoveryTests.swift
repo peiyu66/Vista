@@ -664,4 +664,42 @@ extension PlaybackSourceRecoveryTests {
         #expect(h.creates == 1 && h.fresh.reads.isEmpty)
         try await h.source.awaitPlaybackCleanup()
     }
+    @Test func freshIdentity164StillFetchesMetadataAndPreservesRecoveryOrdering() async throws {
+        let h = Harness()
+        let first = try await h.source.freshPlaybackIdentity()
+        #expect(first == h.identity && h.metadataCalls == [1, 1])
+        h.metadataBody = { session in
+            if session === h.old { throw Failure.transport }
+            return h.identity
+        }
+        let recovered = try await h.source.freshPlaybackIdentity()
+        #expect(recovered == h.identity)
+        #expect(h.metadataCalls == [1, 1, 1, 2, 2])
+        #expect(h.creates == 1 && h.retired == [1])
+        h.source.cancelPlayback()
+    }
+
+    @Test func freshIdentity164ChangedIdentityStillFailsClosed() async throws {
+        let h = Harness()
+        _ = try await h.source.freshPlaybackIdentity()
+        h.metadataBody = { _ in PlaybackSourceIdentity(size: 129,
+            modificationDate: Date(timeIntervalSince1970: 100), creationDate: Date(timeIntervalSince1970: 50),
+            changeDate: Date(timeIntervalSince1970: 101), stableIdentifier: "synthetic") }
+        await expectFailure(PlaybackSourceRecoveryError.identityChanged) { _ = try await h.source.freshPlaybackIdentity() }
+        #expect(h.creates == 0 && h.metadataCalls == [1, 1, 1])
+    }
+
+    @Test func freshIdentity164InactiveCancellationDoesNotIssueMetadata() async throws {
+        let h = Harness(), waiting = Signal()
+        _ = try await h.source.freshPlaybackIdentity()
+        h.stageBody = { if $0 == .waitingForActive { waiting.send() } }
+        h.source.setPlaybackSceneActive(false)
+        let pending = Task { @MainActor in try await h.source.freshPlaybackIdentity() }
+        await waiting.wait()
+        pending.cancel()
+        await expectCancellation { _ = try await pending.value }
+        #expect(h.metadataCalls == [1, 1] && h.creates == 0)
+        h.source.cancelPlayback()
+    }
+
 }

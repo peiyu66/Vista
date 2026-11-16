@@ -25,15 +25,23 @@ import Observation
     private var capabilityTask:Task<Void,Never>?
     private var sampledFolders:Set<String>=[]
     private var bonjourAttempted:Set<UUID>=[]
-    var tagsAvailable:Bool {source?.providesFinderTags == true && !isHostRoot}
+    private var localTagEvidence:Set<UUID>=[]
+    private var localTagProbedCount=0
+    var tagsAvailable:Bool {
+        guard let source,!isHostRoot else{return false}
+        return source.kind == .local ? localTagEvidence.contains(source.id):source.providesFinderTags
+    }
     var tagsVisible:Bool {showTags && tagsAvailable}
     private var refreshTagSort=false
     private var tagsNeeded:Bool {tagsAvailable && (showTags || (refreshTagSort && sort.field == .tags))}
     private var refreshFixtureRevision=0
-    func refreshDirectory() {
+    private var automaticTagRefreshAttempted=false
+    func refreshDirectory() {refreshDirectory(recoveringTags:false)}
+    private func refreshDirectory(recoveringTags:Bool) {
         guard let source else{return}
         let path=components,session=sessions.existingSession(for:sessionKey(source.id,path))
-        cancelListing();refreshTagSort=sort.field == .tags
+        if !recoveringTags {listingRevision += 1}
+        cancelListing();automaticTagRefreshAttempted=recoveringTags;refreshTagSort=sort.field == .tags
         entries=[];nextOffset=0;error=nil;notice=nil;selection=nil;listingSession=nil
         parentEntries=[];parentOffset=belowShortcutRoot ? 0:nil;parentError=nil
         sampledFolders.removeAll();bonjourAttempted.remove(source.id)
@@ -58,6 +66,10 @@ import Observation
         if sourceID==id {tagsVisibilityChanged()}
     }
     private func detectTagSupport() {
+        if let source,source.kind == .local {
+            detectLocalTagSupport(source)
+            return
+        }
         guard let source,source.kind == .smb,!source.providesFinderTags,
               capabilityTask==nil else{return}
         let token=generation,path=components,key=sessionKey(source.id,path)+"/"+path.dropFirst().joined(separator:"/")
@@ -94,6 +106,28 @@ import Observation
             }
             capabilityTask=nil
             if positive {recordTagEvidence(id:source.id,endpoint:source.server)}
+        }
+    }
+    private func detectLocalTagSupport(_ source:SavedSource) {
+        guard !localTagEvidence.contains(source.id),capabilityTask==nil else{return}
+        let token=generation,path=components,start=localTagProbedCount
+        let samples=Array(entries.dropFirst(start).prefix(250)).map(\.name)
+        // Probe the folder itself once even when it has no displayed children.
+        guard start==0 || !samples.isEmpty else{return}
+        capabilityTask=Task {
+            let positive:Bool
+            do {
+                positive=try await localProvider(source).hasFinderTagEvidence(at:DirectoryPath(path),names:samples,includeDirectory:start==0)
+            } catch {positive=false}
+            guard !Task.isCancelled,token==generation,sourceID==source.id,components==path else{return}
+            localTagProbedCount=start+samples.count
+            capabilityTask=nil
+            if positive {
+                localTagEvidence.insert(source.id)
+                tagsVisibilityChanged()
+            } else if localTagProbedCount<entries.count {
+                detectLocalTagSupport(source)
+            }
         }
     }
     var saved: SavedLocations
@@ -139,6 +173,9 @@ import Observation
         sort=DirectorySort(field:field,ascending:sort.field == field ? !sort.ascending:true)
         if let sourceID {browse(source:sourceID,path:components)}
     }
+    // A new navigation or explicit refresh owns fresh scroll and lazy-row state.
+    // Pagination, tag recovery and playback keep the current presentation identity.
+    private(set) var listingRevision=0
     var entries: [FileEntry]=[]
     var parentEntries: [FileEntry]=[]
     var parentOffset: Int?
@@ -257,7 +294,7 @@ import Observation
                     notice="請選取原資料夾；其他資料夾請使用加入資料夾。";return
                 }
                 candidate.sources[index].localBookmark=bookmark
-                try store.save(candidate);saved=candidate;localProviders[id]=nil
+                try store.save(candidate);saved=candidate;localProviders[id]=nil;localTagEvidence.remove(id)
                 browse(source:id,path:[])
             } else {
                 var source=SavedSource(kind:.local,name:LocalDirectoryProvider.displayName(for:url))
@@ -301,6 +338,7 @@ import Observation
     func browse(source id: UUID,path: [String]) {
         localFolderTitle=nil
         guard path.allSatisfy(SavedLocations.validComponent) else { return }
+        listingRevision += 1
         let nextNavigation=LifecycleDiagnostics.shared.nextID(),target=saved.sources.first{$0.id==id}
         LifecycleDiagnostics.shared.record(.browseIntent,[.navigation:Double(nextNavigation),.generation:Double(generation+1),.sourceKind:target == nil ? 3:target?.isDemo == true ? 0:target?.kind == .local ? 2:1])
         cancelListing(); sourceID=id;components=path;entries=[];nextOffset=0;error=nil;notice=nil;selection=nil;listingSession=nil
@@ -308,7 +346,7 @@ import Observation
         diagnosticNavigation=nextNavigation
         loadMore()
     }
-    private func cancelListing() { LifecycleDiagnostics.shared.record(.cancelRequested,[.navigation:Double(diagnosticNavigation),.generation:Double(generation)]);refreshTagSort=false; capabilityTask?.cancel();capabilityTask=nil; tagRevision += 1;tagTask?.cancel();tagsLoading=false;tagSortMessage=nil;tagProgress=0;tagUnresolved=0;tagsPaused=false;generation += 1;request?.cancel();parentRequest?.cancel();loading=false;parentLoading=false }
+    private func cancelListing() { automaticTagRefreshAttempted=false; LifecycleDiagnostics.shared.record(.cancelRequested,[.navigation:Double(diagnosticNavigation),.generation:Double(generation)]);refreshTagSort=false; capabilityTask?.cancel();capabilityTask=nil;localTagProbedCount=0; tagRevision += 1;tagTask?.cancel();tagsLoading=false;tagSortMessage=nil;tagProgress=0;tagUnresolved=0;tagsPaused=false;generation += 1;request?.cancel();parentRequest?.cancel();loading=false;parentLoading=false }
     func back() { guard let sourceID,canGoBack else {return};browse(source:sourceID,path:Array(components.dropLast())) }
     func open(_ entry: FileEntry) {
         guard entries.contains(entry), let sourceID else {return}
@@ -346,6 +384,7 @@ import Observation
                             return SMBPlaybackSession(provider:fresh)
                         },retire:{session in try await session.retireForPlaybackRecovery()},
                         finish:{session in try await session.finishPlayback()},
+                        sourceDrain:{session in await session.awaitSourceOperationsDrained()},
                         shouldRecover:{SMBPlaybackSession.recoveryDisposition(for:$0).allowsFreshRecovery},
                         shouldJoinExistingRecovery:{($0 as? SMBPlaybackReadFailure) == .retired},
                         isCurrent:stillCurrent)
@@ -493,9 +532,9 @@ import Observation
                 guard !Task.isCancelled,token==generation else {LifecycleDiagnostics.shared.record(.resultDiscarded,traceValues.merging([.outcome:Task.isCancelled ? 1:3]){_,new in new});return}
                 if source.kind == .local {localFolderTitle=resolvedLocalTitle}
                 var seen=Set(entries.map(\.id))
-                entries += page.entries.filter {!$0.isHidden && SavedLocations.validComponent($0.name) && seen.insert($0.id).inserted}
+                entries += page.entries.filter {$0.isBrowserVisible && SavedLocations.validComponent($0.name) && seen.insert($0.id).inserted}
                 nextOffset=page.nextOffset.flatMap {$0>appliedOffset ? $0:nil};loading=false
-                LifecycleDiagnostics.shared.record(.resultApplied,traceValues)
+                LifecycleDiagnostics.shared.record(.resultApplied,traceValues.merging([.entryCount:Double(entries.count),.pageEntryCount:Double(page.entries.count),.listingRevision:Double(listingRevision)]){_,new in new})
                 detectTagSupport()
                 if tagsNeeded,!editing,!tagsPaused {
                     tagSortMessage="正在列出資料夾：\(entries.count) 項"
@@ -540,7 +579,10 @@ import Observation
                 guard !Task.isCancelled,token==generation,revision==tagRevision,tagsNeeded else{return}
                 guard let index=indices[entry.id] else{continue}
                 let state:FinderTagState
-                if source.isDemo || testing {
+                if source.kind == .local {
+                    do {state=try await localProvider(source).tags(at:DirectoryPath(path+[entry.name]))}
+                    catch {if Task.isCancelled{return};state = .failed}
+                } else if source.isDemo || testing {
                     do {try await Task.sleep(for:.milliseconds(testing && ProcessInfo.processInfo.arguments.contains("--full-tags-fixture") ? 1:5))}catch{return}
                     let colors=[6,7,5,2,4,3,1,0]
                     let value=entry.name.utf8.reduce(0){($0+Int($1))%12}
@@ -579,7 +621,7 @@ import Observation
                 } else {state = .failed}
                 guard !Task.isCancelled,token==generation,revision==tagRevision,tagsNeeded else{return}
                 working[index].finderTags=state
-                if !source.isDemo,TagSupportEvidence.tags(state),
+                if source.kind == .smb,TagSupportEvidence.tags(state),
                    let savedIndex=saved.sources.firstIndex(where:{$0.id==source.id}),
                    saved.sources[savedIndex].tagEvidenceEndpoint != TagSupportEvidence.endpoint(source.server) {
                     saved.sources[savedIndex].tagEvidenceEndpoint=TagSupportEvidence.endpoint(source.server);persist()
@@ -595,6 +637,13 @@ import Observation
     }
     private func finishTagSort() {
         guard nextOffset==nil else{return}
+        // A transient metadata failure gets the same fresh listing as the menu action.
+        // Keep the budget spent until navigation or an explicit refresh starts a new cycle.
+        if tagsNeeded,!editing,!tagsPaused,!automaticTagRefreshAttempted,
+           entries.contains(where:{$0.finderTags == .failed}) {
+            refreshDirectory(recoveringTags:true)
+            return
+        }
         tagUnresolved=entries.filter{!$0.finderTags.isResolvedForSorting}.count
         let unavailable=entries.filter{$0.finderTags == .unavailable}.count
         let suffix=unavailable>0 ? "；\(unavailable) 項未提供標籤":""
@@ -608,7 +657,10 @@ import Observation
         }
     }
     func refreshTags() {refreshTags(retryOnly:false)}
-    func retryTags() {refreshTags(retryOnly:true)}
+    func retryTags() {
+        guard tagsNeeded,!loading,!tagsLoading else{return}
+        refreshDirectory()
+    }
     private func refreshTags(retryOnly:Bool) {
         guard tagsNeeded,let source else{return}
         tagsPaused=false
@@ -783,7 +835,7 @@ import Observation
             try store.save(candidate)
             do {if source.kind == .smb {try credentials.remove(for:source.credentialID ?? source.id)}}
             catch {try store.save(saved);throw error}
-            saved=candidate;localProviders[source.id]=nil
+            saved=candidate;localProviders[source.id]=nil;localTagEvidence.remove(source.id)
             if normalContext?.0==source.id {normalContext=nil}
             connectionTask?.cancel();connecting=false;password="";showingConnection=false
             if sourceID==source.id {cancelListing();sourceID=nil;shortcutID=nil;components=[];entries=[];parentEntries=[];normalContext=nil}
@@ -876,8 +928,7 @@ struct ShortcutBrowserView: View {
             sidebar.frame(width:300).disabled(removingSource != nil)
             Divider()
             VStack(spacing:0) {
-                if let source=removingSource { removalConfirmation(source) }
-                else if model.showingConnection { connectionForm }
+                if model.showingConnection { connectionForm }
                 else { directory }
             }.frame(maxWidth:.infinity,maxHeight:.infinity)
         }.frame(minWidth:880,minHeight:620)
@@ -890,6 +941,10 @@ struct ShortcutBrowserView: View {
                              previousFile:model.previousPlayback,hasPrevious:model.hasPreviousPlayback) {model.playback=nil}
                     .id(playback.id)
             }
+        }
+        .sheet(item:$removingSource) { source in
+            removalConfirmation(source)
+                .presentationSizing(.fitted)
         }
         .fileImporter(isPresented:$selectingLocalFolder,allowedContentTypes:[.folder],allowsMultipleSelection:false) { result in
             if case .success(let urls)=result,let url=urls.first {model.importLocalFolder(url,replacing:localReauthorizationID)}
@@ -928,7 +983,6 @@ struct ShortcutBrowserView: View {
             Text(source.kind == .local ? "只移除 Vista 保存的資料夾授權及下列捷徑，不會刪除檔案。":"只移除 Vista 保存的連線、登入資訊及下列捷徑，不會刪除伺服器檔案。").foregroundStyle(.secondary)
             if affected.isEmpty {
                 Text("沒有捷徑指向此來源。").foregroundStyle(.secondary)
-                Spacer()
             } else {
                 Text("受影響的捷徑（\(affected.count)）").font(.headline)
                 ScrollView {
@@ -941,15 +995,22 @@ struct ShortcutBrowserView: View {
                         }
                     }
                 }
+                .frame(height:min(CGFloat(affected.count)*62,280))
+                .accessibilityIdentifier("sourceRemovalShortcuts")
             }
-            HStack {
-                Button("取消"){removingSource=nil}.accessibilityIdentifier("cancelSourceRemoval")
-                Spacer()
+            HStack(spacing:16) {
+                Spacer(minLength:0)
+                Button("取消"){removingSource=nil}
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier("cancelSourceRemoval")
                 Button(affected.isEmpty ? "移除":"一併移除",role:.destructive) {
                     model.removeSource(source,including:Set(affected.map(\.id)));removingSource=nil
                 }.buttonStyle(.borderedProminent).accessibilityIdentifier("confirmSourceRemoval")
             }
-        }.padding(32)
+        }
+        .padding(32)
+        .frame(width:560)
+        .accessibilityIdentifier("sourceRemovalConfirmation")
     }
     private var appVersionText:String {
         let version=Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "?"
@@ -969,7 +1030,7 @@ struct ShortcutBrowserView: View {
                     Button("完成",action:model.toggleEditing)
                         .accessibilityIdentifier("editShortcuts")
                 } else {
-                    Button("編輯",systemImage:"pencil",action:model.toggleEditing)
+                    Button("編輯",systemImage:"gearshape",action:model.toggleEditing)
                         .labelStyle(.iconOnly).accessibilityIdentifier("editShortcuts")
                 }
             }.padding(22)
@@ -1298,7 +1359,7 @@ struct ShortcutBrowserView: View {
                             Button {model.open(entry)} label:{
                                 HStack(spacing:8) {
                                     HStack(spacing:8) {
-                                    Image(systemName:entry.kind == .directory ? "folder.fill":entry.kind == .video ? "film":"doc")
+                                    Image(systemName:entry.browserSymbolName)
                                         .foregroundStyle(entry.kind == .directory ? BrowserBluePalette.folder:Color.secondary).font(.body).frame(width:22)
                                     Text(entry.name).font(.body).lineLimit(2).truncationMode(.middle).frame(maxWidth:.infinity,alignment:.leading).accessibilityIdentifier("entry-name-"+entry.name)
                                     }.frame(width:model.editing ? nil:width(.name,available:geometry.size.width-16),alignment:.leading)
@@ -1330,10 +1391,10 @@ struct ShortcutBrowserView: View {
                                     if !source.isDemo {Button("重新登入"){model.beginConnection(source,reauthenticate:true)}.accessibilityIdentifier("reconnectSMB")}
                                 }
                             }.padding(24)
-                        } else if model.entries.isEmpty && !model.loading {
+                        } else if !model.loading && model.nextOffset == nil && (model.isHostRoot ? model.entries.isEmpty : !model.entries.contains(where: { $0.kind == .video })) {
                             VStack(spacing:12) {
                                 Image(systemName:"folder").font(.largeTitle).foregroundStyle(.secondary)
-                                Text(model.isHostRoot ? "沒有可列出的分享":"空資料夾").font(.headline).accessibilityIdentifier("emptyDirectoryLabel")
+                                Text(model.isHostRoot ? "沒有可列出的分享":"沒有可瀏覽的影片").font(.headline).accessibilityIdentifier("emptyDirectoryLabel")
                             }.frame(maxWidth:.infinity,alignment:.top).padding(.top,24)
                         }
                         if model.nextOffset != nil && !model.loading && model.error == nil {
@@ -1341,7 +1402,7 @@ struct ShortcutBrowserView: View {
                         }
                     }.frame(width:max(geometry.size.width-16,model.editing ? 240:40+visibleColumns.reduce(CGFloat(0)){$0+width($1,available:geometry.size.width-16)}+CGFloat(visibleColumns.count-1)*8)).frame(minHeight:max(0,geometry.size.height-16-(model.editing ? 0:76)),alignment:.topLeading)
                         .frame(width:max(0,geometry.size.width-16),alignment:.leading).padding(8)
-                }.clipped().accessibilityIdentifier("directoryScroll")
+                }.clipped().id(model.listingRevision).accessibilityIdentifier("directoryScroll")
                 }
                 }.frame(maxWidth:listingMaxWidth,alignment:.topLeading)
             } else {
@@ -1482,7 +1543,10 @@ private struct ShortcutEditRow:View {
     var body:some View {
         HStack(spacing:8) {
             Image(systemName:"line.3.horizontal")
-                .padding(10).contentShape(Rectangle())
+                .frame(width:44,height:44)
+                .contentShape(.interaction,Capsule())
+                .contentShape(.hoverEffect,Capsule())
+                .hoverEffect(.highlight)
                 .foregroundStyle(dragging ? BrowserBluePalette.emphasis:Color.secondary)
                 .gesture(DragGesture(minimumDistance:0,coordinateSpace:.named("shortcutViewport"))
                     .updating($dragging){_,state,_ in state=true}

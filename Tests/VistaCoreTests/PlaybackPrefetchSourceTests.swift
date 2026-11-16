@@ -580,7 +580,8 @@ import Testing
             // Preserve the original 32 MiB cost comparison as an explicit baseline.
             let base = MeasuredSource()
             let source = PlaybackPrefetchSource(file: file, source: base,
-                configuration: .init(totalCapacityBytes: 32 * 1_048_576))
+                // This warm-loop baseline intentionally retains the legacy 4 MiB forward window.
+                configuration: .init(capacityBytes: 4 * 1_048_576, totalCapacityBytes: 32 * 1_048_576))
             _ = try await source.fileSize(for: file)
             source.setPrefetchEnabled(enabled)
             let clock = ContinuousClock(), start = ContinuousClock.now

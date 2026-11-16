@@ -76,7 +76,7 @@ public struct PlaybackAutomaticSpeedPolicy:Sendable {
  public static let maximumObservationGap:Double = 0.25
  public static let manualBaselineMaximumAge:Double = 10
  public static let effectiveRateTolerance:Double = 0.01
- public enum Reason:Int,Sendable {case buffering=1,sparseOutput=2}
+ public enum Reason:Int,Sendable {case buffering=1,sparseOutput=2,queuePressure=3}
  public enum SparseTrigger:Int,Sendable {case none=0,frameGap=1,lowCadence=2}
  public enum ResetReason:Int,Sendable {
   case none=0,manualRate=1,rateTransition=2,ineligible=3,recovery=4,clock=5,pts=6
@@ -108,6 +108,7 @@ public struct PlaybackAutomaticSpeedPolicy:Sendable {
   var clocks:[(time:Double,clock:Double)]=[]
   var lastCheck:Double?,lowChecks=0
  }
+ public private(set) var queuePressure=PlaybackQueuePressurePolicy()
  private var shortWindow:ShortWindow?
  private var sparseGateWasOpen:Bool?
  private var healthyReferenceFPS:Double=0
@@ -127,6 +128,7 @@ public struct PlaybackAutomaticSpeedPolicy:Sendable {
  private var lastCopiedPTS:Double?
  private var discardThroughPTS:Double?
  private var previousTime:Double?
+ private var automaticReductionsDeferred=false
  private var sequence:UInt64=0
  private var lastResetReason:ResetReason = .none
  private var resetCount:UInt64=0
@@ -141,6 +143,7 @@ public struct PlaybackAutomaticSpeedPolicy:Sendable {
  /// the same-play healthy reference as well as the current evidence window,
  /// but cannot bypass an automatic reduction's waiting recovery interval.
  public mutating func interruptObservation(reason:ResetReason = .interruption){
+  queuePressure.reset()
   recordReset(reason,changed:window != nil || rateStartSample != nil || normalCadenceEstablished)
   window=nil;shortWindow=nil;normalCadenceEstablished=false;lastHealthyAt=nil;waitingSince=nil;selectedSpeed=nil
   requiresRateStart=true;rateStartSample=nil;rateChangeAt=nil;lastCopiedPTS=nil;discardThroughPTS=nil
@@ -152,6 +155,7 @@ public struct PlaybackAutomaticSpeedPolicy:Sendable {
  /// incident: automatic steps may continue after verified rate start and a fresh
  /// observation window until smooth or 2×.
  public mutating func manualSpeedDidChange(now:Double){
+  queuePressure.reset()
   recordReset(.manualRate,changed:true)
   let fresh=lastHealthyAt.map{now.isFinite && now >= $0 && now-$0<=Self.manualBaselineMaximumAge} ?? false
   if !fresh {normalCadenceEstablished=false;lastHealthyAt=nil;healthyReferenceFPS=0}
@@ -168,7 +172,8 @@ public struct PlaybackAutomaticSpeedPolicy:Sendable {
  /// Pass nil unless this loop successfully copied a finite output PTS. Repeated
  /// PTS are not advancing frames, irrespective of their pixel contents.
  public mutating func update(now:Double,status:PlaybackSpeedStatus,eligible:Bool,playing:Bool,recovering:Bool=false,
-  clock:Double,outputPolled:Bool,copiedFramePTS:Double?)->Decision? {
+  clock:Double,outputPolled:Bool,copiedFramePTS:Double?,queueSample:PlaybackQueuePressureSample?=nil,deferReductions:Bool=false)->Decision? {
+  automaticReductionsDeferred=deferReductions
   guard now.isFinite,now>=0 else{interruptObservation(reason:.clock);return nil}
   if let previousTime,now<previousTime {interruptObservation(reason:.clock)}
   previousTime=now
@@ -182,6 +187,10 @@ public struct PlaybackAutomaticSpeedPolicy:Sendable {
   }
   let copiedPTS=outputPolled ? copiedFramePTS.flatMap{$0.isFinite && $0>=0 ? $0:nil}:nil
   if let copiedPTS {lastCopiedPTS=max(lastCopiedPTS ?? copiedPTS,copiedPTS)}
+  if recovering || status.waiting || !playing || !status.effectiveRate.isFinite ||
+     abs(status.effectiveRate-status.selected)>Self.effectiveRateTolerance || status.selected<2.5 {
+   queuePressure.reset()
+  }
   let recoveryTransition=wasRecovering || recovering
   let recoveryEntered=recovering && !wasRecovering
   wasRecovering=recovering
@@ -254,6 +263,7 @@ public struct PlaybackAutomaticSpeedPolicy:Sendable {
    window=nil;shortWindow=nil;requiresRateStart=true;rateStartSample=nil;return nil
   }
   if requiresRateStart {
+   queuePressure.reset()
    guard rateChangeAt.map({now>$0}) ?? true else{return nil}
    guard let previous=rateStartSample else{rateStartSample=(now,clock);return nil}
    let dt=now-previous.time,advance=clock-previous.clock
@@ -322,6 +332,11 @@ public struct PlaybackAutomaticSpeedPolicy:Sendable {
    sample.lastPTS=pts
   }
   window=sample
+  if let queueSample,queuePressure.update(queueSample,selectedRate:status.selected) {
+   return reduce(now:now,status:status,reason:.queuePressure,
+    seconds:Double(queuePressure.intervalUS)/1e6,
+    clockAdvance:Double(queuePressure.intervalUS)/1e6*queuePressure.decodedMediaRate)
+  }
   // Process a new advancing frame before either deadline. A current frame
   // cancels the gap branch, but does not erase genuinely low rolling density.
   if sparseGate {
@@ -393,10 +408,11 @@ public struct PlaybackAutomaticSpeedPolicy:Sendable {
    } else {short.lowChecks=0}
   }
   shortWindow=short
-  guard normalCadenceEstablished else{return nil}
+  // The independent no-frame witness needs fresh polls/rate/clock, not a
+  // previously dense baseline. Only the low-cadence fallback needs that reference.
   let trigger:SparseTrigger
   if gapWellObserved && gap>=Self.minimumSparseFrameGap {trigger = .frameGap}
-  else if wellObserved && short.lowChecks>=Self.minimumLowCadenceChecks {trigger = .lowCadence}
+  else if normalCadenceEstablished && wellObserved && short.lowChecks>=Self.minimumLowCadenceChecks {trigger = .lowCadence}
   else {return nil}
   let isGap=trigger == .frameGap
   let measuredFrames=isGap ? short.deliveries.filter{$0>gapBoundary+1e-9}.count:short.deliveries.count
@@ -416,15 +432,90 @@ public struct PlaybackAutomaticSpeedPolicy:Sendable {
   }
  }
  private mutating func reduce(now:Double,status:PlaybackSpeedStatus,reason:Reason,seconds:Double,
-  frames:UInt64=0,polls:UInt64=0,clockAdvance:Double=0,frameGap:Double=0,trigger:SparseTrigger = .none,lowChecks:Int=0)->Decision {
+  frames:UInt64=0,polls:UInt64=0,clockAdvance:Double=0,frameGap:Double=0,trigger:SparseTrigger = .none,lowChecks:Int=0)->Decision? {
+  // Explicit VLC-only opt-in; all other call sites retain existing behavior.
+  if automaticReductionsDeferred {return nil}
   let next=max(PlaybackBufferingSpeedPolicy.minimum,status.selected-PlaybackSpeedStatus.increment)
   recordReset(.automaticReduction,changed:true)
-  if reason == .sparseOutput {transferredBaselineExpiresAt=nil;transferredHealthy20ExpiresAt=nil}
+  if reason == .sparseOutput || reason == .queuePressure {transferredBaselineExpiresAt=nil;transferredHealthy20ExpiresAt=nil}
   if sequence<UInt64.max {sequence += 1}
   selectedSpeed=next;cooldownUntil=now+Self.cooldown;waitingSince=nil;window=nil;shortWindow=nil
   requiresRateStart=true;rateStartSample=nil;rateChangeAt=now;discardThroughPTS=nil
   return Decision(nextSpeed:next,reason:reason,sequence:sequence,observedSeconds:seconds,
    advancingFrames:frames,outputPolls:polls,clockAdvance:clockAdvance,maximumFrameGap:frameGap,
    sparseTrigger:trigger,healthyReferenceFPS:healthyReferenceFPS,recentAdvancingFrames:frames,lowCadenceChecks:lowChecks)
+ }
+}
+
+/// 144: one completed compressed input, independent of display cadence and of
+/// the bounded diagnostic episode. All native times/PTS use microseconds.
+public struct PlaybackQueuePressureSample:Equatable,Sendable {
+ public var generation,epoch,id,depth,completed,pacerUS,lost:UInt64
+ public var snapshotUS,enqueueUS,dequeueUS,completedUS,pts:Int64
+ /// Explicit VLC codec context; other callers retain the original threshold.
+ public var videoCodec:UInt32
+ public var lowGrowthQueueThresholdUS:Int64 {videoCodec==0x30395056 ? 250_000:400_000} // VP90
+ /// Consumption-time validation catches a delayed actor/MainActor handoff.
+ /// 0=fresh,1=invalid timestamp,2=future,3=expired (including total input age).
+ public func consumptionFreshness(at nowUS:Int64)->Int {
+  guard nowUS>0,snapshotUS>0,completedUS>0 else{return 1}
+  guard completedUS<=snapshotUS,snapshotUS<=nowUS else{return 2}
+  guard nowUS-snapshotUS<=100_000,nowUS-completedUS<=100_000 else{return 3}
+  return 0
+ }
+ public init(generation:UInt64,epoch:UInt64,id:UInt64,depth:UInt64,completed:UInt64,pacerUS:UInt64,lost:UInt64,
+             snapshotUS:Int64,enqueueUS:Int64,dequeueUS:Int64,completedUS:Int64,pts:Int64,videoCodec:UInt32=0){
+  self.generation=generation;self.epoch=epoch;self.id=id;self.depth=depth;self.completed=completed
+  self.pacerUS=pacerUS;self.lost=lost;self.snapshotUS=snapshotUS;self.enqueueUS=enqueueUS
+  self.dequeueUS=dequeueUS;self.completedUS=completedUS;self.pts=pts
+  self.videoCodec=videoCodec
+ }
+}
+/// A growing compressed backlog alone can be ordinary prebuffering. Require
+/// insufficient media throughput AND near-zero decoder output-pacer waiting.
+/// Never drops a compressed frame, flushes a decoder or changes a media clock.
+public struct PlaybackQueuePressurePolicy:Sendable {
+ public enum Outcome:Int,Sendable {case none=0,baseline=1,insufficientInterval=2,duplicate=3,invalid=4,identity=5,
+  gap=6,discontinuity=7,notGrowing=8,paced=9,sufficientThroughput=10,reduce=11,ineligible=12}
+ public private(set) var outcome:Outcome = .none
+ public private(set) var intervalUS:Int64=0,queueGrowthUS:Int64=0
+ public private(set) var decodedMediaRate:Double=0
+ private var baseline:PlaybackQueuePressureSample?
+ public init(){}
+ public mutating func reset(){baseline=nil;outcome = .none;intervalUS=0;queueGrowthUS=0;decodedMediaRate=0}
+ @discardableResult public mutating func update(_ s:PlaybackQueuePressureSample,selectedRate:Double)->Bool {
+  intervalUS=0;queueGrowthUS=0;decodedMediaRate=0
+  guard selectedRate.isFinite,selectedRate>=2.5,selectedRate<=5 else{baseline=nil;outcome = .ineligible;return false}
+  guard s.generation>0,s.id>0,s.completed>0,s.snapshotUS>0,s.enqueueUS>0,
+   s.enqueueUS<=s.dequeueUS,s.dequeueUS<=s.completedUS,s.completedUS<=s.snapshotUS,
+   s.snapshotUS-s.completedUS<=100_000,s.pts>0 else{baseline=nil;outcome = .invalid;return false}
+  guard let p=baseline else{baseline=s;outcome = .baseline;return false}
+  guard s.generation==p.generation,s.epoch==p.epoch,s.lost==p.lost,s.videoCodec==p.videoCodec else{baseline=s;outcome = .identity;return false}
+  if s.id==p.id {outcome = .duplicate;return false}
+  guard s.id>p.id,s.completed>p.completed,s.pacerUS>=p.pacerUS,
+   s.completedUS>p.completedUS,s.dequeueUS>p.dequeueUS,s.pts>p.pts else{
+   baseline=s;outcome = .discontinuity;return false
+  }
+  let dt=s.completedUS-p.completedUS
+  guard dt<=600_000 else{baseline=s;outcome = .gap;return false}
+  // 200ms sampling can land on either side of a ~7ms input completion.
+  guard dt>=150_000 else{outcome = .insufficientInterval;return false}
+  baseline=s;intervalUS=dt
+  let oldQueue=p.dequeueUS-p.enqueueUS,newQueue=s.dequeueUS-s.enqueueUS
+  queueGrowthUS=newQueue-oldQueue
+  decodedMediaRate=Double(s.pts-p.pts)/Double(dt)
+  // An unannounced seek/PTS jump must never count as a load witness.
+  guard decodedMediaRate<=selectedRate*2 else{outcome = .discontinuity;return false}
+  // A modest growth below 20ms can still compound an already long backlog.
+  // Keep the ordinary 150ms/20ms path. VLC VP9 explicitly admits >=10ms
+  // growth at 250ms backlog; all other contexts retain 400ms. Both paths
+  // retain the same throughput, pacer, freshness and identity gates.
+  let growing = queueGrowthUS>=20_000 || (newQueue>=s.lowGrowthQueueThresholdUS && queueGrowthUS>=10_000)
+  guard newQueue>=150_000,growing,s.depth>=8,s.depth>p.depth,
+   s.completed-p.completed>=8 else{outcome = .notGrowing;return false}
+  let paced=s.pacerUS-p.pacerUS
+  guard Double(paced)<=Double(dt)*0.05 else{outcome = .paced;return false}
+  guard decodedMediaRate<selectedRate*0.95 else{outcome = .sufficientThroughput;return false}
+  outcome = .reduce;return true
  }
 }

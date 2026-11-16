@@ -56,7 +56,7 @@ import Testing
    store.enqueue(measured);store.drainForTesting()
   }
   #expect(store.status.dropped == 0 && store.status.failures == 0)
-  let persisted=try String(contentsOf:dir.appendingPathComponent("current.jsonl"),encoding:.utf8)
+  let persisted=try ["current.jsonl","recovery-current.jsonl"].map {try String(contentsOf:dir.appendingPathComponent($0),encoding:.utf8)}.joined()
   let rows=try persisted.split(separator:"\n").map{try JSONDecoder().decode(PlaybackLogRecord.self,from:Data($0.utf8))}
   #expect(rows.count == 4)
   for row in rows {

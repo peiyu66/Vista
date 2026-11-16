@@ -164,7 +164,7 @@ import Testing
         #expect(source.metrics.diagnostics.historyEvictedBytes == 64)
         let production = PlaybackPrefetchSource.Configuration()
         #expect(production.totalCapacityBytes == 160 * 1_048_576)
-        #expect(production.capacityBytes == 4 * 1_048_576 && production.chunkBytes == 2 * 1_048_576)
+        #expect(production.capacityBytes == 16 * 1_048_576 && production.chunkBytes == 2 * 1_048_576)
         assertNoSpeculation(source, base)
         try await source.awaitPlaybackCleanup()
     }

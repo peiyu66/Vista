@@ -319,6 +319,25 @@ struct NativeVideoDeliveryDiagnostics {
  var experimentAutomaticWait:Bool?{player?.automaticallyWaitsToMinimizeStalling}
  private(set) var experimentStallResumes=0
  #endif
+ #if VISTA_LOCAL_MKV_CANDIDATE
+ #if VISTA_VLC_CANDIDATE
+ private var vlcDriver:VLCPlaybackDriver?
+ private var vlcPrefetchActivity:(allowed:Bool,reason:PrefetchInvalidationReason)?
+ private var vlcFailure:String?
+ private var vlcFinalLogValues:[PlaybackLogField:Double]?
+ var clearVLCPresentation:(()->Void)?
+ var drainVLCPresentation:((Bool)async throws->Void)?
+ #endif
+ private var mkvDriver:MKVPlaybackDriver?
+ private var mkvDiagnostics:MKVDiagnostics?
+ private var mkvSourceKind=0.0
+ var mkvFailureMessage:String? {
+  #if VISTA_VLC_CANDIDATE
+  if let vlcFailure{return vlcFailure}
+  #endif
+  return mkvDiagnostics?.fatalMessage
+ }
+ #endif
  private var player:AVPlayer?
  private var item:AVPlayerItem?
  private var asset:AVURLAsset?
@@ -599,12 +618,32 @@ struct NativeVideoDeliveryDiagnostics {
  private var memoryPressureSource:(any DispatchSourceMemoryPressure)?
  private var memoryDiagnostics=PlaybackMemoryDiagnostics()
  private func updatePrefetchActivity() {
+  #if VISTA_VLC_CANDIDATE
+  if let vlcDriver {
+   let next=(allowed:vlcDriver.prefetchAllowed,reason:vlcDriver.prefetchInvalidation)
+   // UI and seek completion may report the same activity. Do not retire the
+   // source generation again unless the committed activity actually changed.
+   if let prefetchSource,vlcPrefetchActivity?.allowed != next.allowed || vlcPrefetchActivity?.reason != next.reason {
+    vlcPrefetchActivity=next;prefetchSource.setPrefetchEnabled(next.allowed,reason:next.reason)
+   }
+   return
+  }
+  #endif
+  #if VISTA_LOCAL_MKV_CANDIDATE
+  if let mkvDriver {prefetchSource?.setPrefetchEnabled(mkvDriver.prefetchAllowed,reason:mkvDriver.prefetchInvalidation);return}
+  #endif
   let enabled = active && prepared && sceneActive && !paused && !seeking
   let reason:PrefetchInvalidationReason = !active ? .playbackInactive : !sceneActive ? .sceneInactive : seeking ? .seek : paused ? .pause : !prepared ? .notReady : .disabled
   prefetchSource?.setPrefetchEnabled(enabled,reason:reason)
  }
  private var inactiveStallSuspension:Double?
  public func setPlaybackSceneActive(_ active:Bool){
+  #if VISTA_VLC_CANDIDATE
+  vlcDriver?.setSceneActive(active)
+  #endif
+  #if VISTA_LOCAL_MKV_CANDIDATE
+  mkvDriver?.setSceneActive(active)
+  #endif
   if sceneActive != active {interruptIntent(4);if !active {abortWait(.inactive);interruptAutomaticRecovery(.background)};stallProbe.interruptObservation();stallRecovery.resetProbeObservation();interruptBufferingWait();stallRecovery.observeElapsed(now:ProcessInfo.processInfo.systemUptime,eligible:false)}
   sceneActive=active;updatePrefetchActivity()
  }
@@ -686,6 +725,28 @@ struct NativeVideoDeliveryDiagnostics {
  private(set) var requestMetrics=NativeRequestMetrics()
  public init(stallLimit:Double=15,muted:Bool=false,waitPolicy:NativePlaybackWaitPolicy = .resourceLoaderControlled) {self.stallLimit=max(0.1,stallLimit);self.muted=muted;self.waitPolicy=waitPolicy}
  public func anonymousLogValues()->[PlaybackLogField:Double] {
+  #if VISTA_VLC_CANDIDATE
+  if let vlcDriver {
+   var values=vlcDriver.logValues
+   values.merge(memoryDiagnostics.lowFrequencyValues(now:ProcessInfo.processInfo.systemUptime)){_,new in new}
+   appendRawCacheMetrics(to:&values);return values
+  }
+  if var values=vlcFinalLogValues {
+   // Keep terminal measurements frozen, but do not label a later read as fresh.
+   values[.memorySampleAgeMS]=memoryDiagnostics.sampleAgeMS(now:ProcessInfo.processInfo.systemUptime)
+   return values
+  }
+  #endif
+  #if VISTA_LOCAL_MKV_CANDIDATE
+  if let diagnostics=mkvDriver?.diagnostics ?? mkvDiagnostics {
+   // The native MP4 counters are not observations of the MKV driver.
+   var values=Dictionary(uniqueKeysWithValues:diagnostics.values.compactMap {key,value in PlaybackLogField(rawValue:key).map{($0,value)}})
+   values[.mkvSourceKind]=mkvSourceKind
+   values.merge(memoryDiagnostics.values(sampling:.current())){_,new in new}
+   appendRawCacheMetrics(to:&values)
+   return values
+  }
+  #endif
   if let terminalLogValues {return terminalLogValues}
   let now=ProcessInfo.processInfo.systemUptime
   let speed=speedStatus
@@ -725,6 +786,17 @@ struct NativeVideoDeliveryDiagnostics {
    v[.currentDemandChunkBytes]=Double(b.demandChunkLimit)
    v[.deliveredBytes]=Double(b.deliveredBytes)
   }
+  appendRawCacheMetrics(to:&v)
+  for (stage,at,reads,bytes) in [(m.seekSnapshot,PlaybackLogField.seekMS,PlaybackLogField.seekReads,PlaybackLogField.seekBytes),(m.firstSnapshot,PlaybackLogField.firstFrameMS,PlaybackLogField.firstReads,PlaybackLogField.firstBytes),(m.presentationSnapshot,PlaybackLogField.presentMS,PlaybackLogField.presentReads,PlaybackLogField.presentBytes)] {
+   if let stage {v[at]=max(0,stage.at-m.started)*1000;v[reads]=Double(stage.reads);v[bytes]=Double(stage.bytes)}
+  }
+  #if VISTA_ANON_IO_EXPERIMENT
+  let io=anonymousIO.snapshot()
+  v[.ioStarted]=Double(io.started);v[.ioFinished]=Double(io.finished);v[.ioCancelled]=Double(io.cancelled);v[.ioFailed]=Double(io.failed);v[.ioInFlight]=Double(io.inFlight);v[.ioPeak]=Double(io.peak);v[.ioOld]=Double(io.oldAtStart);v[.ioOldRemaining]=Double(io.oldRemaining);v[.ioOldMS]=io.lastOldMS;v[.ioMaxMS]=io.maxTotalMS
+  #endif
+  return v
+ }
+ private func appendRawCacheMetrics(to v:inout [PlaybackLogField:Double]) {
   if let p=prefetchSource?.metrics ?? finalPrefetchMetrics {
    v[.prefetchHitBytes]=Double(p.hitBytes);v[.prefetchJoinedBytes]=Double(p.joinedBytes);v[.prefetchMissBytes]=Double(p.missBytes)
    v[.prefetchReadBytes]=Double(p.speculativeBytes);v[.prefetchDiscardedBytes]=Double(p.discardedBytes)
@@ -740,23 +812,39 @@ struct NativeVideoDeliveryDiagnostics {
    v[.cacheMetadataAllocatedBytes]=Double(p.cacheMetadataAllocatedBytes);v[.cacheMetadataPeakAllocatedBytes]=Double(p.maxCacheMetadataAllocatedBytes)
    v[.prefetchWaitCount]=Double(p.speculativeWaitCount);v[.prefetchWaitMS]=p.speculativeWaitSeconds*1000
   }
-  for (stage,at,reads,bytes) in [(m.seekSnapshot,PlaybackLogField.seekMS,PlaybackLogField.seekReads,PlaybackLogField.seekBytes),(m.firstSnapshot,PlaybackLogField.firstFrameMS,PlaybackLogField.firstReads,PlaybackLogField.firstBytes),(m.presentationSnapshot,PlaybackLogField.presentMS,PlaybackLogField.presentReads,PlaybackLogField.presentBytes)] {
-   if let stage {v[at]=max(0,stage.at-m.started)*1000;v[reads]=Double(stage.reads);v[bytes]=Double(stage.bytes)}
-  }
-  #if VISTA_ANON_IO_EXPERIMENT
-  let io=anonymousIO.snapshot()
-  v[.ioStarted]=Double(io.started);v[.ioFinished]=Double(io.finished);v[.ioCancelled]=Double(io.cancelled);v[.ioFailed]=Double(io.failed);v[.ioInFlight]=Double(io.inFlight);v[.ioPeak]=Double(io.peak);v[.ioOld]=Double(io.oldAtStart);v[.ioOldRemaining]=Double(io.oldRemaining);v[.ioOldMS]=io.lastOldMS;v[.ioMaxMS]=io.maxTotalMS
-  #endif
-  return v
  }
  public private(set) var selectedSpeed=1.0
  public var speedStatus:PlaybackSpeedStatus {
+  #if VISTA_VLC_CANDIDATE
+  if let vlcDriver{return vlcDriver.speedStatus}
+  #endif
+  #if VISTA_LOCAL_MKV_CANDIDATE
+  if let mkvDriver{return mkvDriver.speedStatus}
+  #endif
   let effectiveRate=item?.timebase.map {CMTimebaseGetEffectiveRate($0)} ?? 0
   return PlaybackSpeedStatus(selected:selectedSpeed,effectiveRate:effectiveRate,ready:active && item?.status == .readyToPlay,
    supportsFastForward:item?.canPlayFastForward ?? false,paused:paused,waiting:isWaitingForData)
  }
- public var isPlaybackPaused:Bool {paused}
+ // Presentation ownership only: never used by transport, clock gates, or speed policy.
+ private(set) var presentedSeekID:UUID?
+ var seekSourceEpoch:UInt64? {prefetchSource?.diagnosticObservedEpoch}
+ var onSeekSourceEpoch:((UInt64?)->Void)?
+ public var isPlaybackPaused:Bool {
+  #if VISTA_VLC_CANDIDATE
+  if let vlcDriver{return vlcDriver.paused}
+  #endif
+  #if VISTA_LOCAL_MKV_CANDIDATE
+  if let mkvDriver{return mkvDriver.paused}
+  #endif
+  return paused
+ }
  @discardableResult public func setSpeed(_ requested:Double)->Bool {
+  #if VISTA_VLC_CANDIDATE
+  if let vlcDriver{return vlcDriver.setSpeed(requested)}
+  #endif
+  #if VISTA_LOCAL_MKV_CANDIDATE
+  if let mkvDriver{let accepted=mkvDriver.setSpeed(requested);if accepted{selectedSpeed=requested};return accepted}
+  #endif
   guard active,let player,speedStatus.accepts(requested) else{return false}
   let before=probeSnapshot()
   acceptIntentCommand(.manual)
@@ -824,15 +912,37 @@ struct NativeVideoDeliveryDiagnostics {
   PlaybackLogStore.shared.enqueue(PlaybackLogRecord(automaticSpeed:decision,session:waitSession,previous:previous,
    before:before,after:after,setterBranch:before == nil ? nil:setterBranch))
  }
- public func pause(userInitiated:Bool=true){interruptIntent(userInitiated ? 2:4);finishStallProbe(.pause);interruptAutomaticRecovery(.pause);abortWait(.pause);interruptBufferingWait();paused=true;stallRecovery.interrupt(userInitiated:userInitiated);updatePrefetchActivity();player?.pause()}
+ public func pause(userInitiated:Bool=true){
+  #if VISTA_VLC_CANDIDATE
+  if let vlcDriver{vlcDriver.pause();updatePrefetchActivity();return}
+  #endif
+  #if VISTA_LOCAL_MKV_CANDIDATE
+  if let mkvDriver{mkvDriver.pause();return}
+  #endif
+ interruptIntent(userInitiated ? 2:4);finishStallProbe(.pause);interruptAutomaticRecovery(.pause);abortWait(.pause);interruptBufferingWait();paused=true;stallRecovery.interrupt(userInitiated:userInitiated);updatePrefetchActivity();player?.pause()}
  public func resume(){
+  #if VISTA_VLC_CANDIDATE
+  if let vlcDriver{vlcDriver.resume();updatePrefetchActivity();return}
+  #endif
+  #if VISTA_LOCAL_MKV_CANDIDATE
+  if let mkvDriver{mkvDriver.resume();return}
+  #endif
   let before=probeSnapshot()
   interruptIntent(3);acceptIntentCommand(.resume);finishStallProbe(.superseded);interruptAutomaticRecovery(.manualRate)
   abortWait(.userResume);interruptBufferingWait();paused=false;stallRecovery.interrupt(userInitiated:true)
   lastProgress=ProcessInfo.processInfo.systemUptime;updatePrefetchActivity()
   if !seeking {player?.play()};emitIntent(.command,before:before,issued:!seeking && player != nil)
  }
- public func seek(to target:Double,maximumBackward:Double=1,maximumForward:Double=0)async throws {
+ public func seek(to target:Double,maximumBackward:Double=1,maximumForward:Double=0,presentationID:UUID?=nil)async throws {
+  #if VISTA_VLC_CANDIDATE
+  if let vlcDriver{
+   // VLC's serialized gate publishes only the latest accepted request's first frame.
+   presentedSeekID=presentationID;try await vlcDriver.seek(to:target);return
+  }
+  #endif
+  #if VISTA_LOCAL_MKV_CANDIDATE
+  if let mkvDriver{try await mkvDriver.seek(to:target);presentedSeekID=presentationID;return}
+  #endif
   guard target.isFinite,target>=0,let player,let item,active else{throw Failure.unsupported}
   let ranges=item.loadedTimeRanges.map(\.timeRangeValue).compactMap { range -> Range<Double>? in
    let start=range.start.seconds,end=CMTimeRangeGetEnd(range).seconds
@@ -858,7 +968,7 @@ struct NativeVideoDeliveryDiagnostics {
   #if VISTA_ANON_IO_EXPERIMENT
   anonymousStages["seek"]=anonymousIO.snapshot()
   #endif
-  frameSession=UUID()
+  frameSession=UUID();presentedSeekID=presentationID
   updatePrefetchActivity()
   let commandBefore=probeSnapshot();acceptIntentCommand(.seek)
   if !paused {player.play()};emitIntent(.command,before:commandBefore,issued:!paused)
@@ -877,6 +987,13 @@ struct NativeVideoDeliveryDiagnostics {
   #endif
  }
  public func stop(){
+  presentedSeekID=nil
+  #if VISTA_VLC_CANDIDATE
+  vlcDriver?.stop()
+  #endif
+  #if VISTA_LOCAL_MKV_CANDIDATE
+  mkvDriver?.stop()
+  #endif
   emitHypothesis(final:true)
   interruptIntent(8);emitIntent(.summary)
   finishStallProbe(.stop);finishStallProbeSession()
@@ -900,6 +1017,7 @@ struct NativeVideoDeliveryDiagnostics {
   let now=ProcessInfo.processInfo.systemUptime
   // Fence before any buffered resume or delivered-frame proof in this loop.
   // A recovery entirely between callbacks must not join old/new source PTS.
+  onSeekSourceEpoch?(seekSourceEpoch)
   if recoveryPlaybackProgress.observeSourceEpoch(prefetchSource?.diagnosticObservedEpoch) {
    interruptIntent(6);finishStallProbe(.sourceEpoch);stallRecovery.invalidateProbeSource()
   }
@@ -940,7 +1058,118 @@ struct NativeVideoDeliveryDiagnostics {
   onFrame:@escaping @MainActor (DecodedVideoFrame)->Void,
   onSpeed:@escaping @MainActor (PlaybackSpeedStatus)->Void = {_ in})async throws {
   guard !running else{throw Failure.unsupported}
+  presentedSeekID=nil
   let ext=(file.components.last! as NSString).pathExtension.lowercased()
+  // VLC/MKV exits before the native MP4 cleanup setup below. Install one
+  // compact terminal summary for those routes, with no per-read/snapshot fields.
+  if let cache=source as? PlaybackPrefetchSource {
+   cache.cleanupDiagnosticSink = { metrics,succeeded in
+    var values=metrics.directCacheReplyLogValues
+    values[.pfTraceSession]=Double(metrics.diagnostics.sessionID)
+    values[.pfTraceReason]=Double((succeeded ? PrefetchDiagnosticReason.cleanupSucceeded : .cleanupFailed).rawValue)
+    PlaybackLogStore.shared.enqueue(PlaybackLogRecord(event:.prefetchSummary,values:values))
+   }
+  }
+  #if VISTA_VLC_CANDIDATE
+  if ext == "mkv" {
+   vlcFailure=nil;vlcFinalLogValues=nil;running=true
+   _ = NativeSupplementalVideoDecoders.vp9RegistrationRequested
+   memoryDiagnostics=PlaybackMemoryDiagnostics();finalPrefetchMetrics=nil
+   prefetchSource=source as? PlaybackPrefetchSource;recoverySource=source as? any PlaybackRecoveryControlling
+   defer {
+    if var values=vlcDriver?.logValues {
+     values.merge(memoryDiagnostics.lowFrequencyValues(now:ProcessInfo.processInfo.systemUptime,forceSample:true)){_,new in new}
+     appendRawCacheMetrics(to:&values);vlcFinalLogValues=values
+    }
+    running=false;vlcDriver=nil
+    memoryPressureSource?.setEventHandler {};memoryPressureSource?.cancel();memoryPressureSource=nil
+    if let cache=prefetchSource{finalPrefetchMetrics=cache.metrics};prefetchSource=nil;recoverySource=nil
+   }
+   do {
+    let owner:any SourceOperationOwner
+    if let local=source as? LocalDirectoryProvider{owner=try await local.openMKVOperationSource(for:file)}
+    else if let cache=prefetchSource {
+     cache.setPrefetchEnabled(false,reason:.notReady)
+     owner=try await SMBOperationSource.create(file:file,playbackID:UUID(),cache:cache,journal:AdapterJournal(),vlcReadAheadEnabled:true)
+     let pressure=DispatchSource.makeMemoryPressureSource(eventMask:[.warning,.critical],queue:.main)
+     pressure.setEventHandler { [weak self,weak pressure,weak cache] in
+      guard let pressure else{return};let flags=pressure.data
+      Task { @MainActor in
+       if let self,self.memoryPressureSource === pressure {self.memoryDiagnostics.recordPressure(warning:flags.contains(.warning),critical:flags.contains(.critical))}
+       cache?.handleMemoryPressure()
+      }
+     }
+     memoryDiagnostics.pressureMonitored=true;memoryPressureSource=pressure;pressure.resume()
+    }else{throw VLCPlaybackError.source}
+    let driver=VLCPlaybackDriver();vlcDriver=driver;vlcPrefetchActivity=nil
+    driver.clearPresentation=clearVLCPresentation;driver.drainPresentation=drainVLCPresentation
+    driver.onPrefetchActivityChanged={ [weak self] in self?.updatePrefetchActivity() }
+    driver.seekSourceSnapshot={ [weak self] in self?.prefetchSource?.seekDiagnosticSnapshot() }
+    driver.sourceState={ [weak self] in
+     let epoch=self?.seekSourceEpoch
+     self?.onSeekSourceEpoch?(epoch)
+     return (epoch:epoch,recovering:self?.recoverySource?.isPlaybackRecovering ?? false)
+    }
+    driver.setSceneActive(sceneActive)
+    try await driver.play(owner:owner,startAt:startAt,startPaused:startPaused,onInfo:onInfo,onState:{[weak self] state in
+     self?.updatePrefetchActivity();onState(state)
+    },onFrame:{[weak self] frame in self?.diagnosticsText=driver.diagnosticsText;onFrame(frame)},onSpeed:onSpeed)
+   }catch{
+    if !(error is CancellationError){vlcFailure=(error as? VLCPlaybackError)?.localizedDescription ?? VLCPlaybackError.source.localizedDescription}
+    throw error
+   }
+   return
+  }
+  #endif
+  #if VISTA_LOCAL_MKV_CANDIDATE
+  if ext == "mkv" {
+   mkvDiagnostics=MKVDiagnostics()
+   do {
+    guard #available(visionOS 26.2, *) else{throw MKVPlaybackError.failure("此 MKV 路徑需要 visionOS 26.2 或更新版本。")}
+    guard source is LocalDirectoryProvider || source is PlaybackPrefetchSource else{throw MKVPlaybackError.failure("此 MKV 來源尚未支援。")}
+    _ = NativeSupplementalVideoDecoders.vp9RegistrationRequested
+    mkvDiagnostics?.enter(.sourceOpen)
+    memoryDiagnostics=PlaybackMemoryDiagnostics();finalPrefetchMetrics=nil
+    prefetchSource=source as? PlaybackPrefetchSource
+    recoverySource=source as? any PlaybackRecoveryControlling
+    mkvSourceKind=prefetchSource == nil ? 1:2
+    let owner:any SourceOperationOwner
+    if let local=source as? LocalDirectoryProvider {
+     owner=try await local.openMKVOperationSource(for:file)
+    } else if let cache=prefetchSource {
+     cache.setPrefetchEnabled(sceneActive && !startPaused,reason:!sceneActive ? .sceneInactive : startPaused ? .pause:.disabled)
+     owner=try await SMBOperationSource.create(file:file,playbackID:UUID(),cache:cache,journal:AdapterJournal())
+     let pressure=DispatchSource.makeMemoryPressureSource(eventMask:[.warning,.critical],queue:.main)
+     pressure.setEventHandler { [weak self,weak pressure,weak cache] in
+      guard let pressure else{return};let flags=pressure.data
+      Task { @MainActor in
+       if let self,self.memoryPressureSource === pressure {self.memoryDiagnostics.recordPressure(warning:flags.contains(.warning),critical:flags.contains(.critical))}
+       cache?.handleMemoryPressure()
+      }
+     }
+     memoryDiagnostics.pressureMonitored=true;memoryPressureSource=pressure;pressure.resume()
+    } else {throw MKVPlaybackError.failure("此 MKV 來源尚未支援。")}
+    let driver=MKVPlaybackDriver();mkvDriver=driver;running=true
+    let observationSource=mkvSourceKind
+    driver.onObservation = { fields in
+     var fields=fields;fields["mkvSourceKind"]=observationSource
+     let mapped=fields.compactMap { key,value -> (PlaybackLogField,Double)? in PlaybackLogField(rawValue:key).map{($0,value)} }
+     PlaybackLogStore.shared.enqueue(PlaybackLogRecord(event:.mkvObservation,values:Dictionary(uniqueKeysWithValues:mapped)))
+    }
+    driver.setSceneActive(sceneActive)
+    defer {
+     mkvDiagnostics=driver.diagnostics;mkvDriver=nil;running=false
+     memoryPressureSource?.setEventHandler {};memoryPressureSource?.cancel();memoryPressureSource=nil
+     if let cache=prefetchSource {finalPrefetchMetrics=cache.metrics};prefetchSource=nil;recoverySource=nil
+    }
+    do {
+     try await driver.play(source:MKVLocalEngineSource(owner:owner),startAt:startAt,startPaused:startPaused,onInfo:onInfo,onState:{[weak self] state in self?.updatePrefetchActivity();onState(state)},onFrame:{[weak self] frame in self?.diagnosticsText=driver.diagnosticsText;onFrame(frame)},onSpeed:onSpeed)
+    } catch {driver.captureFailure(error);throw error}
+   } catch {mkvDiagnostics?.fail(error);throw error}
+   return
+  }
+  mkvDiagnostics=nil
+  #endif
   guard ["mp4","m4v","mov"].contains(ext) else{throw Failure.unsupported}
   automaticRecovery=PlaybackAutomaticRecoveryDiagnostics();automaticRecoverySourceEpoch=nil
   stallProbe=PlaybackStallProbeDiagnostics();latestOutput=OutputObservation()
@@ -961,6 +1190,7 @@ struct NativeVideoDeliveryDiagnostics {
    prefetchSource.diagnosticSink = { record in PlaybackLogStore.shared.enqueue(PlaybackLogRecord(prefetch:record)) }
    prefetchSource.cleanupDiagnosticSink = { [counters=waitCounters] metrics,succeeded in
     var values=metrics.diagnostics.playbackLogValues
+    values.merge(metrics.directCacheReplyLogValues){_,new in new}
     // This play's four numeric values outlive Native session teardown/reuse.
     // Source cleanup order is unchanged, and no player/session is retained here.
     values.merge(counters.values){_,new in new}

@@ -29,10 +29,10 @@ import Testing
         #expect(source.metrics.historyBytes == 160 * mib && source.metrics.storageAllocatedBytes == 160 * mib)
     }
 
-    @Test func productionDefaultsOnlyExpandSharedCapacity() {
+    @Test func productionDefaultsKeepSharedCapacityAndUseWatermarks() {
         let config = PlaybackPrefetchSource.Configuration()
         #expect(config.totalCapacityBytes == 160 * mib && config.historyCapacityBytes == 160 * mib)
-        #expect(config.capacityBytes == 4 * mib && config.chunkBytes == 2 * mib)
+        #expect(config.capacityBytes == 16 * mib && config.lowWatermarkBytes == 8 * mib && config.chunkBytes == 2 * mib)
         #expect(MediaReadPlan.maximumChunkBytes == UInt64(2 * mib))
         let baseline = PlaybackPrefetchSource.Configuration(totalCapacityBytes: 128 * mib)
         #expect(baseline.totalCapacityBytes == 128 * mib)
@@ -40,13 +40,15 @@ import Testing
         let legacy = PlaybackPrefetchSource.Configuration(capacityBytes: 4 * mib, chunkBytes: 2 * mib,
             historyCapacityBytes: 156 * mib)
         #expect(legacy.totalCapacityBytes == config.totalCapacityBytes && legacy.historyCapacityBytes == 156 * mib)
-        #expect(legacy.capacityBytes == config.capacityBytes && legacy.chunkBytes == config.chunkBytes)
+        #expect(legacy.capacityBytes == 4 * mib && legacy.chunkBytes == config.chunkBytes)
     }
 
     /// Run alone in a fresh process when comparing its physical footprint with the
     /// explicit 128 MiB baseline. Normal suite execution is correctness evidence only.
     @Test func fullOneSixtyMiBHistoryWrapsAndRetainsBeyondOneTwentyEightMiB() async throws {
-        let base = Source(), source = PlaybackPrefetchSource(file: file, source: base)
+        // Preserve this legacy two-prefetch physical-wrap fixture; 129 watermarks have separate coverage.
+        let base = Source(), source = PlaybackPrefetchSource(file: file, source: base,
+            configuration: .init(capacityBytes: 4 * mib))
         var observations: [[String: Any]] = []
         func observe(_ stage: String) {
             let m = source.metrics

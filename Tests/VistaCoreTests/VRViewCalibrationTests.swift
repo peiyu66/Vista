@@ -244,14 +244,16 @@ struct ControllerFrontReferenceTests {
  }
 }
 struct ControllerHeightIsolationTests {
- @Test func legacyHeightAndHorizontalOrbitAreIndependent()throws {
+ @Test func sampledViewerHeightAndHorizontalOrbitAreIndependent()throws {
   for yaw:Double in [-120,0,80] {for pitch:Double in [-45,0,70,90] {for roll:Double in [-90,0,90] {
    let q=VRInitialPose.manualRotation(yaw:yaw,pitch:pitch,roll:roll)
    var m=simd_float4x4(q);m.columns.3=SIMD4<Float>(0.1,1.6,-0.2,1)
    let entry=try #require(VRInitialPose(matrix:m)),ref=try #require(VRControllerReference.pose(entry:entry))
-   let old=entry.position+entry.orientation.act(VRControllerPlacement.legacyHeightOrigin)
+   let elevated=VRInitialViewCompensation.pitchDegrees(for:entry)>0
+   let expectedElevation=min(45,max(22,pitch-8)) * .pi/180
+   let expectedY=elevated ? entry.position.y+sqrt(hypot(VRControllerPlacement.originalOrigin.x,VRControllerPlacement.originalOrigin.z)*hypot(VRControllerPlacement.originalOrigin.x,VRControllerPlacement.originalOrigin.z)+0.12*0.12)*Float(sin(expectedElevation))*VRControllerPlacement.distanceScale : entry.position.y-0.05
    let restored=ref.position+ref.orientation.act(VRControllerPlacement.origin)
-   #expect(abs(old.y-restored.y)<0.0001)
+   #expect(abs(expectedY-restored.y)<0.0001)
    for angle:Float in [-175,0,175] {
     let r=angle * .pi/180;let point=SIMD3<Float>(1.6*sin(r),VRControllerPlacement.origin.y,-1.6*cos(r))
     let world=ref.position+ref.orientation.act(point)
@@ -273,12 +275,12 @@ struct VideoFrontControllerTests {
     let pose=try #require(VRControllerReference.pose(entry:entry,horizontal:rotation))
     let forward=pose.orientation.act(SIMD3<Float>(0,0,-1))
     #expect(simd_length(forward-rotation.act([0,0,-1]))<0.001)
-    let oldY=(entry.position+entry.orientation.act(VRControllerPlacement.legacyHeightOrigin)).y
+    let oldY=entry.position.y+(VRInitialViewCompensation.pitchDegrees(for:entry)>0 ? Float(0.12): -0.075)
     for angle:Float in [-175,0,175] {
      let rad=angle * .pi/180,point=SIMD3<Float>(1.5*sin(rad),VRControllerPlacement.origin.y,-1.5*cos(rad))
      let offset=VRControllerPlacement.constrained(point-VRControllerPlacement.origin)
      let world=pose.position+pose.orientation.act(VRControllerPlacement.origin+offset)
-     #expect(abs(world.y-oldY)<0.001)
+     #expect(abs(world.y-(entry.position.y+(oldY-entry.position.y)*VRControllerPlacement.distanceScale))<0.001)
      let local=rotation.inverse.act(world-pose.position)
      #expect(abs(atan2(local.x,-local.z)-rad)<0.001)
     }
@@ -388,7 +390,7 @@ struct ControllerContinuityTests {
         #expect(await source.calls == 3)
     }
 
-    @Test func manualRecenterKeepsPreviousBasisOnFailureAndHasNoExtraOffsetOnSuccess() async {
+    @Test func manualRecenterKeepsPreviousBasisOnFailureAndReevaluatesCompensationOnSuccess() async {
         let calibration = VRViewCalibration(), source = PoseSource(pose(pitch: .pi / 3))
         #expect(await calibration.capture(using: source))
         let oldVideo = videoOrientation(calibration).vector
@@ -401,8 +403,9 @@ struct ControllerContinuityTests {
         await source.change(recentered)
         calibration.requestRecenter()
         #expect(await calibration.capture(using: source))
-        #expect(calibration.automaticPitchDegrees == 0)
-        #expect(simd_distance(videoOrientation(calibration).act([0, 0, -1]), recentered.orientation.act([0, 0, -1])) < 0.00001)
+        #expect(calibration.automaticPitchDegrees == 15)
+        let expected=recentered.orientation * VRInitialPose.manualRotation(yaw:0,pitch:15,roll:0)
+        #expect(simd_distance(videoOrientation(calibration).act([0, 0, -1]), expected.act([0, 0, -1])) < 0.00001)
     }
 
     @Test func staleAcquisitionCannotAddCompensationToAnotherFile() async {
@@ -493,3 +496,36 @@ struct ControllerContinuityTests {
         #expect(calibration.pose == nil && calibration.status == .unavailable)
     }
 }
+
+@MainActor struct VRIndependentResetTests {
+    @Test func videoRecenterAfterInitialFailureDoesNotInitializeController() async {
+        let c=VRViewCalibration()
+        #expect(!(await c.capture(using:PoseSource(nil))))
+        c.requestRecenter();#expect(await c.capture(using:PoseSource(pose(pitch:.pi/3))))
+        #expect(c.controllerPose==nil && c.automaticPitchDegrees==15)
+    }
+    @Test func controllerResetUsesFreshPostureWithoutChangingVideo() async {
+        let c=VRViewCalibration()
+        #expect(await c.capture(using:PoseSource(pose(pitch:.pi/3))))
+        let video=c.pose!.resetTestMatrix,generation=c.directionGeneration
+        for pitch:Float in [0,.pi/4,-.pi/4,0] {
+            let sample=pose(yaw:-1,pitch:pitch,position:[2,0.6,-3]).withSampleTiming(.init(queryStarted:99.999,queryFinished:100))
+            #expect(c.acceptControllerReset(sample,at:100.1))
+            #expect(c.controllerPose!.resetTestMatrix==sample.resetTestMatrix)
+            #expect((c.initialControllerTiltDegrees>0) == (pitch>=Float.pi/6))
+            #expect(c.pose!.resetTestMatrix==video && c.directionGeneration==generation && c.automaticPitchDegrees==15)
+        }
+        let controller=c.controllerPose!.resetTestMatrix,revision=c.controllerRevision
+        for sample in [nil,pose(),pose().withSampleTiming(.init(queryStarted:98,queryFinished:99))] {
+            #expect(!c.acceptControllerReset(sample,at:100.1))
+            #expect(c.controllerPose!.resetTestMatrix==controller && c.controllerRevision==revision)
+        }
+        for pitch:Float in [0,.pi/3,0] {
+            c.requestRecenter();#expect(await c.capture(using:PoseSource(pose(pitch:pitch))))
+            #expect(c.automaticPitchDegrees==(pitch>=Float.pi/6 ? 15:0))
+            #expect(c.controllerPose!.resetTestMatrix==controller && c.controllerRevision==revision)
+        }
+    }
+}
+
+private extension VRInitialPose {var resetTestMatrix:simd_float4x4 {var m=simd_float4x4(orientation);m.columns.3=SIMD4(position,1);return m}}

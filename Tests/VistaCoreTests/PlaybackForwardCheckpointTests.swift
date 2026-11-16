@@ -248,8 +248,8 @@ import Testing
     }
     @Test func confirmedSixBackreadsAfterCancellationPrefix() async throws {
         let m: UInt64 = 1_048_576, b = Source()
-        // Preserve the original 32 MiB checkpoint replay independently of production defaults.
-        let s = PlaybackPrefetchSource(file:file,source:b,configuration:.init(totalCapacityBytes:32*1_048_576))
+        // Preserve the original 32 MiB checkpoint replay and legacy 4 MiB forward window.
+        let s = PlaybackPrefetchSource(file:file,source:b,configuration:.init(capacityBytes:4*1_048_576,totalCapacityBytes:32*1_048_576))
         _ = try await s.fileSize(for:file); s.setPrefetchEnabled(false,reason:.pause)
         for i in 0..<10 { try await read(s,b,UInt64(i)*2*m..<UInt64(i+1)*2*m) }
         try await read(s,b,16842752..<16908288) // request25

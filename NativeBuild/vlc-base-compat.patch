@@ -1,0 +1,2664 @@
+--- /dev/null
++++ b/contrib/src/ffmpeg/avcodec-enable-audiotoolbox-ac3.patch
+@@ -0,0 +1,20 @@
++Only in ffmpeg: .DS_Store
++diff -ru ffmpeg/libavcodec/audiotoolboxdec.c ffmpeg-fix/libavcodec/audiotoolboxdec.c
++--- ffmpeg/libavcodec/audiotoolboxdec.c	2016-05-09 11:44:29.000000000 +0200
+++++ ffmpeg-fix/libavcodec/audiotoolboxdec.c	2016-05-09 14:01:04.000000000 +0200
++@@ -345,7 +345,6 @@
++         avctx->bit_rate = bit_rate;
++         in_format.mSampleRate = avctx->sample_rate;
++ #endif
++-#if CONFIG_AC3_AT_DECODER || CONFIG_EAC3_AT_DECODER
++     } else if (pkt && pkt->size >= 7 &&
++                (avctx->codec_id == AV_CODEC_ID_AC3 ||
++                 avctx->codec_id == AV_CODEC_ID_EAC3)) {
++@@ -358,7 +357,6 @@
++         in_format.mChannelsPerFrame = hdr.channels;
++         avctx->frame_size = hdr.num_blocks * 256;
++         avctx->bit_rate = hdr.bit_rate;
++-#endif
++     } else {
++         in_format.mSampleRate = avctx->sample_rate ? avctx->sample_rate : 44100;
++         in_format.mChannelsPerFrame = avctx->channels ? avctx->channels : 1;
+--- a/contrib/src/ffmpeg/rules.mak
++++ b/contrib/src/ffmpeg/rules.mak
+@@ -43,6 +43,12 @@
+ ifdef HAVE_DARWIN_OS
+ FFMPEGCONF += \
+ 	--disable-securetransport
++ifdef HAVE_IOS
++FFMPEGCONF += \
++	--disable-decoder=mlp \
++	--disable-demuxer=mlp \
++	--disable-parser=mlp
++endif
+ endif
+ 
+ ifdef ENABLE_PDB
+@@ -155,6 +161,8 @@
+ FFMPEGCONF += --enable-demuxer='aac,ac3,adts,aiff,ape,asf,au,avi,caf,daud,dirac,dts,dv,ea,flac,flv,gsm,ivf,matroska,mmf,mov,mp3,mpeg,ogg,pcm,rm,sbc,sdp,shorten,voc,w64,wav,wv'
+ FFMPEGCONF += --enable-swresample
+ endif
++else
++FFMPEGCONF += --enable-pic --extra-ldflags="$(EXTRA_CFLAGS) -isysroot $(MACOSX_SDK)"
+ endif
+ endif
+ 
+@@ -246,6 +254,7 @@
+ 	$(APPLY) $(SRC)/ffmpeg/0011-avcodec-videotoolboxenc-disable-calls-on-unsupported.patch
+ 	$(APPLY) $(SRC)/ffmpeg/avcodec-fix-compilation-visionos.patch
+ 	$(APPLY) $(SRC)/ffmpeg/0009-swscale-x86-use-HOSTCPPFLAGS-instead-of-CPPFLAGS-for.patch
++	$(APPLY) $(SRC)/ffmpeg/avcodec-enable-audiotoolbox-ac3.patch
+ 	$(MOVE)
+ 
+ .ffmpeg: ffmpeg
+--- /dev/null
++++ b/contrib/src/live555/DISABLE_LOOPBACK_IP_ADDRESS_CHECK.patch
+@@ -0,0 +1,19 @@
++--- live.orig/groupsock/GroupsockHelper.cpp	2016-11-28 22:42:18.000000000 +0100
+++++ live/groupsock/GroupsockHelper.cpp	2021-02-09 10:27:15.669908139 +0100
++@@ -616,7 +616,7 @@
++     // that other nodes will think our address is the same as we do.)
++     do {
++       loopbackWorks = 0; // until we learn otherwise
++-
+++#ifndef DISABLE_LOOPBACK_IP_ADDRESS_CHECK
++       testAddr.s_addr = our_inet_addr("228.67.43.91"); // arbitrary
++       Port testPort(15947); // ditto
++ 
++@@ -653,6 +653,7 @@
++ 
++       // We use this packet's source address, if it's good:
++       loopbackWorks = !badAddressForUs(fromAddr.sin_addr.s_addr);
+++#endif
++     } while (0);
++ 
++     if (sock >= 0) {
+--- a/contrib/src/live555/SHA512SUMS
++++ b/contrib/src/live555/SHA512SUMS
+@@ -1 +1 @@
+-31b325f406c651e9008367c90937a1dc555588f76a0aaa820edb62ccfed3bb9f46d42fae4fe62f8812c7f25d0a3eeb13a8267b84130dfee7a25ab74f5d94c57a  live.2026.06.24.tar.gz
++10846fd6d5482bbea131ae805137077997e9dec242665e3c01d699d5584154c65049e8c520ea855599e554154a148e61fea77b592d97c814a4a98c773658d8f5  live.2016.10.21.tar.gz
+\ No newline at end of file
+--- a/contrib/src/live555/add-pkgconfig-file.patch
++++ b/contrib/src/live555/add-pkgconfig-file.patch
+@@ -11,7 +11,7 @@
+ -install:
+ +install_shared_libraries:
+ +	install -d $(DESTDIR)$(LIBDIR)/pkgconfig
+-+	sed "s#@PREFIX@#$(PREFIX)#;s#@VERSION@#$(VERSION)#" live555.pc.in > $(DESTDIR)$(LIBDIR)/pkgconfig/live555.pc
+++	sed "s#@PREFIX@#$(PREFIX)#;s#@LIBDIR@#$(LIBDIR)#;s#@VERSION@#$(VERSION)#" live555.pc.in > $(DESTDIR)$(LIBDIR)/pkgconfig/live555.pc
+ +	chmod 644 $(DESTDIR)$(LIBDIR)/pkgconfig/live555.pc
+ +
+ +install: $(INSTALL2)
+@@ -22,13 +22,13 @@
+ +++ live.2016.07.19/live555.pc.in	2017-01-19 18:46:01.456059400 +0100
+ @@ -0,0 +1,9 @@
+ +prefix=@PREFIX@
+-+libdir=${prefix}/lib
+++libdir=@LIBDIR@
+ +includedir=${prefix}/include
+ +
+ +Name: live555
+ +Description: multimedia RTSP streaming library
+ +Version: @VERSION@
+-+Cflags: -I${includedir}/liveMedia -I${includedir}/groupsock -I${includedir}/BasicUsageEnvironment -I${includedir}/UsageEnvironment -DNO_OPENSSL=1
+++Cflags: -I${includedir}/liveMedia -I${includedir}/groupsock -I${includedir}/BasicUsageEnvironment -I${includedir}/UsageEnvironment
+ +Libs: -L${libdir} -lliveMedia -lgroupsock -lBasicUsageEnvironment -lUsageEnvironment
+ --- live.2016.07.19/Makefile.head.orig	2017-01-19 18:47:50.376062631 +0100
+ +++ live.2016.07.19/Makefile.head	2017-01-19 18:48:09.940063212 +0100
+--- a/contrib/src/live555/android-no-ifaddrs.patch
++++ /dev/null
+@@ -1,13 +0,0 @@
+-diff -ur live.orig/groupsock/GroupsockHelper.cpp live/groupsock/GroupsockHelper.cpp
+---- live.orig/groupsock/GroupsockHelper.cpp	2022-07-20 18:02:26.691125894 +0000
+-+++ live/groupsock/GroupsockHelper.cpp	2022-07-20 22:23:47.755304434 +0000
+-@@ -42,6 +42,9 @@
+- #include <signal.h>
+- #define USE_SIGNALS 1
+- #endif
+-+#if (defined(__ANDROID__) && __ANDROID_API__ < 24)
+-+#define NO_GETIFADDRS
+-+#endif
+- #ifndef NO_GETIFADDRS
+- #include <ifaddrs.h>
+- #include <net/if.h>
+--- a/contrib/src/live555/expose_server_string.patch
++++ b/contrib/src/live555/expose_server_string.patch
+@@ -1,7 +1,7 @@
+ diff -Naur live555/liveMedia/include/RTSPClient.hh live555.modified/liveMedia/include/RTSPClient.hh
+---- live555/liveMedia/include/RTSPClient.hh	2022-06-16 11:14:03.000000000 +0000
+-+++ live555.modified/liveMedia/include/RTSPClient.hh	2022-07-16 11:36:23.642103174 +0000
+-@@ -39,6 +39,8 @@
++--- live555/liveMedia/include/RTSPClient.hh	2017-11-30 19:34:25.210638324 +0100
+++++ live555.modified/liveMedia/include/RTSPClient.hh	2017-11-30 19:32:06.322693792 +0100
++@@ -36,6 +36,8 @@
+  #endif
+  #endif
+  
+@@ -10,7 +10,7 @@
+  class RTSPClient: public Medium {
+  public:
+    static RTSPClient* createNew(UsageEnvironment& env, char const* rtspURL,
+-@@ -194,6 +196,7 @@
++@@ -186,6 +188,7 @@
+    unsigned sessionTimeoutParameter() const { return fSessionTimeoutParameter; }
+  
+    char const* url() const { return fBaseURL; }
+@@ -18,7 +18,7 @@
+  
+    static unsigned responseBufferSize;
+  
+-@@ -246,6 +249,7 @@
++@@ -238,6 +241,7 @@
+  
+    void reset();
+    void setBaseURL(char const* url);
+@@ -26,7 +26,7 @@
+    int grabSocket(); // allows a subclass to reuse our input socket, so that it won't get closed when we're deleted
+    virtual unsigned sendRequest(RequestRecord* request);
+    virtual Boolean setRequestFields(RequestRecord* request,
+-@@ -347,6 +351,7 @@
++@@ -334,6 +338,7 @@
+    unsigned fUserAgentHeaderStrLen;
+    int fInputSocketNum, fOutputSocketNum;
+    char* fBaseURL;
+@@ -35,26 +35,26 @@
+    char* fLastSessionId;
+    unsigned fSessionTimeoutParameter; // optionally set in response "Session:" headers
+ diff -Naur live555/liveMedia/RTSPClient.cpp live555.modified/liveMedia/RTSPClient.cpp
+---- live555/liveMedia/RTSPClient.cpp	2022-06-16 11:14:03.000000000 +0000
+-+++ live555.modified/liveMedia/RTSPClient.cpp	2022-07-16 11:43:31.446232524 +0000
+-@@ -397,7 +397,7 @@
+-     desiredMaxIncomingPacketSize(0), fVerbosityLevel(verbosityLevel), fCSeq(1),
+-     fAllowBasicAuthentication(True), fTunnelOverHTTPPortNum(tunnelOverHTTPPortNum),
++--- live555/liveMedia/RTSPClient.cpp	2017-11-30 19:34:25.210638324 +0100
+++++ live555.modified/liveMedia/RTSPClient.cpp	2017-11-30 19:28:18.691423659 +0100
++@@ -366,7 +366,7 @@
++     fAllowBasicAuthentication(True), fServerAddress(0),
++     fTunnelOverHTTPPortNum(tunnelOverHTTPPortNum),
+      fUserAgentHeaderStr(NULL), fUserAgentHeaderStrLen(0),
+ -    fInputSocketNum(-1), fOutputSocketNum(-1), fBaseURL(NULL), fTCPStreamIdCount(0),
+ +    fInputSocketNum(-1), fOutputSocketNum(-1), fBaseURL(NULL), fserverString(NULL), fTCPStreamIdCount(0),
+-     fLastSessionId(NULL), fSessionTimeoutParameter(0), fRequireStr(NULL),
+-     fSessionCookieCounter(0), fHTTPTunnelingConnectionIsPending(False),
+-     fTLS(*this), fPOSTSocketTLS(*this) {
+-@@ -451,6 +451,7 @@
+-   fRequestsAwaitingResponse.reset();
++     fLastSessionId(NULL), fSessionTimeoutParameter(0), fSessionCookieCounter(0), fHTTPTunnelingConnectionIsPending(False) {
++   setBaseURL(rtspURL);
++ 
++@@ -416,6 +416,7 @@
++   fServerAddress = 0;
+  
+    setBaseURL(NULL);
+ +  setServerString(NULL);
+  
+    fCurrentAuthenticator.reset();
+  
+-@@ -461,6 +462,10 @@
++@@ -426,6 +427,10 @@
+    delete[] fBaseURL; fBaseURL = strDup(url);
+  }
+  
+@@ -64,8 +64,8 @@
+ +
+  int RTSPClient::grabSocket() {
+    int inputSocket = fInputSocketNum;
+-   RTPInterface::clearServerRequestAlternativeByteHandler(envir(), fInputSocketNum); // in case we were receiving RTP-over-TCP
+-@@ -1770,6 +1775,7 @@
++   fInputSocketNum = -1;
++@@ -1655,6 +1660,7 @@
+      char const* rtpInfoParamsStr = NULL;
+      char const* wwwAuthenticateParamsStr = NULL;
+      char const* publicParamsStr = NULL;
+@@ -73,12 +73,12 @@
+      char* bodyStart = NULL;
+      unsigned numBodyBytes = 0;
+      responseSuccess = False;
+-@@ -1847,6 +1853,8 @@
+- // (see http://live555.com/liveMedia/faq.html#mailing-list-address for details),
+- 				  )) {
+- // to check whether your proposed modification is appropriate/correct,
+-+	} else if (checkForHeader(lineStart, "Server:", 7, serverStr)) {
+-+	  setServerString(serverStr);
+- 	} else if (checkForHeader(lineStart, "Range:",
+- // and, if so, whether instead it could be included in
+- 				  6,
++@@ -1725,6 +1731,8 @@
++ 	} else if (checkForHeader(lineStart, "Transport:", 10, transportParamsStr)) {
++ 	} else if (checkForHeader(lineStart, "Scale:", 6, scaleParamsStr)) {
++ 	} else if (checkForHeader(lineStart, "Speed:", 6, speedParamsStr)) {
+++    } else if (checkForHeader(lineStart, "Server:", 7, serverStr)) {
+++        setServerString(serverStr);
++ 	} else if (checkForHeader(lineStart, "Range:", 6, rangeParamsStr)) {
++ 	} else if (checkForHeader(lineStart, "RTP-Info:", 9, rtpInfoParamsStr)) {
++ 	} else if (checkForHeader(lineStart, "WWW-Authenticate:", 17, headerParamsStr)) {
+--- /dev/null
++++ b/contrib/src/live555/in_addr-s_addr-field.patch
+@@ -0,0 +1,42 @@
++diff --git a/groupsock/GroupsockHelper.cpp b/groupsock/GroupsockHelper.cpp
++index 0ba2aa5..c675275 100644
++--- a/groupsock/GroupsockHelper.cpp
+++++ b/groupsock/GroupsockHelper.cpp
++@@ -515,15 +515,9 @@ Boolean socketJoinGroupSSM(UsageEnvironment& env, int socket,
++   if (!IsMulticastAddress(groupAddress)) return True; // ignore this case
++ 
++   struct ip_mreq_source imr;
++-#ifdef __ANDROID__
++-    imr.imr_multiaddr = groupAddress;
++-    imr.imr_sourceaddr = sourceFilterAddr;
++-    imr.imr_interface = ReceivingInterfaceAddr;
++-#else
++-    imr.imr_multiaddr.s_addr = groupAddress;
++-    imr.imr_sourceaddr.s_addr = sourceFilterAddr;
++-    imr.imr_interface.s_addr = ReceivingInterfaceAddr;
++-#endif
+++  imr.imr_multiaddr.s_addr = groupAddress;
+++  imr.imr_sourceaddr.s_addr = sourceFilterAddr;
+++  imr.imr_interface.s_addr = ReceivingInterfaceAddr;
++   if (setsockopt(socket, IPPROTO_IP, IP_ADD_SOURCE_MEMBERSHIP,
++ 		 (const char*)&imr, sizeof (struct ip_mreq_source)) < 0) {
++     socketErr(env, "setsockopt(IP_ADD_SOURCE_MEMBERSHIP) error: ");
++@@ -541,15 +535,9 @@ Boolean socketLeaveGroupSSM(UsageEnvironment& /*env*/, int socket,
++   if (!IsMulticastAddress(groupAddress)) return True; // ignore this case
++ 
++   struct ip_mreq_source imr;
++-#ifdef __ANDROID__
++-    imr.imr_multiaddr = groupAddress;
++-    imr.imr_sourceaddr = sourceFilterAddr;
++-    imr.imr_interface = ReceivingInterfaceAddr;
++-#else
++-    imr.imr_multiaddr.s_addr = groupAddress;
++-    imr.imr_sourceaddr.s_addr = sourceFilterAddr;
++-    imr.imr_interface.s_addr = ReceivingInterfaceAddr;
++-#endif
+++  imr.imr_multiaddr.s_addr = groupAddress;
+++  imr.imr_sourceaddr.s_addr = sourceFilterAddr;
+++  imr.imr_interface.s_addr = ReceivingInterfaceAddr;
++   if (setsockopt(socket, IPPROTO_IP, IP_DROP_SOURCE_MEMBERSHIP,
++ 		 (const char*)&imr, sizeof (struct ip_mreq_source)) < 0) {
++     return False;
+--- /dev/null
++++ b/contrib/src/live555/live555-nosignal.patch
+@@ -0,0 +1,139 @@
++Copyright (C) 2015 Rémi Denis-Courmont
++
++Licensed under the terms of the GNU LGPL version 2.1 or later.
++
++diff -ru live555.orig/liveMedia/RTPInterface.cpp live555/liveMedia/RTPInterface.cpp
++--- live555.orig/liveMedia/RTPInterface.cpp	2015-05-21 20:34:45.855307019 +0300
+++++ live555/liveMedia/RTPInterface.cpp	2015-05-21 20:38:10.383305167 +0300
++@@ -23,6 +23,9 @@
++ #include "RTPInterface.hh"
++ #include <GroupsockHelper.hh>
++ #include <stdio.h>
+++#ifndef MSG_NOSIGNAL
+++# define MSG_NOSIGNAL 0
+++#endif
++ 
++ ////////// Helper Functions - Definition //////////
++ 
++@@ -339,7 +339,7 @@
++ #endif
++ 
++ Boolean RTPInterface::sendDataOverTCP(int socketNum, u_int8_t const* data, unsigned dataSize, Boolean forceSendToSucceed) {
++-  int sendResult = send(socketNum, (char const*)data, dataSize, 0/*flags*/);
+++  int sendResult = send(socketNum, (char const*)data, dataSize, MSG_NOSIGNAL);
++   if (sendResult < (int)dataSize) {
++     // The TCP send() failed - at least partially.
++ 
++@@ -353,7 +353,7 @@
++       fprintf(stderr, "sendDataOverTCP: resending %d-byte send (blocking)\n", numBytesRemainingToSend); fflush(stderr);
++ #endif
++       makeSocketBlocking(socketNum, RTPINTERFACE_BLOCKING_WRITE_TIMEOUT_MS);
++-      sendResult = send(socketNum, (char const*)(&data[numBytesSentSoFar]), numBytesRemainingToSend, 0/*flags*/);
+++      sendResult = send(socketNum, (char const*)(&data[numBytesSentSoFar]), numBytesRemainingToSend, MSG_NOSIGNAL);
++       if ((unsigned)sendResult != numBytesRemainingToSend) {
++ 	// The blocking "send()" failed, or timed out.  In either case, we assume that the
++ 	// TCP connection has failed (or is 'hanging' indefinitely), and we stop using it
++diff -ru live555.orig/liveMedia/RTSPClient.cpp live555/liveMedia/RTSPClient.cpp
++--- live555.orig/liveMedia/RTSPClient.cpp	2015-05-21 20:34:45.855307019 +0300
+++++ live555/liveMedia/RTSPClient.cpp	2015-05-21 20:39:54.327304226 +0300
++@@ -24,6 +24,9 @@
++ #include "Locale.hh"
++ #include <GroupsockHelper.hh>
++ #include "ourMD5.hh"
+++#ifndef MSG_NOSIGNAL
+++# define MSG_NOSIGNAL 0
+++#endif
++ 
++ ////////// RTSPClient implementation //////////
++ 
++@@ -497,7 +500,7 @@
++       delete[] origCmd;
++     }
++ 
++-    if (send(fOutputSocketNum, cmd, strlen(cmd), 0) < 0) {
+++    if (send(fOutputSocketNum, cmd, strlen(cmd), MSG_NOSIGNAL) < 0) {
++       char const* errFmt = "%s send() failed: ";
++       unsigned const errLength = strlen(errFmt) + strlen(request->commandName());
++       char* err = new char[errLength];
++@@ -939,7 +942,7 @@
++     char tmpBuf[2*RTSP_PARAM_STRING_MAX];
++     snprintf((char*)tmpBuf, sizeof tmpBuf,
++              "RTSP/1.0 405 Method Not Allowed\r\nCSeq: %s\r\n\r\n", cseq);
++-    send(fOutputSocketNum, tmpBuf, strlen(tmpBuf), 0);
+++    send(fOutputSocketNum, tmpBuf, strlen(tmpBuf), MSG_NOSIGNAL);
++   }
++ }
++ 
++diff -ru live555.orig/liveMedia/RTSPServerSupportingHTTPStreaming.cpp live555/liveMedia/RTSPServerSupportingHTTPStreaming.cpp
++--- live555.orig/liveMedia/RTSPServerSupportingHTTPStreaming.cpp	2015-05-21 20:34:45.857307019 +0300
+++++ live555/liveMedia/RTSPServerSupportingHTTPStreaming.cpp	2015-05-21 20:39:44.568304314 +0300
++@@ -24,6 +24,9 @@
++ #include <sys/stat.h>
++ #endif
++ #include <time.h>
+++#ifndef MSG_NOSIGNAL
+++# define MSG_NOSIGNAL 0
+++#endif
++ 
++ RTSPServerSupportingHTTPStreaming*
++ RTSPServerSupportingHTTPStreaming::createNew(UsageEnvironment& env, Port rtspPort,
++@@ -140,7 +143,7 @@
++ 	       lastModifiedHeader(streamName),
++ 	       numTSBytesToStream);
++       // Send the response now, because we're about to add more data (from the source):
++-      send(fClientOutputSocket, (char const*)fResponseBuffer, strlen((char*)fResponseBuffer), 0);
+++      send(fClientOutputSocket, (char const*)fResponseBuffer, strlen((char*)fResponseBuffer), MSG_NOSIGNAL);
++       fResponseBuffer[0] = '\0'; // We've already sent the response.  This tells the calling code not to send it again.
++       
++       // Ask the media source to deliver - to the TCP sink - the desired data:
++@@ -234,7 +237,7 @@
++ 	   playlistLen);
++ 
++   // Send the response header now, because we're about to add more data (the playlist):
++-  send(fClientOutputSocket, (char const*)fResponseBuffer, strlen((char*)fResponseBuffer), 0);
+++  send(fClientOutputSocket, (char const*)fResponseBuffer, strlen((char*)fResponseBuffer), MSG_NOSIGNAL);
++   fResponseBuffer[0] = '\0'; // We've already sent the response.  This tells the calling code not to send it again.
++ 
++   // Then, send the playlist.  Because it's large, we don't do so using "send()", because that might not send it all at once.
++--- live/groupsock/GroupsockHelper.cpp.orig	2015-06-22 00:09:17.000000000 +0200
+++++ live/groupsock/GroupsockHelper.cpp	2015-06-22 10:56:08.673912904 +0200
++@@ -35,6 +35,9 @@
++ #define USE_SIGNALS 1
++ #endif
++ #include <stdio.h>
+++#ifndef MSG_NOSIGNAL
+++# define MSG_NOSIGNAL 0
+++#endif
++ 
++ // By default, use INADDR_ANY for the sending and receiving interfaces:
++ netAddressBits SendingInterfaceAddr = INADDR_ANY;
++@@ -342,7 +345,7 @@
++ 		    unsigned char* buffer, unsigned bufferSize) {
++   do {
++     MAKE_SOCKADDR_IN(dest, address.s_addr, portNum);
++-    int bytesSent = sendto(socket, (char*)buffer, bufferSize, 0,
+++    int bytesSent = sendto(socket, (char*)buffer, bufferSize, MSG_NOSIGNAL,
++ 			   (struct sockaddr*)&dest, sizeof dest);
++     if (bytesSent != (int)bufferSize) {
++       char tmpBuf[100];
++--- live/liveMedia/TCPStreamSink.cpp.orig	2015-06-22 00:09:17.000000000 +0200
+++++ live/liveMedia/TCPStreamSink.cpp	2015-06-22 11:01:32.669268927 +0200
++@@ -20,6 +20,9 @@
++ 
++ #include "TCPStreamSink.hh"
++ #include <GroupsockHelper.hh> // for "ignoreSigPipeOnSocket()"
+++#ifndef MSG_NOSIGNAL
+++# define MSG_NOSIGNAL 0
+++#endif
++ 
++ TCPStreamSink* TCPStreamSink::createNew(UsageEnvironment& env, int socketNum) {
++   return new TCPStreamSink(env, socketNum);
++@@ -51,7 +54,7 @@
++   // First, try writing data to our output socket, if we can:
++   if (fOutputSocketIsWritable && numUnwrittenBytes() > 0) {
++     int numBytesWritten
++-      = send(fOutputSocketNum, (const char*)&fBuffer[fUnwrittenBytesStart], numUnwrittenBytes(), 0);
+++      = send(fOutputSocketNum, (const char*)&fBuffer[fUnwrittenBytesStart], numUnwrittenBytes(), MSG_NOSIGNAL);
++     if (numBytesWritten < (int)numUnwrittenBytes()) {
++       // The output socket is no longer writable.  Set a handler to be called when it becomes writable again.
++       fOutputSocketIsWritable = False;
+--- a/contrib/src/live555/live555-vista-inet.patch
++++ /dev/null
+@@ -1,33 +0,0 @@
+---- live555/groupsock/NetAddress.cpp.orig	2026-06-25 00:45:17.000000000 +0200
+-+++ live555/groupsock/NetAddress.cpp	2026-07-03 15:07:01.647505300 +0200
+-@@ -165,6 +165,30 @@ Boolean operator==(struct sockaddr_stora
+-   }
+- }
+- 
+-+#if defined(_WIN32) && _WIN32_WINNT < 0x0600
+-+#ifndef AI_ADDRCONFIG
+-+# define AI_ADDRCONFIG   0x0400
+-+#endif
+-+static inline int inet_pton(int af, const char *src, u_int8_t *b)
+-+{
+-+  if (af != AF_INET) {
+-+    return 0;
+-+  }
+-+  return sscanf (src, "%hhu.%hhu.%hhu.%hhu",
+-+                 b + 0, b + 1, b + 2, b + 3) == 4;
+-+}
+-+
+-+static inline void inet_ntop(int af, const void *src, char *dst, int len)
+-+{
+-+  if (af != AF_INET) {
+-+    return;
+-+  }
+-+  const unsigned char *b = static_cast<const unsigned char *>(src);
+-+  _snprintf(dst, len, "%hhu.%hhu.%hhu.%hhu",
+-+            b[0], b[1], b[2], b[3]);
+-+}
+-+#endif
+-+
+- 
+- ////////// NetAddressList //////////
+- 
+--- /dev/null
++++ b/contrib/src/live555/no-null-reference.patch
+@@ -0,0 +1,128 @@
++--- live555/liveMedia/RTSPClient.cpp.old	2017-11-24 14:34:20.588181348 +0100
+++++ live555/liveMedia/RTSPClient.cpp	2017-11-24 14:56:37.520204839 +0100
++@@ -183,13 +183,13 @@
++   }
++ }
++ 
++-void RTSPClient::setSpeed(MediaSession& session, float speed) { 
+++void RTSPClient::setSpeed(MediaSession* session, float speed) {
++   // Optionally set download speed for session to be used later on PLAY command:
++   // The user should call this function after the MediaSession is instantiated, but before the
++   // first "sendPlayCommand()" is called.
++-  if (&session != NULL) {
++-    session.speed() = speed;
++-    MediaSubsessionIterator iter(session);
+++  if (session != NULL) {
+++    session->speed() = speed;
+++    MediaSubsessionIterator iter(*session);
++     MediaSubsession* subsession;
++ 
++     while ((subsession = iter.next()) != NULL) {
++@@ -1215,26 +1215,26 @@
++   return success;
++ }
++ 
++-Boolean RTSPClient::handlePLAYResponse(MediaSession& session, MediaSubsession& subsession,
+++Boolean RTSPClient::handlePLAYResponse(MediaSession* session, MediaSubsession* subsession,
++                                        char const* scaleParamsStr, char const* speedParamsStr,
++                                        char const* rangeParamsStr, char const* rtpInfoParamsStr) {
++   Boolean scaleOK = False, rangeOK = False, speedOK = False;
++   do {
++-    if (&session != NULL) {
+++    if (session != NULL) {
++       // The command was on the whole session
++-      if (scaleParamsStr != NULL && !parseScaleParam(scaleParamsStr, session.scale())) break;
+++      if (scaleParamsStr != NULL && !parseScaleParam(scaleParamsStr, session->scale())) break;
++       scaleOK = True;
++-      if (speedParamsStr != NULL && !parseSpeedParam(speedParamsStr, session.speed())) break;
+++      if (speedParamsStr != NULL && !parseSpeedParam(speedParamsStr, session->speed())) break;
++       speedOK = True;
++       Boolean startTimeIsNow;
++       if (rangeParamsStr != NULL &&
++ 	  !parseRangeParam(rangeParamsStr,
++-			   session.playStartTime(), session.playEndTime(),
++-			   session._absStartTime(), session._absEndTime(),
+++               session->playStartTime(), session->playEndTime(),
+++               session->_absStartTime(), session->_absEndTime(),
++ 			   startTimeIsNow)) break;
++       rangeOK = True;
++ 
++-      MediaSubsessionIterator iter(session);
+++      MediaSubsessionIterator iter(*session);
++       MediaSubsession* subsession;
++       while ((subsession = iter.next()) != NULL) {
++ 	u_int16_t seqNum; u_int32_t timestamp;
++@@ -1249,27 +1249,27 @@
++       }
++     } else {
++       // The command was on a subsession
++-      if (scaleParamsStr != NULL && !parseScaleParam(scaleParamsStr, subsession.scale())) break;
+++      if (scaleParamsStr != NULL && !parseScaleParam(scaleParamsStr, subsession->scale())) break;
++       scaleOK = True;
++-      if (speedParamsStr != NULL && !parseSpeedParam(speedParamsStr, session.speed())) break;
+++      if (speedParamsStr != NULL && !parseSpeedParam(speedParamsStr, subsession->speed())) break;
++       speedOK = True;
++       Boolean startTimeIsNow;
++       if (rangeParamsStr != NULL &&
++ 	  !parseRangeParam(rangeParamsStr,
++-			   subsession._playStartTime(), subsession._playEndTime(),
++-			   subsession._absStartTime(), subsession._absEndTime(),
+++               subsession->_playStartTime(), subsession->_playEndTime(),
+++               subsession->_absStartTime(), subsession->_absEndTime(),
++ 			   startTimeIsNow)) break;
++       rangeOK = True;
++ 
++       u_int16_t seqNum; u_int32_t timestamp;
++-      subsession.rtpInfo.infoIsNew = False;
+++      subsession->rtpInfo.infoIsNew = False;
++       if (parseRTPInfoParams(rtpInfoParamsStr, seqNum, timestamp)) {
++-	subsession.rtpInfo.seqNum = seqNum;
++-	subsession.rtpInfo.timestamp = timestamp;
++-	subsession.rtpInfo.infoIsNew = True;
+++    subsession->rtpInfo.seqNum = seqNum;
+++    subsession->rtpInfo.timestamp = timestamp;
+++    subsession->rtpInfo.infoIsNew = True;
++       }
++ 
++-      if (subsession.rtpSource() != NULL) subsession.rtpSource()->enableRTCPReports() = True; // start sending RTCP "RR"s now
+++      if (subsession->rtpSource() != NULL) subsession->rtpSource()->enableRTCPReports() = True; // start sending RTCP "RR"s now
++     }
++ 
++     return True;
++@@ -1809,12 +1809,12 @@
++ 	if (responseCode == 200) {
++ 	  // Do special-case response handling for some commands:
++ 	  if (strcmp(foundRequest->commandName(), "SETUP") == 0) {
++-	    if (!handleSETUPResponse(*foundRequest->subsession(), sessionParamsStr, transportParamsStr, foundRequest->booleanFlags()&0x1)) break;
+++        if (!handleSETUPResponse(*foundRequest->subsession(), sessionParamsStr, transportParamsStr, foundRequest->booleanFlags()&0x1)) break;
++ 	  } else if (strcmp(foundRequest->commandName(), "PLAY") == 0) {
++-	    if (!handlePLAYResponse(*foundRequest->session(), *foundRequest->subsession(), scaleParamsStr, speedParamsStr, rangeParamsStr, rtpInfoParamsStr)) break;
+++        if (!handlePLAYResponse(foundRequest->session(), foundRequest->subsession(), scaleParamsStr, speedParamsStr, rangeParamsStr, rtpInfoParamsStr)) break;
++ 	  } else if (strcmp(foundRequest->commandName(), "TEARDOWN") == 0) {
++-	    if (!handleTEARDOWNResponse(*foundRequest->session(), *foundRequest->subsession())) break;
++-	  } else if (strcmp(foundRequest->commandName(), "GET_PARAMETER") == 0) {
+++        if (!handleTEARDOWNResponse(*foundRequest->session(), *foundRequest->subsession())) break;
+++      } else if (strcmp(foundRequest->commandName(), "GET_PARAMETER") == 0) {
++ 	    if (!handleGET_PARAMETERResponse(foundRequest->contentStr(), bodyStart, responseEnd)) break;
++ 	  }
++ 	} else if (responseCode == 401 && handleAuthenticationFailure(wwwAuthenticateParamsStr)) {
++--- live555/liveMedia/include/RTSPClient.hh.old.h	2017-11-24 14:48:30.544196283 +0100
+++++ live555/liveMedia/include/RTSPClient.hh	2017-11-24 14:56:57.836205196 +0100
++@@ -155,7 +155,7 @@
++       // Our implementation automatically does this just prior to sending each "PLAY" command;
++       // You should not call these functions yourself unless you know what you're doing.
++ 
++-  void setSpeed(MediaSession& session, float speed = 1.0f);
+++  void setSpeed(MediaSession* session, float speed = 1.0f);
++       // Set (recorded) media download speed to given value to support faster download using 'Speed:'
++       // option on 'PLAY' command.
++ 
++@@ -286,7 +286,7 @@
++   Boolean parseRTPInfoParams(char const*& paramStr, u_int16_t& seqNum, u_int32_t& timestamp);
++   Boolean handleSETUPResponse(MediaSubsession& subsession, char const* sessionParamsStr, char const* transportParamsStr,
++ 			      Boolean streamUsingTCP);
++-  Boolean handlePLAYResponse(MediaSession& session, MediaSubsession& subsession,
+++  Boolean handlePLAYResponse(MediaSession* session, MediaSubsession* subsession,
++                              char const* scaleParamsStr, const char* speedParamsStr,
++ 			     char const* rangeParamsStr, char const* rtpInfoParamsStr);
++   Boolean handleTEARDOWNResponse(MediaSession& session, MediaSubsession& subsession);
+--- a/contrib/src/live555/rules.mak
++++ b/contrib/src/live555/rules.mak
+@@ -1,24 +1,11 @@
+ # live555
+ 
+-LIVE555_VERSION := 2026.06.24
++LIVE555_VERSION := 2016.10.21
+ LIVE555_FILE := live.$(LIVE555_VERSION).tar.gz
+ LIVEDOTCOM_URL := $(CONTRIB_VIDEOLAN)/live555/$(LIVE555_FILE)
+ 
+-define CXX20_ATOMIC_FLAG_CHECK
+-#include <atomic> \n
+-#if !defined(__cpp_lib_atomic_flag_test) \n
+-FAIL! \n
+-#endif \n
+-endef
+-
+-ifeq ($(call try_cxx_compile,$(CXX20_ATOMIC_FLAG_CHECK),-std=c++20),true)
+-HAVE_LIVE555_CPP20_ATOMIC_TEST=1
+-endif
+-
+ ifdef BUILD_NETWORK
+-ifdef GNUV3
+ PKGS += live555
+-endif
+ endif
+ 
+ ifeq ($(call need_pkg,"live555"),)
+@@ -30,7 +17,7 @@
+ 
+ .sum-live555: $(LIVE555_FILE)
+ 
+-LIVE_EXTRA_CFLAGS := $(EXTRA_CFLAGS) -fexceptions -DNO_OPENSSL=1 $(CFLAGS)
++LIVE_EXTRA_CFLAGS := $(EXTRA_CFLAGS) -fexceptions $(CFLAGS)
+ 
+ LIVE_TARGET = $(error live555 target not defined!)
+ ifdef HAVE_LINUX
+@@ -42,10 +29,9 @@
+ endif
+ ifdef HAVE_WIN32
+ LIVE_TARGET := mingw
+-LIVE_EXTRA_CFLAGS += -DNO_GETIFADDRS=1
+ endif
+ ifdef HAVE_DARWIN_OS
+-LIVE_TARGET := macosx-catalina
++LIVE_TARGET := macosx
+ endif
+ ifdef HAVE_BSD
+ LIVE_TARGET := freebsd
+@@ -58,61 +44,60 @@
+ endif
+ endif
+ 
+-live555: UNPACK_DIR=live
+ live555: $(LIVE555_FILE) .sum-live555
+-	rm -rf $(UNPACK_DIR)
+-	$(UNPACK)
++	rm -Rf live && $(UNPACK)
+ 
+ 	# Change permissions to patch and sed the source
+-	chmod -R u+w $(UNPACK_DIR)
++	chmod -R u+w live
+ 	# Remove hardcoded cc, c++, ar variables
+-	sed -e 's%C_COMPILER%#C_COMPILER%' -e 's%CPLUSPLUS_COMPILER%#CPLUSPLUS_COMPILER%' -e 's%LIBRARY_LINK%#LIBRARY_LINK%' -i.orig $(UNPACK_DIR)/config.$(LIVE_TARGET)
+-	# Use CXXFLAGS when compiling C++ code
+-	sed -e 's%CPLUSPLUS_FLAGS =%CPLUSPLUS_FLAGS = $$(CXXFLAGS)%' -i.orig $(UNPACK_DIR)/config.$(LIVE_TARGET)
+-	# Remove hardcoded --std=c+20 on un supported compilers
+-ifndef HAVE_LIVE555_CPP20_ATOMIC_TEST
+-	sed -e 's%-std=c++20% -DNO_STD_LIB=1%' -i.orig $(UNPACK_DIR)/config.$(LIVE_TARGET)
+-endif
+-	# Add the Extra_CFLAGS to the config files
+-	sed -i.orig \
+-		-e 's%COMPILE_OPTS =%COMPILE_OPTS = $$(EXTRA_CFLAGS)%' $(UNPACK_DIR)/config.$(LIVE_TARGET)
++	cd live && sed -e 's%cc%$(CC)%' -e 's%c++%$(CXX)%' -e 's%LIBRARY_LINK =.*ar%LIBRARY_LINK = $(AR)%' -i.orig config.$(LIVE_TARGET)
++	# Replace libtool -s by ar cr for macOS only
++	cd live && sed -i.orig -e s/"libtool -s -o"/"ar cr"/g config.macosx*
++	# Add Extra LDFLAGS for macOS
++	cd live && sed -i.orig -e 's%$(CXX)%$(CXX)\ $(EXTRA_LDFLAGS)%' config.macosx*
++	# Add CXXFLAGS for macOS (force libc++)
++	cd live && sed -i.orig -e 's%^\(CPLUSPLUS_FLAGS.*\)$$%\1 '"$(CXXFLAGS)%" config.macosx*
++	# Add the Extra_CFLAGS to all config files
++	cd live && sed -i.orig \
++		-e 's%^\(COMPILE_OPTS.*\)$$%\1 '"$(LIVE_EXTRA_CFLAGS)%" config.*
+ 	# We want 64bits offsets and PIC on Linux
+-	sed -e 's%-D_FILE_OFFSET_BITS=64%-D_FILE_OFFSET_BITS=64\ -fPIC\ -DPIC%' -i.orig $(UNPACK_DIR)/config.linux
++	cd live && sed -e 's%-D_FILE_OFFSET_BITS=64%-D_FILE_OFFSET_BITS=64\ -fPIC\ -DPIC%' -i.orig config.linux
+ 	# Disable Locale for Solaris
+-	sed -e 's%-DSOLARIS%-DSOLARIS -DXLOCALE_NOT_USED%' -i.orig $(UNPACK_DIR)/config.solaris-*bit
++	cd live && sed -e 's%-DSOLARIS%-DSOLARIS -DXLOCALE_NOT_USED%' -i.orig config.solaris-*bit
+ ifdef HAVE_ANDROID
+ 	# Disable locale on Android too
+-	sed -e 's%-DPIC%-DPIC -DNO_SSTREAM=1 -DLOCALE_NOT_USED -I$(ANDROID_NDK)/platforms/android-$(ANDROID_API)/arch-$(PLATFORM_SHORT_ARCH)/usr/include%' -i.orig $(UNPACK_DIR)/config.linux
++	cd live && sed -e 's%-DPIC%-DPIC -DNO_SSTREAM=1 -DLOCALE_NOT_USED -I$(ANDROID_NDK)/platforms/android-$(ANDROID_API)/arch-$(PLATFORM_SHORT_ARCH)/usr/include%' -i.orig config.linux
+ endif
++	mv live live.$(LIVE555_VERSION)
++	# Patch for MSG_NOSIGNAL
++	$(APPLY) $(SRC)/live555/live555-nosignal.patch
++	# Don't use FormatMessageA on WinRT
++	$(APPLY) $(SRC)/live555/winstore.patch
++	# Don't rely on undefined behaviors
++	$(APPLY) $(SRC)/live555/no-null-reference.patch
+ 	# Add a pkg-config file
+ 	$(APPLY) $(SRC)/live555/add-pkgconfig-file.patch
+ 	# Expose Server:
+ 	$(APPLY) $(SRC)/live555/expose_server_string.patch
+ 	# FormatMessageA is available on all Windows versions, even WinRT
+ 	$(APPLY) $(SRC)/live555/live555-formatmessage.patch
+-	# ifaddrs.h is supported since API level 24
+-	$(APPLY) $(SRC)/live555/android-no-ifaddrs.patch
++	# Disable Multicast interface lookup option
++	$(APPLY) $(SRC)/live555/DISABLE_LOOPBACK_IP_ADDRESS_CHECK.patch
+ 	# Don't use unavailable off64_t functions
+ 	$(APPLY) $(SRC)/live555/file-offset-bits-64.patch
+-	# add IPv4 inet_pton()/inet_ntop() helper on older Windows
+-	$(APPLY) $(SRC)/live555/live555-vista-inet.patch
+-	# fix Win32 time_tm constructor to build on older compilers
+-	sed -e 's,= tm{},= tm\(\),' -i.orig $(UNPACK_DIR)/liveMedia/RTSPCommon.cpp
+-	# disable code built/installed in unused folder
+-	sed -e 's,all: $$(,all: #,' -e 's,install: $$,install: #,' -e 's,install ,#install ,' -i.orig $(UNPACK_DIR)/testProgs/Makefile.tail
+-	sed -e 's,all: $$(,all: #,' -e 's,install: $$,install: #,' -e 's,install ,#install ,' -i.orig $(UNPACK_DIR)/mediaServer/Makefile.tail
+-	sed -e 's,all: $$(,all: #,' -e 's,install: $$,install: #,' -e 's,install ,#install ,' -i.orig $(UNPACK_DIR)/proxyServer/Makefile.tail
+-	sed -e 's,all: $$(,all: #,' -e 's,install: $$,install: #,' -e 's,install ,#install ,' -i.orig $(UNPACK_DIR)/hlsProxy/Makefile.tail
+-	$(MOVE)
++	cd $(UNPACK_DIR) && sed -i.orig "s,LIBRARY_LINK =.*,LIBRARY_LINK = $(AR) cr ,g" config.macosx*
++	mv live.$(LIVE555_VERSION) $@ && touch $@
+ 
+-LIVE555_ENV := $(HOSTVARS) C_COMPILER=$(CC) CPLUSPLUS_COMPILER=$(CXX) LIBRARY_LINK="$(AR) cr " \
+-	PREFIX=$(PREFIX) DESTDIR= LIBDIR=$(PREFIX)/lib EXTRA_CFLAGS="$(LIVE_EXTRA_CFLAGS)"
++LIVE555_SUBDIRS=groupsock liveMedia UsageEnvironment BasicUsageEnvironment
+ 
+-.live555: BUILD_DIR=$<
+ .live555: live555
+-	$(REQUIRE_GNUV3)
++	cd $< && for subdir in $(LIVE555_SUBDIRS); do \
++		echo "PREFIX = $(PREFIX)" >> $$subdir/Makefile.head && \
++		echo "LIBDIR = $(PREFIX)/lib" >> $$subdir/Makefile.head ; done
++	cd $< && echo "LIBDIR = $(PREFIX)/lib" >> Makefile.head && \
++		echo "PREFIX = $(PREFIX)" >> Makefile.head
+ 	cd $< && ./genMakefiles $(LIVE_TARGET)
+-	+$(MAKEBUILD) $(LIVE555_ENV)
+-	+$(MAKEBUILD) $(LIVE555_ENV) install
+-	+$(MAKEBUILD) $(LIVE555_ENV) install_shared_libraries
++	cd $< && for subdir in $(LIVE555_SUBDIRS); do $(MAKE) $(HOSTVARS) -C $$subdir; done
++	cd $< && for subdir in $(LIVE555_SUBDIRS); do $(MAKE) $(HOSTVARS) -C $$subdir install; done
++	$(MAKE) -C $< install_shared_libraries
+ 	touch $@
+--- /dev/null
++++ b/contrib/src/live555/winstore.patch
+@@ -0,0 +1,30 @@
++--- a/liveMedia/include/InputFile.hh      2015-06-24 16:32:45.000000000 +0200
+++++ b/liveMedia/include/InputFile.hh   2015-08-04 10:12:13.791494000 +0200
++@@ -50,6 +50,7 @@
++
++ void CloseInputFile(FILE* fid);
++
+++#undef GetFileSize
++ u_int64_t GetFileSize(char const* fileName, FILE* fid);
++     // 0 means zero-length, unbounded, or unknown
++
++
++--- a/BasicUsageEnvironment/BasicUsageEnvironment0.cpp    2015-06-24 16:32:45.000000000 +0200
+++++ b/BasicUsageEnvironment/BasicUsageEnvironment0.cpp 2015-08-04 10:22:41.067003200 +0200
++@@ -68,6 +68,7 @@
++
++   if (err == 0) err = getErrno();
++ #if defined(__WIN32__) || defined(_WIN32) || defined(_WIN32_WCE)
+++#ifndef _UNICODE
++   char errMsg[RESULT_MSG_BUFFER_MAX] = "\0";
++   if (0 != FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, err, 0, errMsg, sizeof(errMsg)/sizeof(errMsg[0]), NULL)) {
++     // Remove all trailing '\r', '\n' and '.'
++@@ -77,6 +78,7 @@
++   } else
++     snprintf(errMsg, sizeof(errMsg)/sizeof(errMsg[0]), "error %d", err);
++   appendToResultMsg(errMsg);
+++#endif
++ #else
++   appendToResultMsg(strerror(err));
++ #endif
++
+--- a/extras/tools/tools.mak
++++ b/extras/tools/tools.mak
+@@ -25,10 +25,10 @@
+ download = $(error Neither curl nor wget found!)
+ endif
+ 
+-ifeq ($(shell command -v sha512sum >/dev/null 2>&1 || echo FAIL),)
++ifeq ($(shell command -v shasum >/dev/null 2>&1 || echo FAIL),)
++SHA512SUM = shasum -a 512 --check
++else ifeq ($(shell command -v sha512sum >/dev/null 2>&1 || echo FAIL),)
+ SHA512SUM = sha512sum -c
+-else ifeq ($(shell command -v shasum >/dev/null 2>&1 || echo FAIL),)
+-SHA512SUM = shasum -a 512 --check
+ else ifeq ($(shell command -v openssl >/dev/null 2>&1 || echo FAIL),)
+ SHA512SUM = openssl dgst -sha512
+ else
+--- a/include/vlc/libvlc_media.h
++++ b/include/vlc/libvlc_media.h
+@@ -708,6 +708,41 @@
+ void libvlc_media_slaves_release( libvlc_media_slave_t **pp_slaves,
+                                   unsigned int i_count );
+ 
++/**
++ * Parse a value of an incoming Set-Cookie header (see RFC 6265) and append the
++ * cookie to the cookie jar if appropriate. The "secure" attribute can be added
++ * to psz_cookie to limit the scope of the cookie to secured channels (https).
++ *
++ * \note must be called before the first call of libvlc_media_player_play() to
++ * take effect. The cookie jar is only used for http/https accesses.
++ *
++ * \version LibVLC 3.0.0 and later.
++ *
++ * \param p_md media descriptor object
++ * \param psz_cookie header field value of Set-Cookie:
++ * "name=value<;attributes>" (must not be NULL)
++ * \param psz_host host to which the cookie will be sent (must not be NULL)
++ * \param psz_path scope of the cookie (must not be NULL)
++ *
++ * \return 0 on success, -1 on error.
++ */
++LIBVLC_API int
++libvlc_media_cookie_jar_store( libvlc_media_t *p_md, const char *psz_cookie,
++                               const char *psz_host, const char *psz_path );
++
++/**
++ * Clear the cookie jar of a media.
++ *
++ * \note must be called before the first call of libvlc_media_player_play() to
++ * take effect.
++ *
++ * \version LibVLC 3.0.0 and later.
++ *
++ * \param p_md media descriptor object
++ */
++LIBVLC_API void
++libvlc_media_cookie_jar_clear( libvlc_media_t *p_md );
++
+ /** @}*/
+ 
+ # ifdef __cplusplus
+--- /dev/null
++++ b/include/vlc/libvlc_vista_cvpx_private.h
+@@ -0,0 +1,9 @@
++/* Research-only setter for a newly-created, stopped player with no media.
++ * Owner keeps bridge alive until stop, player release, and all leases drain.
++ * Do not combine with other video-output setters. This is not upstream ABI. */
++#ifndef LIBVLC_VISTA_CVPX_PRIVATE_H
++#define LIBVLC_VISTA_CVPX_PRIVATE_H
++#include <vlc/vlc.h>
++typedef struct vista_cvpx_bridge vista_cvpx_bridge;
++LIBVLC_API int libvlc_vista_set_cvpx_bridge(libvlc_media_player_t *, vista_cvpx_bridge *);
++#endif
+--- a/include/vlc_http.h
++++ b/include/vlc_http.h
+@@ -70,6 +70,7 @@
+ typedef struct vlc_http_cookie_jar_t vlc_http_cookie_jar_t;
+ 
+ VLC_API vlc_http_cookie_jar_t * vlc_http_cookies_new( void ) VLC_USED;
++VLC_API void vlc_http_cookies_clear( vlc_http_cookie_jar_t * p_jar );
+ VLC_API void vlc_http_cookies_destroy( vlc_http_cookie_jar_t * p_jar );
+ 
+ /**
+--- a/include/vlc_player.h
++++ b/include/vlc_player.h
+@@ -115,6 +115,18 @@
+ vlc_player_Delete(vlc_player_t *player);
+ 
+ /**
++ * Get the HTTP cookie jar shared by the player
++ *
++ * This is the jar inherited by the http access of any media played by this
++ * player. It is owned by the player and valid until vlc_player_Delete().
++ *
++ * @param player player instance created by vlc_player_New()
++ * @return the cookie jar, or NULL if the player has none
++ */
++VLC_API struct vlc_http_cookie_jar_t *
++vlc_player_GetCookieJar(vlc_player_t *player);
++
++/**
+  * Lock the player.
+  *
+  * All player functions (except vlc_player_Delete()) need to be called while
+--- /dev/null
++++ b/include/vlc_vista_cvpx.h
+@@ -0,0 +1,129 @@
++/* Private Apple research ABI, NOT an upstream/public LibVLC API. */
++#ifdef HAVE_CONFIG_H
++# include "config.h"
++#endif
++#ifndef VISTA_CVPX_BRIDGE_H
++#define VISTA_CVPX_BRIDGE_H
++#include <vlc_common.h>
++#include <vlc_es.h>
++#include <vlc_vout.h>
++#include <vlc_tick.h>
++#include <CoreVideo/CoreVideo.h>
++
++typedef struct vista_cvpx_bridge vista_cvpx_bridge;
++typedef struct vista_cvpx_frame {
++    CVPixelBufferRef pixel;             /* owned by this lease; never release separately */
++    video_format_t picture_format;     /* deep copied including optional palette */
++    video_format_t source_format;      /* original crop/SAR/projection/packing */
++    vlc_tick_t media_pts;
++    vlc_tick_t initial_deadline;        /* Prepare's system-clock deadline, NOT final recomputed deadline */
++    vlc_tick_t display_tick;            /* sampled when Display actually publishes */
++    uint64_t generation;
++    video_projection_mode_t requested_projection;
++    vlc_stereoscopic_mode_t requested_stereo;
++    bool progressive;
++    bool left_eye;
++    unsigned fields;
++    uintptr_t picture_identity;        /* equality only; never dereference or retain picture_t */
++} vista_cvpx_frame;
++
++/* Called on Display only. Signal/coalesce consumer work, do not block or close here.
++ * A callback may call TakeLatest; GPU completion must return the lease. */
++typedef void (*vista_cvpx_ready_cb)(void *);
++typedef struct {
++    uint64_t session_checks, hardware_verified, hardware_rejected;
++    int32_t last_status;
++    uint32_t last_codec;
++    bool last_using_hardware;
++} vista_cvpx_vt_diagnostics;
++VLC_API void vista_cvpx_note_vt(vista_cvpx_bridge *, int32_t status, bool using_hw, uint32_t codec);
++VLC_API void vista_cvpx_get_vt_diagnostics(vista_cvpx_bridge *, vista_cvpx_vt_diagnostics *);
++/* Separate fixed-size ABI; preserves the original successful-session counters.
++ * Values are meaningful only after the corresponding count is nonzero.
++ * Failure stages: 1 session creation, 2 decode submission, 3 decode callback.
++ * All statuses are actual OSStatus returns, never invented failure codes. */
++typedef struct {
++    uint64_t create_attempts, create_failures, failure_events;
++    int32_t last_create_status, last_create_profile, last_failure_status;
++    uint32_t last_create_codec, last_failure_stage;
++} vista_cvpx_vt_attempt_diagnostics;
++VLC_API void vista_cvpx_note_vt_create(vista_cvpx_bridge *, int32_t status,
++                                      uint32_t codec, int32_t profile);
++VLC_API void vista_cvpx_note_vt_failure(vista_cvpx_bridge *, int32_t status, uint32_t stage);
++VLC_API void vista_cvpx_get_vt_attempt_diagnostics(vista_cvpx_bridge *, vista_cvpx_vt_attempt_diagnostics *);
++
++/* Independent bounded pipeline ABI. Counts saturate, never retain media/paths.
++ * rejected is a local branch outcome; status is an actual return, or 0 when none.
++ * Each bucket preserves the last observation AND last rejection, so later success
++ * cannot erase the reason for a lost frame. No per-frame logs or behavior changes. */
++typedef enum {
++    VISTA_PIPE_SUBMIT = 0,
++    VISTA_PIPE_CALLBACK = 1,
++    VISTA_PIPE_CALLBACK_DISCARD = 2,
++    VISTA_PIPE_CALLBACK_NULL = 3,
++    VISTA_PIPE_CALLBACK_ABORT = 4,
++    VISTA_PIPE_FORMAT = 5,
++    VISTA_PIPE_CALLBACK_BAD_PTS = 6,
++    VISTA_PIPE_CALLBACK_ZERO_SIZE = 7,
++    VISTA_PIPE_NEW_PICTURE = 8,
++    VISTA_PIPE_ATTACH = 9,
++    VISTA_PIPE_DPB_INSERT = 10,
++    VISTA_PIPE_QUEUE_VIDEO = 11,
++    VISTA_PIPE_VOUT_OPEN = 12,
++    VISTA_PIPE_VOUT_UPDATE = 13,
++    VISTA_PIPE_VOUT_PREPARE = 14,
++    VISTA_PIPE_VOUT_DISPLAY = 15,
++    VISTA_PIPE_BRIDGE_PREPARE = 16,
++    VISTA_PIPE_BRIDGE_DISPLAY = 17,
++    VISTA_PIPE_BRIDGE_TAKE = 18,
++    VISTA_PIPE_CALLBACK_DROPPED = 19,
++    VISTA_PIPE_COUNT = 20
++} vista_cvpx_pipeline_event;
++typedef struct {
++    uint64_t count, rejected;
++    int32_t last_status, last_reject_status;
++    uint32_t last_detail, last_reject_detail;
++    uint64_t last_value, last_reject_value;
++} vista_cvpx_pipeline_bucket;
++typedef struct {
++    vista_cvpx_pipeline_bucket events[VISTA_PIPE_COUNT];
++    uint32_t first_rejected_event_plus1; /* 0 means none; otherwise event index + 1 */
++    int32_t first_reject_status;
++    uint32_t first_reject_detail;
++    uint64_t first_reject_value;
++} vista_cvpx_pipeline_diagnostics;
++VLC_API void vista_cvpx_note_pipeline(vista_cvpx_bridge *, vista_cvpx_pipeline_event,
++                                      bool rejected, int32_t status, uint32_t detail, uint64_t value);
++VLC_API void vista_cvpx_get_pipeline_diagnostics(vista_cvpx_bridge *, vista_cvpx_pipeline_diagnostics *);
++
++VLC_API vista_cvpx_bridge *vista_cvpx_create(vista_cvpx_ready_cb, void *);
++/* Requires a fully stopped player, closed producer, and returned leases. */
++VLC_API bool vista_cvpx_destroy(vista_cvpx_bridge *);
++
++/* Exactly one producer lifetime. The token NEVER changes within that vout.
++ * Reopening after seek requires stopping/closing the old producer first.
++ * No API here can relabel old queued pictures as belonging to a new generation. */
++VLC_API bool vista_cvpx_attach(vista_cvpx_bridge *, uint64_t *producer_generation);
++VLC_API void vista_cvpx_detach(vista_cvpx_bridge *, uint64_t producer_generation);
++/* Two-phase stop: close admission, flush/cancel renderer, then wait off its queue. */
++VLC_API void vista_cvpx_quiesce(vista_cvpx_bridge *);
++VLC_API void vista_cvpx_wait_drained(vista_cvpx_bridge *);
++/* Close admission, drop pending slots and wait for callback + leased/GPU frame.
++ * Call from a control queue, never the consumer/GPU-completion executor.
++ * Does not detach/rearm producer. Existing producer tokens remain stale. */
++VLC_API void vista_cvpx_quiesce_and_drain(vista_cvpx_bridge *);
++
++VLC_API bool vista_cvpx_prepare(vista_cvpx_bridge *, uint64_t, uintptr_t identity,
++                       CVPixelBufferRef, const video_format_t *, const video_format_t *,
++                       vlc_tick_t pts, vlc_tick_t deadline,
++                       video_projection_mode_t, vlc_stereoscopic_mode_t,
++                       bool progressive, bool left_eye, unsigned fields);
++VLC_API bool vista_cvpx_display(vista_cvpx_bridge *, uint64_t, uintptr_t identity,
++                       vlc_tick_t display_tick);
++/* At most one checked-out lease. If busy, leave newest ready frame in its slot. */
++VLC_API const vista_cvpx_frame *vista_cvpx_take_latest(vista_cvpx_bridge *);
++VLC_API bool vista_cvpx_is_current(vista_cvpx_bridge *, const vista_cvpx_frame *);
++/* Must be called exactly once, after all renderer/GPU uses have completed. */
++VLC_API bool vista_cvpx_release(vista_cvpx_bridge *, const vista_cvpx_frame *);
++
++#endif
+--- a/lib/libvlc.sym
++++ b/lib/libvlc.sym
+@@ -223,6 +223,8 @@
+ libvlc_media_set_meta_extra
+ libvlc_media_get_meta_extra_names
+ libvlc_media_meta_extra_names_release
++libvlc_media_cookie_jar_store
++libvlc_media_cookie_jar_clear
+ libvlc_new
+ libvlc_release
+ libvlc_renderer_item_name
+@@ -303,3 +305,5 @@
+ libvlc_picture_list_count
+ libvlc_picture_list_destroy
+ libvlc_abi_version
++
++libvlc_vista_set_cvpx_bridge
+--- a/lib/media.c
++++ b/lib/media.c
+@@ -218,12 +218,16 @@
+     input_item_add_subnode( p_md, node );
+ }
+ 
++static void media_cookies_clear( libvlc_media_t *p_md );
++
+ static void media_destroy( void *libvlc_owner )
+ {
+     libvlc_media_t *p_md = libvlc_owner;
+ 
+     if( p_md->p_subitems )
+         libvlc_media_list_release( p_md->p_subitems );
++
++    media_cookies_clear( p_md );
+ 
+     free( p_md );
+ }
+@@ -268,6 +272,8 @@
+     input_item_SetLibvlcOwner( p_md->p_input_item, p_md, media_destroy );
+     atomic_init(&p_md->parsed_status, libvlc_media_parsed_status_none);
+     p_md->req = NULL;
++    p_md->p_cookies = NULL;
++    p_md->i_cookies = 0;
+ 
+     input_item_Hold( p_md->p_input_item );
+ 
+@@ -821,3 +827,63 @@
+     }
+     free( pp_slaves );
+ }
++
++static void
++media_cookies_clear( libvlc_media_t *p_md )
++{
++    for( size_t i = 0; i < p_md->i_cookies; ++i )
++    {
++        free( p_md->p_cookies[i].psz_cookie );
++        free( p_md->p_cookies[i].psz_host );
++        free( p_md->p_cookies[i].psz_path );
++    }
++    free( p_md->p_cookies );
++    p_md->p_cookies = NULL;
++    p_md->i_cookies = 0;
++}
++
++int
++libvlc_media_cookie_jar_store( libvlc_media_t *p_md, const char *psz_cookie,
++                               const char *psz_host, const char *psz_path )
++{
++    assert( psz_cookie != NULL && psz_host != NULL && psz_path != NULL );
++
++    struct libvlc_media_cookie_t *p_cookies =
++        vlc_reallocarray( p_md->p_cookies, p_md->i_cookies + 1,
++                          sizeof( *p_cookies ) );
++    if( p_cookies == NULL )
++        return -1;
++    p_md->p_cookies = p_cookies;
++
++    struct libvlc_media_cookie_t *p_new = &p_cookies[p_md->i_cookies];
++    p_new->psz_cookie = strdup( psz_cookie );
++    p_new->psz_host = strdup( psz_host );
++    p_new->psz_path = strdup( psz_path );
++    if( p_new->psz_cookie == NULL || p_new->psz_host == NULL
++     || p_new->psz_path == NULL )
++    {
++        free( p_new->psz_cookie );
++        free( p_new->psz_host );
++        free( p_new->psz_path );
++        return -1;
++    }
++    p_md->i_cookies++;
++
++    return 0;
++}
++
++void
++libvlc_media_cookie_jar_clear( libvlc_media_t *p_md )
++{
++    media_cookies_clear( p_md );
++}
++
++void
++libvlc_media_cookies_replay( libvlc_media_t *p_md,
++                             vlc_http_cookie_jar_t *p_jar )
++{
++    for( size_t i = 0; i < p_md->i_cookies; ++i )
++        vlc_http_cookies_store( p_jar, p_md->p_cookies[i].psz_cookie,
++                                p_md->p_cookies[i].psz_host,
++                                p_md->p_cookies[i].psz_path );
++}
+--- a/lib/media_internal.h
++++ b/lib/media_internal.h
+@@ -32,6 +32,7 @@
+ #include <vlc_player.h>
+ #include <vlc_preparser.h>
+ #include <vlc_atomic.h>
++#include <vlc_http.h>
+ 
+ /* internal parse state of a media */
+ typedef enum libvlc_media_parsed_status_t
+@@ -39,6 +40,17 @@
+     libvlc_media_parsed_status_none,
+     libvlc_media_parsed_status_done,
+ } libvlc_media_parsed_status_t;
++
++/* A cookie stored on a media, as passed to libvlc_media_cookie_jar_store().
++ * The player owns the cookie jar actually used by the http access, so cookies
++ * are kept here verbatim and replayed into that jar by
++ * libvlc_media_player_play(). */
++struct libvlc_media_cookie_t
++{
++    char *psz_cookie;
++    char *psz_host;
++    char *psz_path;
++};
+ 
+ /* A media is a wrapper of its input item and shares its reference count:
+  * libvlc_media_retain()/libvlc_media_release() forward to the input item and
+@@ -52,7 +64,14 @@
+ 
+     _Atomic libvlc_media_parsed_status_t parsed_status;
+     vlc_preparser_req *req;
++
++    struct libvlc_media_cookie_t *p_cookies;
++    size_t i_cookies;
+ };
++
++/* Replay the cookies stored on p_md into p_jar. */
++void libvlc_media_cookies_replay( libvlc_media_t *p_md,
++                                  vlc_http_cookie_jar_t *p_jar );
+ 
+ /* Media Descriptor */
+ libvlc_media_t * libvlc_media_new_from_input_item( input_item_t * );
+--- a/lib/media_player.c
++++ b/lib/media_player.c
+@@ -45,6 +45,7 @@
+ #include "media_player_internal.h"
+ #include "renderer_discoverer_internal.h"
+ #include "picture_internal.h"
++#include <vlc/libvlc_vista_cvpx_private.h>
+ 
+ #define ES_INIT (-2) /* -1 is reserved for ES deselect */
+ 
+@@ -713,6 +714,7 @@
+     var_Create( mp, "vout-cb-select-plane", VLC_VAR_ADDRESS );
+ 
+     var_Create (mp, "dec-dev", VLC_VAR_STRING);
++    var_Create (mp, "vista-cvpx-bridge", VLC_VAR_ADDRESS);
+ 
+     mp->vout.default_gl = var_GetString(mp, "gl");
+     mp->vout.default_gles2 = var_GetString(mp, "gles2");
+@@ -1045,6 +1047,18 @@
+     vlc_player_t *player = p_mi->player;
+     vlc_player_Lock(player);
+ 
++    /* The cookie jar used by the http access is owned by the player, so the
++     * cookies stored on the media have to be replayed into it. */
++    input_item_t *item = vlc_player_GetCurrentMedia(player);
++    if( item != NULL )
++    {
++        libvlc_media_t *p_md = input_item_GetLibvlcOwner(item);
++        vlc_http_cookie_jar_t *p_jar = vlc_player_GetCookieJar( player );
++
++        if( p_md != NULL && p_jar != NULL )
++            libvlc_media_cookies_replay( p_md, p_jar );
++    }
++
+     int ret = vlc_player_Start(player);
+     if (ret == VLC_SUCCESS)
+     {
+@@ -1148,6 +1162,36 @@
+     var_SetString(player, "dec-dev", player->vout.default_dec_dev);
+     var_SetString(player, "vout", player->vout.default_vout);
+     var_SetString(player, "window", "any");
++}
++
++/* Private hook, configured before media assignment and before any playback. */
++int libvlc_vista_set_cvpx_bridge(libvlc_media_player_t *mp, vista_cvpx_bridge *bridge)
++{
++    if (bridge == NULL)
++        return -1;
++    vlc_player_Lock(mp->player);
++    if (vlc_player_GetState(mp->player) != VLC_PLAYER_STATE_STOPPED ||
++        vlc_player_GetCurrentMedia(mp->player) != NULL ||
++        var_GetAddress(mp, "vista-cvpx-bridge") != NULL ||
++        mp->vout.window_detach != NULL)
++    {
++        vlc_player_Unlock(mp->player);
++        return -1;
++    }
++    int ret = var_Create(mp, "codec", VLC_VAR_STRING);
++    if (ret == VLC_SUCCESS)
++        ret = var_SetString(mp, "codec", "videotoolbox,avcodec,none");
++    if (ret == VLC_SUCCESS)
++        ret = var_SetString(mp, "dec-dev", "videotoolbox,none");
++    if (ret == VLC_SUCCESS)
++        ret = var_SetString(mp, "vout", "vistacvpx,none");
++    if (ret == VLC_SUCCESS)
++        ret = var_SetString(mp, "window", "dummy,none");
++    if (ret == VLC_SUCCESS)
++        ret = var_SetAddress(mp, "vista-cvpx-bridge", bridge);
++    vlc_player_Unlock(mp->player);
++    /* Failure is terminal for this fresh research player: caller releases it. */
++    return ret == VLC_SUCCESS ? 0 : -1;
+ }
+ 
+ void libvlc_video_set_callbacks( libvlc_media_player_t *mp,
+--- a/modules/access/http.c
++++ b/modules/access/http.c
+@@ -265,10 +265,14 @@
+         p_sys->url.psz_username = (char *) credential.psz_username;
+         p_sys->url.psz_password = (char *) credential.psz_password;
+     }
++
+     else if( ret == -EINTR )
+         goto error;
+ 
+     ret = VLC_EGENERIC;
++
++    vlc_http_auth_Init( &p_sys->auth );
++    vlc_http_auth_Init( &p_sys->proxy_auth );
+ 
+ connect:
+     /* Connect */
+@@ -356,6 +360,8 @@
+     free( p_sys->psz_referrer );
+     free( p_sys->psz_username );
+     free( p_sys->psz_password );
++    vlc_http_auth_Deinit( &p_sys->auth );
++    vlc_http_auth_Deinit( &p_sys->proxy_auth );
+ 
+     return ret;
+ }
+@@ -383,6 +389,9 @@
+     free( p_sys->psz_referrer );
+     free( p_sys->psz_username );
+     free( p_sys->psz_password );
++
++    vlc_http_auth_Deinit( &p_sys->auth );
++    vlc_http_auth_Deinit( &p_sys->proxy_auth );
+ 
+     Disconnect( p_access );
+ }
+@@ -626,8 +635,6 @@
+     free( p_sys->psz_icy_name );
+     free( p_sys->psz_icy_title );
+ 
+-    vlc_http_auth_Init( &p_sys->auth );
+-    vlc_http_auth_Init( &p_sys->proxy_auth );
+     p_sys->psz_location = NULL;
+     p_sys->psz_mime = NULL;
+     p_sys->i_icy_meta = 0;
+--- a/modules/access/http/access.c
++++ b/modules/access/http/access.c
+@@ -192,10 +192,11 @@
+         goto error;
+ 
+     ret = vlc_credential_get(&crd, obj, NULL, NULL, NULL, NULL);
+-    if (ret == 0)
++    if (ret == 0) {
++        sys->resource->token = var_InheritString(obj, "http-token");
+         vlc_http_res_set_login(sys->resource,
+                                crd.psz_username, crd.psz_password);
+-    else if (ret == -EINTR)
++    } else if (ret == -EINTR)
+         goto error;
+ 
+     ret = VLC_EGENERIC;
+@@ -308,4 +309,7 @@
+                   "e.g. \"FooBar/1.2.3\"."))
+         change_safe()
+         change_private()
++    add_string("http-token", NULL, N_("Token"), N_("Token"))
++        change_safe()
++        change_private()
+ vlc_module_end()
+--- a/modules/access/http/resource.c
++++ b/modules/access/http/resource.c
+@@ -58,7 +58,9 @@
+     }
+ 
+     /* Authentication */
+-    if (res->username != NULL && res->password != NULL)
++    if (res->token != NULL)
++        vlc_http_msg_add_header(req, "Authorization", "Bearer %s", res->token);
++    else if (res->username != NULL && res->password != NULL)
+         vlc_http_msg_add_creds_basic(req, false, res->username, res->password);
+ 
+     /* Request context */
+@@ -154,6 +156,7 @@
+     free(res->path);
+     free(res->authority);
+     free(res->host);
++    free(res->token);
+ 
+     if (res->response != NULL)
+         vlc_http_msg_destroy(res->response);
+@@ -205,6 +208,7 @@
+                                                : NULL;
+     res->agent = (ua != NULL) ? strdup(ua) : NULL;
+     res->referrer = (ref != NULL) ? strdup(ref) : NULL;
++    res->token = NULL;
+ 
+     const char *path = url.psz_path;
+     if (path == NULL)
+--- a/modules/access/http/resource.h
++++ b/modules/access/http/resource.h
+@@ -56,6 +56,7 @@
+     char *password;
+     char *agent;
+     char *referrer;
++    char *token;
+ };
+ 
+ int vlc_http_res_init(struct vlc_http_resource *,
+--- a/modules/access_output/file.c
++++ b/modules/access_output/file.c
+@@ -87,6 +87,9 @@
+         {
+             if (errno == EINTR)
+                 continue;
++            if (errno == ENOSPC)
++                vlc_dialog_display_error(p_access, "record",
++                                         "An error occurred during recording. Error: %s", vlc_strerror_c(errno));
+             block_ChainRelease (p_buffer);
+             msg_Err( p_access, "cannot write: %s", vlc_strerror_c(errno) );
+             return -1;
+@@ -304,8 +307,13 @@
+             if (fd != -1)
+                 break;
+             if (fd == -1)
++            {
+                 msg_Err (p_access, "cannot create %s: %s", path,
+                          vlc_strerror_c(errno));
++
++                vlc_dialog_display_error(p_access, "record",
++                                         "An error occurred during recording. Error: %s", vlc_strerror_c(errno));
++            }
+             if (overwrite || errno != EEXIST)
+                 break;
+             flags &= ~O_EXCL;
+--- a/modules/codec/avcodec/avcodec.c
++++ b/modules/codec/avcodec/avcodec.c
+@@ -242,6 +242,11 @@
+                                      const AVCodec **restrict codecp,
+                                      bool b_require_hw_codec)
+ {
++    /* Vista AAC research: this plugin must never become a video fallback. */
++    if (p_dec->fmt_in->i_cat != AUDIO_ES ||
++        p_dec->fmt_in->i_codec != VLC_CODEC_MP4A)
++        return NULL;
++
+     enum AVCodecID i_codec_id;
+     const char *psz_namecodec;
+     const AVCodec *p_codec = NULL;
+--- a/modules/codec/videotoolbox/decoder.c
++++ b/modules/codec/videotoolbox/decoder.c
+@@ -33,6 +33,7 @@
+ #import <vlc_bits.h>
+ #import <vlc_boxes.h>
+ #import "../vt_utils.h"
++#include <vlc_vista_cvpx.h>
+ #import "../../packetizer/h264_nal.h"
+ #import "../../packetizer/h264_slice.h"
+ #import "../../packetizer/hxxx_nal.h"
+@@ -78,7 +79,7 @@
+ static CFDictionaryRef ESDSExtradataInfoCreate(decoder_t *, uint8_t *, uint32_t);
+ static CFDictionaryRef ExtradataInfoCreate(CFStringRef, void *, size_t);
+ static CFMutableDictionaryRef CreateSessionDescriptionFormat(decoder_t *, unsigned, unsigned);
+-static int HandleVTStatus(decoder_t *, OSStatus, enum vtsession_status *);
++static int HandleVTStatus(decoder_t *, OSStatus, enum vtsession_status *, uint32_t);
+ static int DecodeBlock(decoder_t *, block_t *);
+ static void RequestFlush(decoder_t *);
+ static void Drain(decoder_t *p_dec, bool flush);
+@@ -129,6 +130,7 @@
+         STATE_DECODER_STARTED,
+     } decoder_state;
+     VTDecompressionSessionRef   session;
++    unsigned vista_session_reports;
+     CMVideoFormatDescriptionRef videoFormatDescription;
+ 
+     /* Decoder Callback Synchronization */
+@@ -900,7 +902,10 @@
+ static bool InitVP9(decoder_t *p_dec)
+ {
+     decoder_sys_t *p_sys = p_dec->p_sys;
+-#if (TARGET_OS_OSX && defined(MAC_OS_VERSION_11_0) && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_VERSION_11_0) || \
++#if TARGET_OS_VISION && defined(__VISIONOS_26_2) && __VISION_OS_VERSION_MAX_ALLOWED >= __VISIONOS_26_2
++    if (__builtin_available(visionOS 26.2, *))
++        VTRegisterSupplementalVideoDecoderIfAvailable(kCMVideoCodecType_VP9);
++#elif (TARGET_OS_OSX && defined(MAC_OS_VERSION_11_0) && MAC_OS_X_VERSION_MAX_ALLOWED >= MAC_OS_VERSION_11_0) || \
+     (TARGET_OS_IOS && defined(__IPHONE_26_2) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_26_2) || \
+     (TARGET_OS_TV && defined(__TVOS_26_2) && __TV_OS_VERSION_MAX_ALLOWED >= __TVOS_26_2)
+     if(__builtin_available(macOS 11.0, iOS 26.2, tvOS 26.2, *))
+@@ -908,9 +913,14 @@
+ #endif
+ 
+     if(__builtin_available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
+-        if (!VTIsHardwareDecodeSupported(kCMVideoCodecType_VP9))
++        bool hardware = VTIsHardwareDecodeSupported(kCMVideoCodecType_VP9);
++        /* One initialization diagnostic; this capability is not a VT session proof. */
++        msg_Info(p_dec, "vista VP9 init: profile=%d extra=%zu hardware-capability=%d",
++                 p_dec->fmt_in->i_profile, (size_t)p_dec->fmt_in->i_extra, hardware);
++        if (!hardware)
+             return false;
+     } else {
++        msg_Info(p_dec, "vista VP9 init: hardware-capability API unavailable");
+         return false;
+     }
+ 
+@@ -923,10 +933,37 @@
+     return true;
+ }
+ 
++/* Vista VP9 header gate begin: shared verbatim with bounded guard controls. */
++static bool VistaVP9HeaderSupported(int container_profile,
++                                  const struct vp9_uncompressed_header *h)
++{
++    /* Validate the legal profile/depth combinations, not a guessed hardware
++     * limit. P2 10/12-bit still must pass VT creation and its hardware query. */
++    return (container_profile == -1 || container_profile == h->profile) &&
++           h->subsampling_xy == VP9_YUV_420 && h->color_space != VP9_CS_RGB &&
++           ((h->profile == 0 && h->bit_depth == 8) ||
++            (h->profile == 2 && (h->bit_depth == 10 || h->bit_depth == 12)));
++}
++/* Vista VP9 header gate end. */
++
+ static bool CodecSupportedVP9(decoder_t *p_dec)
+ {
+-    return p_dec->fmt_in->i_profile == 0 ||
+-           p_dec->fmt_in->i_profile == 2;
++    decoder_sys_t *p_sys = p_dec->p_sys;
++    const struct vt_vp9_context *ctx = p_sys->p_codec_context;
++    int profile = p_dec->fmt_in->i_profile;
++    bool supported = profile == 0 || profile == 2;
++    if (p_dec->fmt_in->i_extra == 0)
++    {
++        /* Open may only defer the decision; LateStartVP9 prevents a session
++         * until ProcessBlockVP9 has parsed and validated a complete header. */
++        supported = ctx->vp9_header.bit_depth == 0
++                  ? (supported || profile == -1)
++                  : VistaVP9HeaderSupported(profile, &ctx->vp9_header);
++    }
++    if (!supported)
++        msg_Warn(p_dec, "vista VP9 rejected before session: profile=%d extra=%zu",
++                 p_dec->fmt_in->i_profile, (size_t)p_dec->fmt_in->i_extra);
++    return supported;
+ }
+ 
+ static CFDictionaryRef CopyDecoderExtradataVP9(decoder_t *p_dec)
+@@ -980,7 +1017,41 @@
+         return NULL;
+     }
+ 
+-    if(hdr.frame_type == VP9_KEY_FRAME || hdr.intra_only)
++    const bool complete_header = !hdr.show_existing_frame &&
++        (hdr.frame_type == VP9_KEY_FRAME || hdr.intra_only);
++    if (p_dec->fmt_in->i_extra == 0)
++    {
++        if (!complete_header && vp9ctx->vp9_header.bit_depth == 0)
++        {
++            /* A show-existing/inter frame cannot configure the first session. */
++            block_Release(p_block);
++            return NULL;
++        }
++
++        const bool invalid_header = complete_header
++            ? !VistaVP9HeaderSupported(p_dec->fmt_in->i_profile, &hdr)
++            : hdr.profile != vp9ctx->vp9_header.profile;
++        const bool changed_header = complete_header &&
++            vp9ctx->vp9_header.bit_depth != 0 &&
++            !vp9_configs_equals(&hdr, &vp9ctx->vp9_header);
++        if (invalid_header || changed_header)
++        {
++            /* VP9 has no restart callback here. Do not feed a changed format
++             * into an old session, or silently broaden the accepted profiles. */
++            msg_Err(p_dec, "vista VP9 header rejected: profile=%u depth=%u chroma=%u changed=%d",
++                    hdr.profile, hdr.bit_depth, hdr.subsampling_xy, changed_header);
++            vlc_mutex_lock(&p_sys->lock);
++            p_sys->vtsession_status = VTSESSION_STATUS_ABORT;
++            vlc_mutex_unlock(&p_sys->lock);
++            block_Release(p_block);
++            return NULL;
++        }
++        if (complete_header && vp9ctx->vp9_header.bit_depth == 0)
++            msg_Info(p_dec, "vista VP9 parsed first header: profile=%u depth=%u chroma=%u",
++                     hdr.profile, hdr.bit_depth, hdr.subsampling_xy);
++    }
++
++    if(complete_header)
+     {
+         *pb_config_changed = !vp9_configs_equals(&hdr, &vp9ctx->vp9_header);
+         if(*pb_config_changed)
+@@ -1002,6 +1073,22 @@
+     if (p_dec->fmt_in->video.primaries == COLOR_PRIMARIES_UNDEF)
+         vp9_get_colorimetry(h, &fmt->primaries, &fmt->transfer,
+                             &fmt->space, &fmt->color_range);
++
++    /* Request an already supported, uncompressed CVPX format for known P0.
++     * Otherwise VT may choose lossless-compressed &8v0, which the CVPX path
++     * must not relabel as NV12. Leave other profiles and explicit overrides
++     * unchanged. Respect configured color range, using the parsed header only
++     * when container/output range is unknown. VT produces the requested range. */
++    if (p_sys->i_cvpx_format == 0 && !p_sys->b_cvpx_format_forced &&
++        h->profile == 0 && h->bit_depth == 8 &&
++        h->subsampling_xy == VP9_YUV_420 && h->color_space != VP9_CS_RGB)
++    {
++        const bool full_range = fmt->color_range == COLOR_RANGE_FULL ||
++            (fmt->color_range == COLOR_RANGE_UNDEF && h->color_range);
++        p_sys->i_cvpx_format = full_range
++            ? kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
++            : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
++    }
+ 
+     if (!p_dec->fmt_in->video.i_visible_width ||
+         !p_dec->fmt_in->video.i_visible_height)
+@@ -1017,6 +1104,13 @@
+ 
+ /* !Codec Specific */
+ 
++static void VistaPipeline(decoder_t *p_dec, vista_cvpx_pipeline_event event,
++                          bool rejected, int32_t status, uint32_t detail, uint64_t value)
++{
++    vista_cvpx_note_pipeline(var_InheritAddress(p_dec, "vista-cvpx-bridge"),
++                             event, rejected, status, detail, value);
++}
++
+ static void DrainDPBLocked(decoder_t *p_dec, bool flush)
+ {
+     decoder_sys_t *p_sys = p_dec->p_sys;
+@@ -1029,8 +1123,10 @@
+         {
+             if (flush)
+                 picture_Release(p_output);
+-            else
++            else {
++                VistaPipeline(p_dec, VISTA_PIPE_QUEUE_VIDEO, false, 0, 1, 0);
+                 decoder_QueueVideo(p_dec, p_output);
++            }
+         }
+         RemoveDPBSlot(dpb, &dpb->p_entries);
+     }
+@@ -1126,9 +1222,11 @@
+         picture_t *p_pic = p_out;
+         p_out = p_out->p_next;
+         p_pic->p_next = NULL;
++        VistaPipeline(p_dec, VISTA_PIPE_QUEUE_VIDEO, false, 0, 0, 0);
+         decoder_QueueVideo(p_dec, p_pic);
+     }
+ 
++    VistaPipeline(p_dec, VISTA_PIPE_DPB_INSERT, p_info->p_picture == NULL, 0, p_sys->dpb.i_size, 0);
+     InsertIntoDPB(&p_sys->dpb, p_info);
+ }
+ 
+@@ -1348,6 +1446,12 @@
+                              kCFBooleanTrue);
+ #endif
+ 
++    /* Research path is fail-closed on every supported Apple target, not only macOS. */
++    if (var_InheritAddress(p_dec, "vista-cvpx-bridge") != NULL)
++        CFDictionarySetValue(decoderConfiguration,
++                             kVTVideoDecoderSpecification_RequireHardwareAcceleratedVideoDecoder,
++                             kCFBooleanTrue);
++
+     return decoderConfiguration;
+ }
+ 
+@@ -1438,11 +1542,42 @@
+                                           decoderConfiguration,
+                                           destinationPixelBufferAttributes,
+                                           &decoderCallbackRecord, &p_sys->session);
++    vista_cvpx_note_vt_create(var_InheritAddress(p_dec, "vista-cvpx-bridge"), status,
++                              p_sys->codec, p_dec->fmt_in->i_profile);
+     CFRelease(decoderConfiguration);
+     CFRelease(destinationPixelBufferAttributes);
+ 
+-    if (HandleVTStatus(p_dec, status, NULL) != VLC_SUCCESS)
++    if (HandleVTStatus(p_dec, status, NULL, 1) != VLC_SUCCESS)
+         return VLC_EGENERIC;
++
++    vista_cvpx_bridge *bridge = var_InheritAddress(p_dec, "vista-cvpx-bridge");
++    if (bridge != NULL)
++    {
++        CFTypeRef value = NULL;
++        OSStatus query = VTSessionCopyProperty(p_sys->session,
++                            kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder,
++                            kCFAllocatorDefault, &value);
++        bool hardware = query == noErr && value != NULL &&
++                        CFGetTypeID(value) == CFBooleanGetTypeID() &&
++                        CFBooleanGetValue((CFBooleanRef)value);
++        if (value != NULL)
++            CFRelease(value);
++        vista_cvpx_note_vt(bridge, query, hardware, p_sys->codec);
++        if (p_sys->vista_session_reports < 8)
++        {
++            ++p_sys->vista_session_reports;
++            msg_Info(p_dec, "vista-vt session=%u codec=0x%08x query=%d hardware=%d",
++                     p_sys->vista_session_reports, (unsigned)p_sys->codec,
++                     (int)query, hardware);
++        }
++        if (!hardware)
++        {
++            VTDecompressionSessionInvalidate(p_sys->session);
++            CFRelease(p_sys->session);
++            p_sys->session = NULL;
++            return VLC_EGENERIC;
++        }
++    }
+ 
+     return VLC_SUCCESS;
+ 
+@@ -1920,8 +2055,11 @@
+ #endif
+ 
+ static int HandleVTStatus(decoder_t *p_dec, OSStatus status,
+-                          enum vtsession_status * p_vtsession_status)
+-{
++                          enum vtsession_status *p_vtsession_status, uint32_t stage)
++{
++    if (status != noErr)
++        vista_cvpx_note_vt_failure(var_InheritAddress(p_dec, "vista-cvpx-bridge"),
++                                   status, stage);
+ #define VTERRCASE(x) \
+     case x: msg_Warn(p_dec, "vt session error: '" #x "'"); break;
+ 
+@@ -2218,15 +2356,16 @@
+ 
+     pic_pacer_WaitAllocatableSlot(p_sys->pic_pacer, p_info->b_field);
+ 
+-    VTDecodeInfoFlags flagOut;
++    VTDecodeInfoFlags flagOut = 0;
+     VTDecodeFrameFlags decoderFlags = kVTDecodeFrame_EnableAsynchronousDecompression;
+ 
+     OSStatus status =
+         VTDecompressionSessionDecodeFrame(p_sys->session, sampleBuffer,
+                                           decoderFlags, p_info, &flagOut);
++    VistaPipeline(p_dec, VISTA_PIPE_SUBMIT, status != noErr, status, flagOut, 0);
+ 
+     enum vtsession_status vtsession_status;
+-    if (HandleVTStatus(p_dec, status, &vtsession_status) == VLC_SUCCESS)
++    if (HandleVTStatus(p_dec, status, &vtsession_status, 2) == VLC_SUCCESS)
+     {
+         pic_pacer_AccountScheduledDecode(p_sys->pic_pacer, p_info->b_field);
+ 
+@@ -2358,11 +2497,15 @@
+             assert(CVPixelBufferIsPlanar(imageBuffer) == false);
+             break;
+         default:
++            VistaPipeline(p_dec, VISTA_PIPE_FORMAT, true, 0, cvfmt, 0);
+             p_sys->vtsession_status = VTSESSION_STATUS_ABORT;
+             return -1;
+     }
+ 
+-    if (decoder_UpdateVideoOutput(p_dec, p_sys->vctx) != 0)
++    int output_status = decoder_UpdateVideoOutput(p_dec, p_sys->vctx);
++    VistaPipeline(p_dec, VISTA_PIPE_FORMAT, output_status != 0, output_status,
++                  cvfmt, p_dec->fmt_out.i_codec);
++    if (output_status != 0)
+     {
+         p_sys->vtsession_status = VTSESSION_STATUS_VOUT_FAILURE;
+         return -1;
+@@ -2392,15 +2535,22 @@
+     decoder_sys_t *p_sys = p_dec->p_sys;
+     frame_info_t *p_info = (frame_info_t *) sourceFrameRefCon;
+     const bool b_field = p_info->b_field;
++    VistaPipeline(p_dec, VISTA_PIPE_CALLBACK, status != noErr, status, infoFlags,
++                  imageBuffer ? CVPixelBufferGetPixelFormatType(imageBuffer) : 0);
++    if (infoFlags & kVTDecodeInfo_FrameDropped)
++        VistaPipeline(p_dec, VISTA_PIPE_CALLBACK_DROPPED, !imageBuffer, status, infoFlags,
++                      imageBuffer ? CVPixelBufferGetPixelFormatType(imageBuffer) : 0);
+ 
+     vlc_mutex_lock(&p_sys->lock);
+-    if (p_sys->b_discard_decoder_output)
++    if (p_sys->b_discard_decoder_output) {
++        VistaPipeline(p_dec, VISTA_PIPE_CALLBACK_DISCARD, true, 0, 0, 0);
+         goto end;
++    }
+ 
+     const bool b_hdr_changed = UpdateHDRMetadata(p_dec, p_info);
+ 
+     enum vtsession_status vtsession_status;
+-    if (HandleVTStatus(p_dec, status, &vtsession_status) != VLC_SUCCESS)
++    if (HandleVTStatus(p_dec, status, &vtsession_status, 3) != VLC_SUCCESS)
+     {
+         if (p_sys->vtsession_status != VTSESSION_STATUS_ABORT)
+             p_sys->vtsession_status = vtsession_status;
+@@ -2409,6 +2559,7 @@
+ 
+     if (!imageBuffer)
+     {
++        VistaPipeline(p_dec, VISTA_PIPE_CALLBACK_NULL, true, status, infoFlags, 0);
+         if (unlikely((infoFlags & kVTDecodeInfo_FrameDropped) != kVTDecodeInfo_FrameDropped))
+         {
+             msg_Err(p_dec, "critical: null imageBuffer for a non-dropped frame with valid status");
+@@ -2419,8 +2570,10 @@
+         goto end;
+     }
+ 
+-    if (p_sys->vtsession_status == VTSESSION_STATUS_ABORT)
++    if (p_sys->vtsession_status == VTSESSION_STATUS_ABORT) {
++        VistaPipeline(p_dec, VISTA_PIPE_CALLBACK_ABORT, true, 0, 0, 0);
+         goto end;
++    }
+ 
+     if (unlikely(!p_sys->b_format_propagated)) {
+         p_sys->b_format_propagated =
+@@ -2443,11 +2596,16 @@
+         msg_Dbg(p_dec, "decoder dropped frame");
+     }
+ 
+-    if (!CMTIME_IS_VALID(pts))
++    if (!CMTIME_IS_VALID(pts)) {
++        VistaPipeline(p_dec, VISTA_PIPE_CALLBACK_BAD_PTS, true, 0, pts.flags, 0);
+         goto end;
+-
+-    if (CVPixelBufferGetDataSize(imageBuffer) == 0)
++    }
++
++    if (CVPixelBufferGetDataSize(imageBuffer) == 0) {
++        VistaPipeline(p_dec, VISTA_PIPE_CALLBACK_ZERO_SIZE, true, 0,
++                      CVPixelBufferGetPixelFormatType(imageBuffer), CVPixelBufferGetPlaneCount(imageBuffer));
+         goto end;
++    }
+ 
+     if (unlikely(p_info == NULL))
+         goto end;
+@@ -2458,6 +2616,7 @@
+     vlc_mutex_unlock(&p_sys->lock);
+ 
+     picture_t *p_pic = decoder_NewPicture(p_dec);
++    VistaPipeline(p_dec, VISTA_PIPE_NEW_PICTURE, p_pic == NULL, 0, 0, 0);
+     if (p_pic)
+     {
+         p_pic->date = pts.value;
+@@ -2470,8 +2629,11 @@
+             p_pic->b_top_field_first = p_info->b_top_field_first;
+         }
+ 
+-        if (cvpxpic_attach(p_pic, imageBuffer, p_sys->vctx,
+-                           video_context_OnPicReleased) == VLC_SUCCESS)
++        int attach_status = cvpxpic_attach(p_pic, imageBuffer, p_sys->vctx,
++                           video_context_OnPicReleased);
++        VistaPipeline(p_dec, VISTA_PIPE_ATTACH, attach_status != VLC_SUCCESS, attach_status,
++                      CVPixelBufferGetPixelFormatType(imageBuffer), CVPixelBufferGetDataSize(imageBuffer));
++        if (attach_status == VLC_SUCCESS)
+         {
+             /* VT is not pacing frame allocation. If we are not fast enough to
+                  * render (release) the output pictures, the VT session can end up
+--- a/modules/common.am
++++ b/modules/common.am
+@@ -17,12 +17,13 @@
+ # Module name from object or executable file name.
+ MODULE_STRING = $$(p="$@"; p="$${p\#\#*/}"; p="$${p\#lib}"; p="$${p%_plugin*}"; p=$$(echo "$$p"|sed 's/-/_/g'); p="$${p%.lo}"; echo "$$p")
+ MODULE_NAME = $$(p="$@"; p=$$(echo "$$p"|sed 's/lib//g'); p="$${p%_plugin*}"; p=$$(echo "$$p"|sed 's/[-\/]/_/g'); p="$${p%.lo}"; echo "$$p")
++MODULE_FULLNAME = $$(p="$@"; p="$${p\#lib}"; p="$${p%_plugin*}"; p=$$(echo "$$p"|sed 's/[-\/]/_/g'); p="$${p%.lo}"; echo "$$p")
+ 
+ AM_CPPFLAGS = -DMODULE_STRING=\"$(MODULE_STRING)\"
+ if HAVE_DYNAMIC_PLUGINS
+ AM_CPPFLAGS += -DVLC_DYNAMIC_PLUGIN
+ else
+-AM_CPPFLAGS += -DMODULE_NAME=$(MODULE_NAME)
++AM_CPPFLAGS += -DMODULE_NAME=$(MODULE_FULLNAME)
+ endif
+ AM_CFLAGS =
+ AM_CXXFLAGS =
+--- a/modules/demux/adaptive/http/HTTPConnection.cpp
++++ b/modules/demux/adaptive/http/HTTPConnection.cpp
+@@ -421,6 +421,7 @@
+         return RequestStatus::GenericError;
+ 
+     /* Set credentials from URL. Deprecated warning will follow */
++
+     struct vlc_credential crd;
+     struct vlc_url_t crd_url;
+     vlc_UrlParse(&crd_url, params.getUrl().c_str());
+--- a/modules/demux/json/grammar.y
++++ b/modules/demux/json/grammar.y
+@@ -211,15 +211,15 @@
+ 
+ %%
+ 
+-int json_parse(void *opaque, struct json_object *result)
++int json_parse(struct json_parse_sys *sys, struct json_object *result)
+ {
+ 	void *scanner;
+-	int ret = jsonlex_init_extra(opaque, &scanner);
++	int ret = jsonlex_init_extra(sys, &scanner);
+ 
+ 	if (ret)
+ 		return ret;
+ 
+-	ret = yyparse(opaque, scanner, result);
++	ret = yyparse(sys, scanner, result);
+ 	jsonlex_destroy(scanner);
+ 	return ret;
+ }
+--- a/modules/demux/json/json.c
++++ b/modules/demux/json/json.c
+@@ -30,6 +30,18 @@
+ #include <vlc_common.h>
+ #include <vlc_charset.h>
+ #include "json.h"
++
++size_t json_read(void *data, void *buf, size_t max)
++{
++    struct json_parse_sys *sys = data;
++    return sys->pf_read(sys->opaque, buf, max);
++}
++
++void json_parse_error(void *data, const char *msg)
++{
++    struct json_parse_sys *sys = data;
++    sys->pf_error(sys->opaque, msg);
++}
+ 
+ #ifdef WORDS_BIGENDIAN
+ # define ENDIAN(x) x "BE"
+--- a/modules/demux/json/json.h
++++ b/modules/demux/json/json.h
+@@ -61,11 +61,17 @@
+     struct json_value value;
+ };
+ 
++struct json_parse_sys {
++    void *opaque;
++    size_t (*pf_read)(void *opaque, void *buf, size_t max);
++    void (*pf_error)(void *opaque, const char *msg);
++};
++
+ size_t json_read(void *opaque, void *buf, size_t max);
+ void json_parse_error(void *opaque, const char *msg);
+ char *json_unescape(const char *, size_t);
+ 
+-int json_parse(void *opaque, struct json_object *result);
++int json_parse(struct json_parse_sys *sys, struct json_object *result);
+ void json_free(struct json_object *);
+ 
+ const struct json_value *json_get(const struct json_object *obj,
+--- a/modules/demux/ytdl.c
++++ b/modules/demux/ytdl.c
+@@ -50,14 +50,14 @@
+     int fd;
+ };
+ 
+-void json_parse_error(void *data, const char *msg)
++static void ytdl_json_parse_error(void *data, const char *msg)
+ {
+     struct ytdl_json *sys = data;
+ 
+     vlc_error(sys->logger, "%s", msg);
+ }
+ 
+-size_t json_read(void *data, void *buf, size_t size)
++static size_t ytdl_json_read(void *data, void *buf, size_t size)
+ {
+     struct ytdl_json *sys = data;
+ 
+@@ -405,7 +405,12 @@
+ 
+     free(path);
+ 
+-    int val = json_parse(&jsdata, &sys->json);
++    struct json_parse_sys json_sys;
++    json_sys.opaque = &jsdata;
++    json_sys.pf_read = ytdl_json_read;
++    json_sys.pf_error = ytdl_json_parse_error;
++
++    int val = json_parse(&json_sys, &sys->json);
+ 
+     kill(pid, SIGTERM);
+     vlc_close(jsdata.fd);
+--- a/modules/misc/preparser_serializer/json/serializer.c
++++ b/modules/misc/preparser_serializer/json/serializer.c
+@@ -318,7 +318,7 @@
+ /**
+  * JSON read callback
+  */
+-size_t json_read(void *opaque, void *buf, size_t max)
++static size_t serdes_json_read(void *opaque, void *buf, size_t max)
+ {
+     assert(opaque != NULL);
+     assert(buf != NULL);
+@@ -336,7 +336,7 @@
+     return ret;
+ }
+ 
+-void json_parse_error(void *opaque, const char *msg)
++static void serdes_json_parse_error(void *opaque, const char *msg)
+ {
+     assert(opaque != NULL);
+     assert(msg != NULL);
+@@ -360,8 +360,13 @@
+     sys->size = 0;
+     sys->parent = serdes;
+ 
++    struct json_parse_sys json_sys;
++    json_sys.opaque = sys;
++    json_sys.pf_read = serdes_json_read;
++    json_sys.pf_error = serdes_json_parse_error;
++
+     struct json_object obj;
+-    if (json_parse(sys, &obj) != 0) {
++    if (json_parse(&json_sys, &obj) != 0) {
+         return sys->error;
+     }
+ 
+--- a/modules/misc/webservices/acoustid.c
++++ b/modules/misc/webservices/acoustid.c
+@@ -89,10 +89,15 @@
+ static bool ParseJson( vlc_object_t *p_obj, const void *p_buffer, size_t i_buffer,
+                        acoustid_results_t *p_results )
+ {
+-    struct json_helper_sys sys;
+-    sys.logger = p_obj->logger;
+-    sys.buffer = p_buffer;
+-    sys.size = i_buffer;
++    struct json_helper_sys jsdata;
++    jsdata.logger = p_obj->logger;
++    jsdata.buffer = p_buffer;
++    jsdata.size = i_buffer;
++
++    struct json_parse_sys sys;
++    sys.opaque = &jsdata;
++    sys.pf_read = json_helper_read;
++    sys.pf_error = json_helper_parse_error;
+ 
+     struct json_object json;
+     int val = json_parse(&sys, &json);
+--- a/modules/misc/webservices/json_helper.h
++++ b/modules/misc/webservices/json_helper.h
+@@ -87,14 +87,14 @@
+     size_t size;
+ };
+ 
+-void json_parse_error(void *data, const char *msg)
++static void json_helper_parse_error(void *data, const char *msg)
+ {
+     struct json_helper_sys *sys = data;
+ 
+     vlc_error(sys->logger, "%s", msg);
+ }
+ 
+-size_t json_read(void *data, void *buf, size_t size)
++static size_t json_helper_read(void *data, void *buf, size_t size)
+ {
+     struct json_helper_sys *sys = data;
+ 
+--- a/modules/misc/webservices/musicbrainz.c
++++ b/modules/misc/webservices/musicbrainz.c
+@@ -61,10 +61,15 @@
+         return NULL;
+     }
+ 
+-    struct json_helper_sys sys;
+-    sys.logger = p_obj->logger;
+-    sys.buffer = p_buffer;
+-    sys.size = i_buffer;
++    struct json_helper_sys jsdata;
++    jsdata.logger = p_obj->logger;
++    jsdata.buffer = p_buffer;
++    jsdata.size = i_buffer;
++
++    struct json_parse_sys sys;
++    sys.opaque = &jsdata;
++    sys.pf_read = json_helper_read;
++    sys.pf_error = json_helper_parse_error;
+ 
+     int val = json_parse(&sys, &p_lookup->json);
+     free(p_buffer);
+--- a/modules/stream_out/chromecast/chromecast_ctrl.cpp
++++ b/modules/stream_out/chromecast/chromecast_ctrl.cpp
+@@ -58,7 +58,7 @@
+     const char *string;
+ };
+ 
+-void json_parse_error(void *data, const char *msg)
++static void chromecast_json_parse_error(void *data, const char *msg)
+ {
+     vlc_assert(data != NULL);
+ 
+@@ -66,7 +66,7 @@
+     vlc_error(sys->logger, "%s", msg);
+ }
+ 
+-size_t json_read(void *data, void *buf, size_t size)
++static size_t chromecast_json_read(void *data, void *buf, size_t size)
+ {
+     vlc_assert(data != NULL);
+     vlc_assert(buf != NULL);
+@@ -75,7 +75,7 @@
+     size_t len = strlen(sys->string);
+ 
+     /* Read the smallest number of byte between size and the string length */
+-    size_t s = size < len ? size : len; 
++    size_t s = size < len ? size : len;
+     memcpy(buf, sys->string, s);
+ 
+     sys->string += s;
+@@ -616,9 +616,14 @@
+         return true;
+     }
+ 
+-    struct chromecast_ctrl_json sys;
+-    sys.logger = m_module->logger;
+-    sys.string = msg.payload_utf8().c_str();
++    struct chromecast_ctrl_json jsdata;
++    jsdata.logger = m_module->logger;
++    jsdata.string = msg.payload_utf8().c_str();
++
++    struct json_parse_sys sys;
++    sys.opaque = &jsdata;
++    sys.pf_read = chromecast_json_read;
++    sys.pf_error = chromecast_json_parse_error;
+ 
+     struct json_object json;
+     int val = json_parse(&sys, &json);
+--- a/modules/video_output/Makefile.am
++++ b/modules/video_output/Makefile.am
+@@ -444,3 +444,15 @@
+ 	libwextern_plugin.la \
+ 	libvgl_plugin.la \
+ 	libyuv_plugin.la
++
++# Isolated Vista research module; explicit opt-in only.
++if HAVE_DARWIN
++if !HAVE_WATCHOS
++libvistacvpx_plugin_la_SOURCES = video_output/apple/vista_cvpx_vout.c
++libvistacvpx_plugin_la_CPPFLAGS = $(AM_CPPFLAGS)
++libvistacvpx_plugin_la_LIBADD = libvlc_vtutils.la
++libvistacvpx_plugin_la_LDFLAGS = $(AM_LDFLAGS) $(vout_RPATH) \
++    -Wl,-framework,CoreVideo,-framework,CoreFoundation,-framework,CoreMedia,-framework,VideoToolbox,-framework,Metal
++vout_PLUGINS += libvistacvpx_plugin.la
++endif
++endif
+--- /dev/null
++++ b/modules/video_output/apple/vista_cvpx_vout.c
+@@ -0,0 +1,136 @@
++/* Candidate internal VLC module. Needs integration into the pinned source build.
++ * Neither compiled-in registration nor a LibVLC public setter is provided by SDK.
++ * No UIView, drawable, software converter, pixel lock/readback or display layer. */
++#ifdef HAVE_CONFIG_H
++# include "config.h"
++#endif
++#include <vlc_common.h>
++#include <vlc_plugin.h>
++#include <vlc_codec.h>
++#include <vlc_vout_display.h>
++#include "../../codec/vt_utils.h"
++#include <vlc_vista_cvpx.h>
++
++typedef struct {
++    vista_cvpx_bridge *bridge; /* app owns until player stop + this Close complete */
++    uint64_t generation;      /* immutable for this producer lifetime */
++} vista_vout;
++
++static bool cvpx_chroma(vlc_fourcc_t chroma)
++{
++    switch (chroma) {
++    case VLC_CODEC_CVPX_NV12: case VLC_CODEC_CVPX_P010:
++    case VLC_CODEC_CVPX_I420: case VLC_CODEC_CVPX_UYVY:
++    case VLC_CODEC_CVPX_BGRA: return true;
++    default: return false;
++    }
++}
++
++static bool vt_context(vlc_video_context *ctx)
++{
++    if (!ctx || !vlc_video_context_GetCVPXPrivate(ctx, CVPX_VIDEO_CONTEXT_VIDEOTOOLBOX))
++        return false;
++    vlc_decoder_device *device = vlc_video_context_HoldDevice(ctx);
++    if (!device) return false;
++    bool valid = device->type == VLC_DECODER_DEVICE_VIDEOTOOLBOX;
++    vlc_decoder_device_Release(device);
++    /* Context subtype/device identify VT path, NOT the session's hardware flag. */
++    return valid;
++}
++
++static void Close(vout_display_t *vd)
++{
++    vista_vout *s = vd->sys;
++    vista_cvpx_detach(s->bridge, s->generation);
++    free(s); vd->sys = NULL;
++}
++
++static void Prepare(vout_display_t *vd, picture_t *pic,
++                    const struct vlc_render_subpicture *subpic, vlc_tick_t deadline)
++{
++    vista_vout *s = vd->sys;
++    CVPixelBufferRef pixel = NULL;
++    /* Strictly refuse unexpected software pictures; never ask VLC to convert. */
++    if (!subpic && cvpx_chroma(pic->format.i_chroma) && pic->context
++        && vt_context(pic->context->vctx))
++        pixel = cvpxpic_get_ref(pic);
++    uint32_t reasons = (subpic ? 1 : 0) | (!cvpx_chroma(pic->format.i_chroma) ? 2 : 0)
++        | (!pic->context ? 4 : 0) | (pic->context && !vt_context(pic->context->vctx) ? 8 : 0)
++        | (!pixel ? 16 : 0);
++    vista_cvpx_note_pipeline(s->bridge, VISTA_PIPE_VOUT_PREPARE, pixel == NULL, 0,
++                             reasons, pic->format.i_chroma);
++    vista_cvpx_prepare(s->bridge, s->generation, (uintptr_t)pic, pixel,
++                       &pic->format, vd->source, pic->date, deadline,
++                       vd->cfg->projection, vd->cfg->stereo_mode,
++                       pic->b_progressive, pic->b_multiview_left_eye, pic->i_nb_fields);
++    /* No notification/delivery here; VLC still waits on its clock after Prepare. */
++}
++
++static void Display(vout_display_t *vd, picture_t *pic)
++{
++    vista_vout *s = vd->sys;
++    bool published = vista_cvpx_display(s->bridge, s->generation, (uintptr_t)pic, vlc_tick_now());
++    vista_cvpx_note_pipeline(s->bridge, VISTA_PIPE_VOUT_DISPLAY, !published, 0, 0, 0);
++}
++
++static int UpdateFormat(vout_display_t *vd, const video_format_t *fmt,
++                        vlc_video_context *ctx)
++{
++    vista_vout *s = vd->sys;
++    uint32_t reasons = (fmt->p_palette ? 1 : 0) | (!cvpx_chroma(fmt->i_chroma) ? 2 : 0)
++        | (!vt_context(ctx) ? 4 : 0);
++    int status = reasons ? VLC_EGENERIC : VLC_SUCCESS;
++    vista_cvpx_note_pipeline(s->bridge, VISTA_PIPE_VOUT_UPDATE, reasons != 0, status, reasons, fmt->i_chroma);
++    return status;
++}
++
++static int Projection(vout_display_t *vd, video_projection_mode_t projection)
++{
++    (void)vd; (void)projection;
++    /* Preserve packed source. Vista owns projection; this module never projects. */
++    return VLC_SUCCESS;
++}
++
++static int Stereo(vout_display_t *vd, vlc_stereoscopic_mode_t stereo)
++{
++    (void)vd; (void)stereo;
++    return VLC_SUCCESS;
++}
++
++static int Open(vout_display_t *vd, video_format_t *fmt, vlc_video_context *ctx)
++{
++    vista_cvpx_bridge *bridge = var_InheritAddress(vd, "vista-cvpx-bridge");
++    uint32_t reasons = (fmt->p_palette ? 1 : 0) | (!cvpx_chroma(fmt->i_chroma) ? 2 : 0)
++        | (!vt_context(ctx) ? 4 : 0);
++    if (reasons) {
++        vista_cvpx_note_pipeline(bridge, VISTA_PIPE_VOUT_OPEN, true, VLC_EGENERIC, reasons, fmt->i_chroma);
++        return VLC_EGENERIC;
++    }
++    if (!bridge) return VLC_EGENERIC;
++    vista_vout *s = calloc(1, sizeof(*s));
++    if (!s) {
++        vista_cvpx_note_pipeline(bridge, VISTA_PIPE_VOUT_OPEN, true, VLC_ENOMEM, 8, fmt->i_chroma);
++        return VLC_ENOMEM;
++    }
++    s->bridge = bridge;
++    if (!vista_cvpx_attach(bridge, &s->generation)) {
++        vista_cvpx_note_pipeline(bridge, VISTA_PIPE_VOUT_OPEN, true, VLC_EGENERIC, 16, fmt->i_chroma);
++        free(s); return VLC_EGENERIC;
++    }
++    static const struct vlc_display_operations ops = {
++        .close = Close, .prepare = Prepare, .display = Display,
++        .update_format = UpdateFormat, .change_source_projection = Projection,
++        .set_stereo = Stereo,
++    };
++    vd->sys = s; vd->ops = &ops;
++    vista_cvpx_note_pipeline(bridge, VISTA_PIPE_VOUT_OPEN, false, VLC_SUCCESS, 0, fmt->i_chroma);
++    return VLC_SUCCESS; /* fmt unchanged: no CPU conversion request */
++}
++
++vlc_module_begin()
++    set_shortname("Vista CVPX research")
++    set_description("Scheduled CVPX leases for an external Vista renderer")
++    set_subcategory(SUBCAT_VIDEO_VOUT)
++    add_shortcut("vista-cvpx")
++    set_callback_display(Open, 0) /* explicit opt-in only */
++vlc_module_end()
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -491,7 +491,8 @@
+ libvlccore_la_SOURCES += \
+ 	darwin/error.c \
+ 	darwin/specific.c \
+-	darwin/thread.c
++	darwin/thread.c \
++	video_output/vista_cvpx_bridge.c
+ libvlccore_objc_la_SOURCES = \
+ 	darwin/dirs.m \
+ 	darwin/netconf.m
+@@ -616,7 +617,7 @@
+ libvlccore_objc_la_OBJCFLAGS = $(AM_OBJCFLAGS) -fobjc-arc
+ libvlccore_objc_la_LDFLAGS = -static
+ libvlccore_la_LIBADD += libvlccore_objc.la
+-libvlccore_la_LDFLAGS +=  -Wl,-framework,Foundation -Xlinker -install_name -Xlinker @rpath/libvlccore.dylib
++libvlccore_la_LDFLAGS +=  -Wl,-framework,Foundation,-framework,CoreVideo -Xlinker -install_name -Xlinker @rpath/libvlccore.dylib
+ endif
+ 
+ # iOS and tvOS applications cannot install global shared libraries and
+--- a/src/input/decoder.c
++++ b/src/input/decoder.c
+@@ -2552,7 +2552,8 @@
+ #endif
+ 
+     /* Delete decoder */
+-    DeleteDecoder(p_owner, p_owner->dec_fmt_in.i_cat);
++    /* Failed reload clears dec_fmt_in; output ownership keeps its original category. */
++    DeleteDecoder(p_owner, p_owner->cat);
+ }
+ 
+ void vlc_subdec_desc_Clean(struct vlc_subdec_desc *desc)
+--- a/src/libvlc.c
++++ b/src/libvlc.c
+@@ -260,6 +260,8 @@
+     var_Create( p_libvlc, "app-version", VLC_VAR_STRING );
+     var_SetString( p_libvlc, "app-version", PACKAGE_VERSION );
+ 
++    var_Create( p_libvlc, "http-token", VLC_VAR_STRING );
++
+     /* System specific configuration */
+     system_Configure( p_libvlc, i_argc - vlc_optind, ppsz_argv + vlc_optind );
+ 
+--- a/src/libvlccore.sym
++++ b/src/libvlccore.sym
+@@ -151,6 +151,7 @@
+ vlc_http_auth_FormatAuthorizationHeader
+ vlc_http_cookies_new
+ vlc_http_cookies_destroy
++vlc_http_cookies_clear
+ vlc_http_cookies_store
+ vlc_http_cookies_fetch
+ httpd_ClientIP
+@@ -871,6 +872,7 @@
+ vlc_player_GetCapabilities
+ vlc_player_GetCategoryDelay
+ vlc_player_GetCategoryLanguage
++vlc_player_GetCookieJar
+ vlc_player_GetCurrentMedia
+ vlc_player_GetNextMedia
+ vlc_player_GetError
+@@ -1079,3 +1081,18 @@
+ vlc_preparser_msg_Init
+ vlc_preparser_msg_Clean
+ vlc_preparser_msg_serdes_Create
++
++vista_cvpx_create
++vista_cvpx_destroy
++vista_cvpx_attach
++vista_cvpx_detach
++vista_cvpx_quiesce
++vista_cvpx_wait_drained
++vista_cvpx_quiesce_and_drain
++vista_cvpx_prepare
++vista_cvpx_display
++vista_cvpx_take_latest
++vista_cvpx_is_current
++vista_cvpx_release
++vista_cvpx_note_vt
++vista_cvpx_get_vt_diagnostics
+--- a/src/misc/httpcookies.c
++++ b/src/misc/httpcookies.c
+@@ -282,7 +282,7 @@
+     return jar;
+ }
+ 
+-void vlc_http_cookies_destroy( vlc_http_cookie_jar_t * p_jar )
++void vlc_http_cookies_clear( vlc_http_cookie_jar_t * p_jar )
+ {
+     if ( !p_jar )
+         return;
+@@ -291,7 +291,11 @@
+         cookie_destroy( vlc_array_item_at_index( &p_jar->cookies, i ) );
+ 
+     vlc_array_clear( &p_jar->cookies );
+-
++}
++
++void vlc_http_cookies_destroy( vlc_http_cookie_jar_t * p_jar )
++{
++    vlc_http_cookies_clear( p_jar );
+     free( p_jar );
+ }
+ 
+--- a/src/network/http_auth.c
++++ b/src/network/http_auth.c
+@@ -222,7 +222,10 @@
+         /* 2 Basic Authentication Scheme */
+         msg_Dbg( p_this, "Using Basic Authentication" );
+         psz_header += sizeof( psz_basic_prefix ) - 1;
++
++        free( p_auth->psz_realm );
+         p_auth->psz_realm = AuthGetParam( psz_header, "realm" );
++
+         if ( p_auth->psz_realm == NULL )
+             msg_Warn( p_this, "Basic Authentication: "
+                       "Mandatory 'realm' parameter is missing" );
+@@ -238,12 +241,24 @@
+             return;
+ 
+         psz_header += sizeof( psz_digest_prefix ) - 1;
++        p_auth->psz_nonce = AuthGetParam( psz_header, "nonce" );
++
++        free( p_auth->psz_realm );
+         p_auth->psz_realm = AuthGetParam( psz_header, "realm" );
++
++        free( p_auth->psz_domain );
+         p_auth->psz_domain = AuthGetParam( psz_header, "domain" );
+-        p_auth->psz_nonce = AuthGetParam( psz_header, "nonce" );
++
++        free( p_auth->psz_opaque );
+         p_auth->psz_opaque = AuthGetParam( psz_header, "opaque" );
++
++        free( p_auth->psz_stale );
+         p_auth->psz_stale = AuthGetParamNoQuotes( psz_header, "stale" );
++
++        free( p_auth->psz_algorithm );
+         p_auth->psz_algorithm = AuthGetParamNoQuotes( psz_header, "algorithm" );
++
++        free( p_auth->psz_qop );
+         p_auth->psz_qop = AuthGetParam( psz_header, "qop" );
+         p_auth->i_nonce = 0;
+ 
+--- a/src/player/player.c
++++ b/src/player/player.c
+@@ -2095,6 +2095,12 @@
+     vlc_object_delete(player);
+ }
+ 
++vlc_http_cookie_jar_t *
++vlc_player_GetCookieJar(vlc_player_t *player)
++{
++    return var_GetAddress(player, "http-cookies");
++}
++
+ vlc_player_t *
+ vlc_player_New(vlc_object_t *parent, enum vlc_player_lock_type lock_type)
+ {
+--- /dev/null
++++ b/src/video_output/vista_cvpx_bridge.c
+@@ -0,0 +1,305 @@
++#ifdef HAVE_CONFIG_H
++# include "config.h"
++#endif
++#include <vlc_vista_cvpx.h>
++#include <pthread.h>
++
++struct vista_cvpx_bridge {
++    pthread_mutex_t mutex;
++    pthread_cond_t drained;
++    uint64_t generation, producer;
++    bool attached, accepting;
++    unsigned callbacks;
++    vista_cvpx_frame *prepared, *ready, *leased;
++    vista_cvpx_ready_cb notify;
++    void *opaque;
++    vista_cvpx_vt_diagnostics vt;
++    vista_cvpx_vt_attempt_diagnostics vt_attempts;
++    vista_cvpx_pipeline_diagnostics pipeline;
++};
++
++static void note_locked(vista_cvpx_bridge *b, vista_cvpx_pipeline_event event,
++                        bool rejected, int32_t status, uint32_t detail, uint64_t value)
++{
++    vista_cvpx_pipeline_bucket *v = &b->pipeline.events[event];
++    if (v->count != UINT64_MAX) ++v->count;
++    v->last_status = status; v->last_detail = detail; v->last_value = value;
++    if (rejected) {
++        if (!b->pipeline.first_rejected_event_plus1) {
++            b->pipeline.first_rejected_event_plus1 = event + 1;
++            b->pipeline.first_reject_status = status;
++            b->pipeline.first_reject_detail = detail;
++            b->pipeline.first_reject_value = value;
++        }
++        if (v->rejected != UINT64_MAX) ++v->rejected;
++        v->last_reject_status = status; v->last_reject_detail = detail; v->last_reject_value = value;
++    }
++}
++
++void vista_cvpx_note_pipeline(vista_cvpx_bridge *b, vista_cvpx_pipeline_event event,
++                              bool rejected, int32_t status, uint32_t detail, uint64_t value)
++{
++    if (!b || event < 0 || event >= VISTA_PIPE_COUNT) return;
++    pthread_mutex_lock(&b->mutex);
++    note_locked(b, event, rejected, status, detail, value);
++    pthread_mutex_unlock(&b->mutex);
++}
++
++void vista_cvpx_get_pipeline_diagnostics(vista_cvpx_bridge *b, vista_cvpx_pipeline_diagnostics *out)
++{
++    if (!out) return;
++    if (!b) { memset(out, 0, sizeof(*out)); return; }
++    pthread_mutex_lock(&b->mutex);
++    *out = b->pipeline;
++    pthread_mutex_unlock(&b->mutex);
++}
++
++static void drop(vista_cvpx_frame *f)
++{
++    if (!f) return;
++    CVPixelBufferRelease(f->pixel);
++    video_format_Clean(&f->picture_format);
++    video_format_Clean(&f->source_format);
++    free(f);
++}
++
++vista_cvpx_bridge *vista_cvpx_create(vista_cvpx_ready_cb notify, void *opaque)
++{
++    vista_cvpx_bridge *b = calloc(1, sizeof(*b));
++    if (!b) return NULL;
++    if (pthread_mutex_init(&b->mutex, NULL)) { free(b); return NULL; }
++    if (pthread_cond_init(&b->drained, NULL)) {
++        pthread_mutex_destroy(&b->mutex); free(b); return NULL;
++    }
++    b->generation = 1;
++    b->notify = notify;
++    b->opaque = opaque;
++    return b;
++}
++
++bool vista_cvpx_destroy(vista_cvpx_bridge *b)
++{
++    if (!b) return true;
++    pthread_mutex_lock(&b->mutex);
++    bool safe = !b->attached && !b->callbacks && !b->leased;
++    if (safe) { drop(b->prepared); drop(b->ready); }
++    pthread_mutex_unlock(&b->mutex);
++    if (!safe) return false;
++    /* Owner guarantees no concurrent entry after player teardown. */
++    pthread_cond_destroy(&b->drained);
++    pthread_mutex_destroy(&b->mutex);
++    free(b);
++    return true;
++}
++
++bool vista_cvpx_attach(vista_cvpx_bridge *b, uint64_t *token)
++{
++    if (!b || !token) return false;
++    pthread_mutex_lock(&b->mutex);
++    bool ok = !b->attached && !b->callbacks && !b->leased
++              && b->generation != UINT64_MAX;
++    if (ok) {
++        b->attached = b->accepting = true;
++        *token = b->producer = b->generation;
++    }
++    pthread_mutex_unlock(&b->mutex);
++    return ok;
++}
++
++static void close_gate(vista_cvpx_bridge *b)
++{
++    b->accepting = false;
++    if (b->generation != UINT64_MAX) ++b->generation;
++    drop(b->prepared); b->prepared = NULL;
++    drop(b->ready); b->ready = NULL;
++}
++
++static void drain_locked(vista_cvpx_bridge *b)
++{
++    while (b->callbacks || b->leased)
++        pthread_cond_wait(&b->drained, &b->mutex);
++}
++
++void vista_cvpx_quiesce(vista_cvpx_bridge *b)
++{
++    pthread_mutex_lock(&b->mutex);
++    close_gate(b);
++    pthread_mutex_unlock(&b->mutex);
++}
++
++void vista_cvpx_wait_drained(vista_cvpx_bridge *b)
++{
++    pthread_mutex_lock(&b->mutex);
++    drain_locked(b);
++    pthread_mutex_unlock(&b->mutex);
++}
++
++void vista_cvpx_quiesce_and_drain(vista_cvpx_bridge *b)
++{
++    vista_cvpx_quiesce(b);
++    vista_cvpx_wait_drained(b);
++}
++
++void vista_cvpx_detach(vista_cvpx_bridge *b, uint64_t token)
++{
++    pthread_mutex_lock(&b->mutex);
++    if (b->attached && token == b->producer) {
++        close_gate(b);
++        drain_locked(b);
++        b->attached = false;
++    }
++    pthread_mutex_unlock(&b->mutex);
++}
++
++static bool admitted(vista_cvpx_bridge *b, uint64_t token)
++{
++    return b->attached && b->accepting && token == b->producer
++           && token == b->generation;
++}
++
++bool vista_cvpx_prepare(vista_cvpx_bridge *b, uint64_t token, uintptr_t identity,
++                       CVPixelBufferRef pixel, const video_format_t *fmt,
++                       const video_format_t *source, vlc_tick_t pts,
++                       vlc_tick_t deadline, video_projection_mode_t projection,
++                       vlc_stereoscopic_mode_t stereo, bool progressive,
++                       bool left_eye, unsigned fields)
++{
++    if (!b) return false;
++    pthread_mutex_lock(&b->mutex);
++    if (!admitted(b, token)) { note_locked(b, VISTA_PIPE_BRIDGE_PREPARE, true, 0, 1, 0); pthread_mutex_unlock(&b->mutex); return false; }
++    drop(b->prepared); b->prepared = NULL;
++    /* Validate before retention; an invalid prepare cannot display its predecessor. */
++    if (!pixel || !fmt || !source || pts == VLC_TICK_INVALID) {
++        note_locked(b, VISTA_PIPE_BRIDGE_PREPARE, true, 0, 2, 0);
++        pthread_mutex_unlock(&b->mutex); return false;
++    }
++    vista_cvpx_frame *f = calloc(1, sizeof(*f));
++    if (!f) { note_locked(b, VISTA_PIPE_BRIDGE_PREPARE, true, 0, 3, 0); pthread_mutex_unlock(&b->mutex); return false; }
++    if (video_format_Copy(&f->picture_format, fmt) != VLC_SUCCESS ||
++        video_format_Copy(&f->source_format, source) != VLC_SUCCESS) {
++        /* calloc and Copy leave NULL on allocation failure. */
++        video_format_Clean(&f->picture_format);
++        video_format_Clean(&f->source_format);
++        note_locked(b, VISTA_PIPE_BRIDGE_PREPARE, true, 0, 4, 0);
++        free(f); pthread_mutex_unlock(&b->mutex); return false;
++    }
++    f->pixel = CVPixelBufferRetain(pixel);
++    f->media_pts = pts; f->initial_deadline = deadline;
++    f->generation = token; f->picture_identity = identity;
++    f->requested_projection = projection; f->requested_stereo = stereo;
++    f->progressive = progressive; f->left_eye = left_eye; f->fields = fields;
++    b->prepared = f;
++    note_locked(b, VISTA_PIPE_BRIDGE_PREPARE, false, 0, CVPixelBufferGetPixelFormatType(pixel), fmt->i_chroma);
++    pthread_mutex_unlock(&b->mutex);
++    return true;
++}
++
++bool vista_cvpx_display(vista_cvpx_bridge *b, uint64_t token,
++                       uintptr_t identity, vlc_tick_t display_tick)
++{
++    pthread_mutex_lock(&b->mutex);
++    vista_cvpx_frame *f = b->prepared;
++    if (!admitted(b, token)) { note_locked(b, VISTA_PIPE_BRIDGE_DISPLAY, true, 0, 1, 0); pthread_mutex_unlock(&b->mutex); return false; }
++    b->prepared = NULL;
++    if (!f || f->generation != token || f->picture_identity != identity) {
++        note_locked(b, VISTA_PIPE_BRIDGE_DISPLAY, true, 0, 2, 0);
++        drop(f); pthread_mutex_unlock(&b->mutex); return false;
++    }
++    f->display_tick = display_tick;
++    drop(b->ready);
++    b->ready = f;
++    note_locked(b, VISTA_PIPE_BRIDGE_DISPLAY, false, 0, 0, 0);
++    vista_cvpx_ready_cb notify = b->notify;
++    if (notify) ++b->callbacks;
++    pthread_mutex_unlock(&b->mutex);
++    if (notify) {
++        notify(b->opaque);
++        pthread_mutex_lock(&b->mutex);
++        --b->callbacks;
++        pthread_cond_broadcast(&b->drained);
++        pthread_mutex_unlock(&b->mutex);
++    }
++    return true;
++}
++
++const vista_cvpx_frame *vista_cvpx_take_latest(vista_cvpx_bridge *b)
++{
++    pthread_mutex_lock(&b->mutex);
++    const vista_cvpx_frame *f = NULL;
++    if (b->accepting && b->attached && !b->leased && b->ready) {
++        f = b->leased = b->ready; b->ready = NULL;
++        note_locked(b, VISTA_PIPE_BRIDGE_TAKE, false, 0, 0, 0);
++    }
++    pthread_mutex_unlock(&b->mutex);
++    return f;
++}
++
++bool vista_cvpx_is_current(vista_cvpx_bridge *b, const vista_cvpx_frame *f)
++{
++    pthread_mutex_lock(&b->mutex);
++    bool current = f && b->leased == f && admitted(b, f->generation);
++    pthread_mutex_unlock(&b->mutex);
++    return current;
++}
++
++bool vista_cvpx_release(vista_cvpx_bridge *b, const vista_cvpx_frame *f)
++{
++    pthread_mutex_lock(&b->mutex);
++    bool valid = f && b->leased == f;
++    if (valid) {
++        drop(b->leased); b->leased = NULL;
++        pthread_cond_broadcast(&b->drained);
++    }
++    pthread_mutex_unlock(&b->mutex);
++    return valid;
++}
++
++void vista_cvpx_note_vt(vista_cvpx_bridge *b, int32_t status, bool hardware, uint32_t codec)
++{
++    pthread_mutex_lock(&b->mutex);
++    ++b->vt.session_checks;
++    if (status == 0 && hardware) ++b->vt.hardware_verified;
++    else ++b->vt.hardware_rejected;
++    b->vt.last_status = status;
++    b->vt.last_codec = codec;
++    b->vt.last_using_hardware = hardware;
++    pthread_mutex_unlock(&b->mutex);
++}
++
++void vista_cvpx_get_vt_diagnostics(vista_cvpx_bridge *b, vista_cvpx_vt_diagnostics *out)
++{
++    pthread_mutex_lock(&b->mutex);
++    *out = b->vt;
++    pthread_mutex_unlock(&b->mutex);
++}
++
++void vista_cvpx_note_vt_create(vista_cvpx_bridge *b, int32_t status,
++                              uint32_t codec, int32_t profile)
++{
++    if (!b) return;
++    pthread_mutex_lock(&b->mutex);
++    if (b->vt_attempts.create_attempts != UINT64_MAX) ++b->vt_attempts.create_attempts;
++    if (status != 0 && b->vt_attempts.create_failures != UINT64_MAX)
++        ++b->vt_attempts.create_failures;
++    b->vt_attempts.last_create_status = status;
++    b->vt_attempts.last_create_codec = codec;
++    b->vt_attempts.last_create_profile = profile;
++    pthread_mutex_unlock(&b->mutex);
++}
++
++void vista_cvpx_note_vt_failure(vista_cvpx_bridge *b, int32_t status, uint32_t stage)
++{
++    if (!b || status == 0) return;
++    pthread_mutex_lock(&b->mutex);
++    if (b->vt_attempts.failure_events != UINT64_MAX) ++b->vt_attempts.failure_events;
++    b->vt_attempts.last_failure_status = status;
++    b->vt_attempts.last_failure_stage = stage;
++    pthread_mutex_unlock(&b->mutex);
++}
++
++void vista_cvpx_get_vt_attempt_diagnostics(vista_cvpx_bridge *b, vista_cvpx_vt_attempt_diagnostics *out)
++{
++    pthread_mutex_lock(&b->mutex);
++    *out = b->vt_attempts;
++    pthread_mutex_unlock(&b->mutex);
++}

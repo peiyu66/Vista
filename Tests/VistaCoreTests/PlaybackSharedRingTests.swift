@@ -125,7 +125,8 @@ import Darwin
 
     @Test func fullThirtyTwoMiBHistorySurvivesReservationsUntilCompletedWrites() async throws {
         let base = Source(), source = PlaybackPrefetchSource(file: file, source: base,
-            configuration: .init(totalCapacityBytes: 32 * mib))
+            // Retain the legacy two-prefetch reservation geometry explicitly.
+            configuration: .init(capacityBytes: 4 * mib, totalCapacityBytes: 32 * mib))
         var observations: [[String: Any]] = []
         func observe(_ stage: String) {
             let m = source.metrics

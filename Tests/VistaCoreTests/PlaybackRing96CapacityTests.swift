@@ -8,6 +8,7 @@ import Testing
     private typealias Source = PlaybackSharedRingTests.Source
     private let file = try! MediaFile(components: ["generated-ring96.mp4"])
     private let mib = 1_048_576
+    // Legacy ring-capacity fixtures retain the original 4 MiB forward window explicitly.
 
     private func until(_ condition: @MainActor () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
@@ -30,11 +31,11 @@ import Testing
     }
 
     @Test func explicitNinetySixMiBBaselineKeepsForwardBudget() {
-        let config = PlaybackPrefetchSource.Configuration(totalCapacityBytes: 96 * mib)
+        let config = PlaybackPrefetchSource.Configuration(capacityBytes: 4 * mib, totalCapacityBytes: 96 * mib)
         #expect(config.totalCapacityBytes == 96 * mib && config.historyCapacityBytes == 96 * mib)
         #expect(config.capacityBytes == 4 * mib && config.chunkBytes == 2 * mib)
         #expect(MediaReadPlan.maximumChunkBytes == UInt64(2 * mib))
-        let baseline = PlaybackPrefetchSource.Configuration(totalCapacityBytes: 64 * mib)
+        let baseline = PlaybackPrefetchSource.Configuration(capacityBytes: 4 * mib, totalCapacityBytes: 64 * mib)
         #expect(baseline.totalCapacityBytes == 64 * mib)
         #expect(baseline.capacityBytes == config.capacityBytes && baseline.chunkBytes == config.chunkBytes)
         let legacy = PlaybackPrefetchSource.Configuration(capacityBytes: 4 * mib, chunkBytes: 2 * mib,
@@ -46,7 +47,7 @@ import Testing
     /// Run alone in a fresh process when comparing its physical footprint with the
     /// explicit 64 MiB baseline. Normal suite execution is correctness evidence only.
     @Test func fullNinetySixMiBHistoryWrapsAndRetainsBeyondSixtyFourMiB() async throws {
-        let base = Source(), source = PlaybackPrefetchSource(file: file, source: base, configuration: .init(totalCapacityBytes: 96 * mib))
+        let base = Source(), source = PlaybackPrefetchSource(file: file, source: base, configuration: .init(capacityBytes: 4 * mib, totalCapacityBytes: 96 * mib))
         var observations: [[String: Any]] = []
         func observe(_ stage: String) {
             let m = source.metrics
@@ -133,7 +134,7 @@ import Testing
 
     @Test(arguments: ["memory", "stop", "epoch", "inactive", "seek"])
     func fullArenaRejectsLatePrefetchAcrossSafetyBoundaries(boundary: String) async throws {
-        let base = Source(), source = PlaybackPrefetchSource(file: file, source: base, configuration: .init(totalCapacityBytes: 96 * mib))
+        let base = Source(), source = PlaybackPrefetchSource(file: file, source: base, configuration: .init(capacityBytes: 4 * mib, totalCapacityBytes: 96 * mib))
         try await fill(source)
         _ = try await source.fileSize(for: file)
         base.blockedPrefetch = [1]
@@ -170,7 +171,7 @@ import Testing
             }
             #expect(base.speculative.count == 1)
             // Only constructing a new wrapper restores cache admission after pressure.
-            let replacement = PlaybackPrefetchSource(file: file, source: Source(), configuration: .init(totalCapacityBytes: 96 * mib))
+            let replacement = PlaybackPrefetchSource(file: file, source: Source(), configuration: .init(capacityBytes: 4 * mib, totalCapacityBytes: 96 * mib))
             replacement.setPrefetchEnabled(true)
             _ = try await replacement.read(file, range: 0..<UInt64(2 * mib))
             #expect(replacement.metrics.storageAllocatedBytes == 96 * mib && replacement.metrics.historyBytes == 2 * mib)
@@ -212,7 +213,7 @@ import Testing
     @Test(arguments: [false, true])
     func fullArenaBackgroundRequiresIdentityValidationBeforeBackread(identityChanged: Bool) async throws {
         let h = RevalidatingHarness(file: file)
-        let source = PlaybackPrefetchSource(file: file, source: h.source, configuration: .init(totalCapacityBytes: 96 * mib))
+        let source = PlaybackPrefetchSource(file: file, source: h.source, configuration: .init(capacityBytes: 4 * mib, totalCapacityBytes: 96 * mib))
         _ = try await source.fileSize(for: file)
         try await fill(source)
         let reads = h.base.reads.count

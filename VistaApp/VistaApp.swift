@@ -222,6 +222,6 @@ struct DirectoryColumn: View {
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     private func icon(_ entry: FileEntry) -> String {
-        switch entry.kind { case .directory: "folder.fill"; case .video: "film"; case .other: "doc" }
+        entry.browserSymbolName
     }
 }

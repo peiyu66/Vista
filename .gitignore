@@ -62,3 +62,20 @@ TestMedia/
 
 # Existing project-generated VP9 + AAC acceptance fixture.
 !Tests/VistaCoreTests/Resources/NativeVP9AV.mp4
+
+# Native corresponding-source build outputs (sources and archives remain tracked)
+NativeBuild/dependencies/source/
+NativeBuild/dependencies/contrib-src/
+NativeBuild/dependencies/*build*/
+NativeBuild/dependencies/*prefix*/
+NativeBuild/dependencies/artifacts/
+NativeBuild/dependencies/logs/
+NativeBuild/dependencies/evidence/
+NativeBuild/overlay/build/
+NativeBuild/receipt.json
+engine/libs/
+engine/config/
+engine/vendor/gpac-26.07.0/
+engine/vlc/Vendor/config/
+engine/vlc/Vendor/*.a
+!Resources/LocalMKVDemo/MKVDemo12s_mono.mkv

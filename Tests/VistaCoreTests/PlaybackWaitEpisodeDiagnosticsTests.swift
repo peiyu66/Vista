@@ -191,7 +191,7 @@ import Testing
   try FileManager.default.removeItem(at:blocked)
   for _ in 0..<500 {store.enqueue(.init(event:.prefetchTrace,values:[:]))}
   store.enqueue(PlaybackLogRecord(waitEpisode:r));store.enqueue(.init(event:.failed,values:[:]));store.drainForTesting()
-  let text=try String(contentsOf:blocked.appendingPathComponent("current.jsonl"),encoding:.utf8)
+  let text=try String(contentsOf:blocked.appendingPathComponent("recovery-current.jsonl"),encoding:.utf8)
   let waitText=try String(contentsOf:blocked.appendingPathComponent("wait-current.jsonl"),encoding:.utf8)
   let rows=try (text+waitText).split(separator:"\n").map {try JSONDecoder().decode(PlaybackLogRecord.self,from:Data($0.utf8))}
   #expect(rows.contains{$0.event == .failed && $0.values["waitLogFailures"] == 1})

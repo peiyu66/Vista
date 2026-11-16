@@ -132,7 +132,7 @@ public struct VideoTrackInfo: Sendable, Equatable {
     public let height: Int32
     public let duration: Double
     public let hasAudio: Bool
-    /// AVAssetTrack's estimated average video-track rate, in bits/s. Excludes audio/container.
+    /// Average video-track bits/s (AVAsset estimate or selected VLC track metadata). Excludes audio/container.
     public let estimatedDataRate: Double?
     public init(codec:String,width:Int32,height:Int32,duration:Double,hasAudio:Bool,estimatedDataRate:Double?=nil) {
         self.codec=codec;self.width=width;self.height=height;self.duration=duration;self.hasAudio=hasAudio
@@ -149,14 +149,17 @@ public struct VideoTrackInfo: Sendable, Equatable {
 }
 /// Retains one decoded buffer; never stores source identifiers. Only the isolated renderer experiment requests it.
 public final class DecodedVideoFrame: @unchecked Sendable {
+    public let flow:PlaybackFlowToken
     public let pixel:CVPixelBuffer
     public let time:Double
     public let transform:CGAffineTransform
     public let session:UUID
-    public init(pixel:CVPixelBuffer,time:Double,transform:CGAffineTransform = .identity,session:UUID) {
+    public init(pixel:CVPixelBuffer,time:Double,transform:CGAffineTransform = .identity,session:UUID,flow:PlaybackFlowToken = .none) {
+        self.flow=flow
         self.pixel=pixel;self.time=time;self.transform=transform;self.session=session
     }
     public func makeImage(context:CIContext)->CGImage? {
+        let trace=PlaybackFlowTrace.begin(.image,parent:flow);defer{PlaybackFlowTrace.end(trace,.image)}
         let image=CIImage(cvPixelBuffer:pixel).transformed(by:transform)
         return context.createCGImage(image,from:image.extent)
     }

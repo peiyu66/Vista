@@ -193,7 +193,8 @@ import Testing
   store.enqueue(PlaybackLogRecord(stallProbe:try #require(finished.terminal),session:10,build:"98"))
   store.enqueue(PlaybackLogRecord(stallProbeSummary:finished.summary,session:10,build:"98"))
   store.enqueue(PlaybackLogRecord(event:.sample,values:[.frames:3],build:"98"));store.drainForTesting()
-  let rows=try String(contentsOf:directory.appendingPathComponent("current.jsonl"),encoding:.utf8).split(separator:"\n").map{try JSONDecoder().decode(PlaybackLogRecord.self,from:Data($0.utf8))}
+  let text=try ["current.jsonl","recovery-current.jsonl"].map {try String(contentsOf:directory.appendingPathComponent($0),encoding:.utf8)}.joined()
+  let rows=try text.split(separator:"\n").map{try JSONDecoder().decode(PlaybackLogRecord.self,from:Data($0.utf8))}
   #expect(rows.count==4 && store.status.dropped==0 && store.status.failures==0)
   #expect(rows.filter{$0.event == .stallProbe}.count==2)
   let summary=try #require(rows.first{$0.event == .stallProbeSummary})

@@ -294,6 +294,20 @@ public class SMB2Manager: NSObject, NSSecureCoding, Codable, NSCopying, CustomRe
         }
     }
 
+    /// Non-destructive callback barrier. The playback owner must first close its
+    /// read admission and join its pump. This observes zero library operations,
+    /// including callback return; it does not retire the shared directory session.
+    open func awaitOperationsDrained() async {
+        await withCheckedContinuation { continuation in
+            q.async {
+                self.operationLock.lock()
+                while self.operationCount > 0 { self.operationLock.wait() }
+                self.operationLock.unlock()
+                continuation.resume()
+            }
+        }
+    }
+
     /// Retires this manager without sending a disconnect or any other network RPC.
     /// The caller must prevent new work before calling and never reuse this manager.
     /// Completion follows queue drain, including return from operation callbacks.

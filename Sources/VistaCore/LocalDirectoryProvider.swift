@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 public enum LocalFolderFailure: Error { case permission, staleBookmark, invalidPath, unavailable, tooManyItems }
 
@@ -39,7 +40,7 @@ public actor LocalDirectoryProvider: DirectoryProvider, MediaByteSource {
         guard try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else { throw LocalFolderFailure.invalidPath }
         return try url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
     }
-    private func access<T>(_ components: [String], _ read: (URL) throws -> T) throws -> T {
+    private func access<T>(_ components: [String], options: NSFileCoordinator.ReadingOptions = [], _ read: (URL) throws -> T) throws -> T {
         guard components.allSatisfy(SavedLocations.validComponent) else { throw LocalFolderFailure.invalidPath }
         let accessed = root.startAccessingSecurityScopedResource()
         guard accessed || !requiresScope || Self.isAppContainer(root) else { throw LocalFolderFailure.permission }
@@ -51,14 +52,58 @@ public actor LocalDirectoryProvider: DirectoryProvider, MediaByteSource {
         }
         var failure: NSError?
         var outcome: Result<T, Error>?
-        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &failure) { coordinated in
+        NSFileCoordinator().coordinate(readingItemAt: url, options: options, error: &failure) { coordinated in
             outcome = Result { try read(coordinated) }
         }
         if let failure { throw failure }
         guard let outcome else { throw LocalFolderFailure.unavailable }
         return try outcome.get()
     }
+    #if VISTA_LOCAL_MKV_CANDIDATE
+    // MKV operation owner; original URL/scope/path/coordinator policy remains.
+    func openMKVOperationSource(for file: MediaFile, playbackID: UUID = UUID(), journal: AdapterJournal = AdapterJournal()) throws -> LocalOperationSource {
+        let retainedScope = root.startAccessingSecurityScopedResource()
+        guard retainedScope || !requiresScope || Self.isAppContainer(root) else { throw LocalFolderFailure.permission }
+        let scopeLease = LocalSecurityScopeLease(root: root, acquired: retainedScope)
+        do {
+            return try access(file.components) { url in
+                try LocalOperationSource.adoptCoordinatedURL(url, file: file, playbackID: playbackID, scopeLease: scopeLease, journal: journal)
+            }
+        } catch { scopeLease.release(); throw error }
+    }
+    #endif
     public func invalidate() { cachedPath = nil; cachedEntries = [] }
+    /// Best-effort Finder-compatible metadata. Missing xattrs do not prove Files has no tags.
+    /// Metadata-only coordination must not download movie contents just to discover tags.
+    public func tags(at path: DirectoryPath) async throws -> FinderTagState {
+        try Task.checkCancellation()
+        let state: FinderTagState
+        do {
+            state = try access(path.components, options: .immediatelyAvailableMetadataOnly) {
+                LocalFinderTagReader.read($0)
+            }
+        } catch {
+            if error is CancellationError { throw error }
+            try Task.checkCancellation()
+            if case LocalFolderFailure.permission = error { return .denied }
+            let failure = error as NSError
+            if failure.domain == NSPOSIXErrorDomain { return LocalFinderTagReader.failure(Int32(failure.code)) }
+            if failure.domain == NSCocoaErrorDomain, failure.code == NSFileReadNoPermissionError { return .denied }
+            return .failed
+        }
+        try Task.checkCancellation()
+        return state
+    }
+    /// Inspect one displayed page, never recurse or infer support merely from platform identity.
+    public func hasFinderTagEvidence(at path: DirectoryPath, names: [String], includeDirectory: Bool) async throws -> Bool {
+        if includeDirectory, try await tags(at: path).isConfirmed { return true }
+        for name in names.prefix(250) {
+            try Task.checkCancellation()
+            guard SavedLocations.validComponent(name) else { continue }
+            if try await tags(at: DirectoryPath(path.components + [name])).isConfirmed { return true }
+        }
+        return false
+    }
     public func page(at path:DirectoryPath,offset:Int) async throws -> DirectoryPage {try await page(at:path,offset:offset,sort:.init())}
     public func page(at path: DirectoryPath, offset: Int, sort: DirectorySort) async throws -> DirectoryPage {
         try Task.checkCancellation()
@@ -69,14 +114,17 @@ public actor LocalDirectoryProvider: DirectoryProvider, MediaByteSource {
                 var enumerationError:Error?
                 guard let iterator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: Array(keys), options: [.skipsSubdirectoryDescendants,.skipsHiddenFiles,.skipsPackageDescendants], errorHandler:{_,error in enumerationError=error;return false}) else { throw LocalFolderFailure.unavailable }
                 var entries: [FileEntry] = []
+                var scannedCount = 0
                 for case let url as URL in iterator {
                     try Task.checkCancellation()
-                    guard entries.count < 100_000 else { throw LocalFolderFailure.tooManyItems }
+                    guard scannedCount < 100_000 else { throw LocalFolderFailure.tooManyItems }
+                    scannedCount += 1
                     let value = try url.resourceValues(forKeys: keys)
                     guard value.isSymbolicLink != true, value.isHidden != true, !url.lastPathComponent.hasPrefix("."),
                           SavedLocations.validComponent(url.lastPathComponent), value.isDirectory == true || value.isRegularFile == true else { continue }
                     let kind: FileEntry.Kind = value.isDirectory == true ? .directory : ["mp4","m4v","mov","mkv"].contains(url.pathExtension.lowercased()) ? .video : .other
-                    entries.append(FileEntry(url.lastPathComponent,kind,hiddenAttribute:value.isHidden,modifiedAt:value.contentModificationDate,byteSize:kind == .directory ? nil:value.fileSize.map(Int64.init),createdAt:value.creationDate))
+                    let entry = FileEntry(url.lastPathComponent,kind,hiddenAttribute:value.isHidden,modifiedAt:value.contentModificationDate,byteSize:kind == .directory ? nil:value.fileSize.map(Int64.init),createdAt:value.creationDate)
+                    if entry.isBrowserVisible { entries.append(entry) }
                 }
                 if let enumerationError {throw enumerationError}
                 return entries
@@ -108,6 +156,34 @@ public actor LocalDirectoryProvider: DirectoryProvider, MediaByteSource {
             guard data.count == range.count else { throw LocalFolderFailure.unavailable }
             try Task.checkCancellation()
             return data
+        }
+    }
+}
+
+/// A single bounded syscall avoids a size-query/read race and unbounded allocation.
+/// XATTR_NOFOLLOW prevents following a final-component symlink; access() rejects path symlinks.
+enum LocalFinderTagReader {
+    static let attribute = "com.apple.metadata:_kMDItemUserTags"
+    static func read(_ url: URL) -> FinderTagState {
+        url.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return .failed }
+            var bytes = Data(count: FinderTagParser.limit + 1)
+            let (count, code) = bytes.withUnsafeMutableBytes { buffer in
+                let count = getxattr(path, attribute, buffer.baseAddress, buffer.count, 0, XATTR_NOFOLLOW)
+                return (count, count < 0 ? errno : 0)
+            }
+            guard count >= 0 else { return failure(code) }
+            bytes.count = count
+            return FinderTagParser.parse(bytes)
+        }
+    }
+    static func failure(_ code: Int32) -> FinderTagState {
+        switch code {
+        case ENOATTR: return .unavailable
+        case ENOTSUP: return .unsupported
+        case EACCES, EPERM: return .denied
+        case ERANGE: return .invalid
+        default: return .failed
         }
     }
 }

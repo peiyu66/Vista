@@ -9,6 +9,7 @@ import Testing
     private typealias Source = PlaybackSharedRingTests.Source
     private let file = try! MediaFile(components: ["generated-ring64.mp4"])
     private let mib = 1_048_576
+    // Legacy ring-capacity fixtures retain the original 4 MiB forward window explicitly.
 
     private func until(_ condition: @MainActor () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
@@ -31,11 +32,11 @@ import Testing
     }
 
     @Test func explicitSixtyFourMiBBaselineKeepsOriginalCapacity() {
-        let config = PlaybackPrefetchSource.Configuration(totalCapacityBytes: 64 * mib)
+        let config = PlaybackPrefetchSource.Configuration(capacityBytes: 4 * mib, totalCapacityBytes: 64 * mib)
         #expect(config.totalCapacityBytes == 64 * mib && config.historyCapacityBytes == 64 * mib)
         #expect(config.capacityBytes == 4 * mib && config.chunkBytes == 2 * mib)
         #expect(MediaReadPlan.maximumChunkBytes == UInt64(2 * mib))
-        let baseline = PlaybackPrefetchSource.Configuration(totalCapacityBytes: 32 * mib)
+        let baseline = PlaybackPrefetchSource.Configuration(capacityBytes: 4 * mib, totalCapacityBytes: 32 * mib)
         #expect(baseline.totalCapacityBytes == 32 * mib)
         #expect(baseline.capacityBytes == config.capacityBytes && baseline.chunkBytes == config.chunkBytes)
     }
@@ -44,7 +45,7 @@ import Testing
     /// explicit 32 MiB baseline. Normal suite execution is correctness evidence only.
     @Test func fullSixtyFourMiBHistoryWrapsAndRetainsBeyondThirtyTwoMiB() async throws {
         let base = Source(), source = PlaybackPrefetchSource(file: file, source: base,
-            configuration: .init(totalCapacityBytes: 64 * mib))
+            configuration: .init(capacityBytes: 4 * mib, totalCapacityBytes: 64 * mib))
         var observations: [[String: Any]] = []
         func observe(_ stage: String) {
             let m = source.metrics
@@ -132,7 +133,7 @@ import Testing
     @Test(arguments: ["memory", "stop", "epoch", "inactive"])
     func fullArenaRejectsLatePrefetchAcrossSafetyBoundaries(boundary: String) async throws {
         let base = Source(), source = PlaybackPrefetchSource(file: file, source: base,
-            configuration: .init(totalCapacityBytes: 64 * mib))
+            configuration: .init(capacityBytes: 4 * mib, totalCapacityBytes: 64 * mib))
         try await fill(source)
         _ = try await source.fileSize(for: file)
         base.blockedPrefetch = [1]
@@ -164,7 +165,7 @@ import Testing
             #expect(base.speculative.count == 1)
             // Only constructing a new wrapper restores cache admission after pressure.
             let replacement = PlaybackPrefetchSource(file: file, source: Source(),
-                configuration: .init(totalCapacityBytes: 64 * mib))
+                configuration: .init(capacityBytes: 4 * mib, totalCapacityBytes: 64 * mib))
             replacement.setPrefetchEnabled(true)
             _ = try await replacement.read(file, range: 0..<UInt64(2 * mib))
             #expect(replacement.metrics.storageAllocatedBytes == 64 * mib && replacement.metrics.historyBytes == 2 * mib)
@@ -202,7 +203,7 @@ import Testing
     func fullArenaBackgroundRequiresIdentityValidationBeforeBackread(identityChanged: Bool) async throws {
         let h = RevalidatingHarness(file: file)
         let source = PlaybackPrefetchSource(file: file, source: h.source,
-            configuration: .init(totalCapacityBytes: 64 * mib))
+            configuration: .init(capacityBytes: 4 * mib, totalCapacityBytes: 64 * mib))
         _ = try await source.fileSize(for: file)
         try await fill(source)
         let reads = h.base.reads.count

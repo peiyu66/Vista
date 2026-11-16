@@ -8,12 +8,23 @@ public enum LifecycleEvent:String,Codable,Sendable {
     case taskCreated,taskEntered,taskExited,providerWillCall,providerEntered,providerExited
     case sessionLookup,sessionReused,sessionCreateRequested,cacheMiss,recoveryStage
     case apiStart,apiReturned,apiError,directoryMappingDone,cacheHit,readerClosed,disconnectRequested
-    case playbackBoundary,playbackSourceRecovery
+    case playbackBoundary,playbackSourceRecovery,playbackAudioBoundary,videoRecenter,progressInput,progressVisibility
 }
 public enum LifecycleField:String,Codable,Sendable {
     case scope,phase,previousPhase,notification,navigation,request,parentRequest,session,operation,outcome
     case errorDomain,errorCode,errorOrigin,timeout,durationMS,sampledStart,sourceKind,generation,active,cancelled
     case trace,epoch,cause,detail,playing,paused,preparing,frameAvailable,requiresFlush,rendererFailed,acceptsSamples,pending,worker,ticket
+    case entryCount,pageEntryCount,listingRevision
+    case poseQueries,poseMissing,poseUntracked,poseInvalid,poseState
+    case progressModelRejected,progressValidity,progressRoute,progressReason,progressState,progressStartRegion,progressWidth,progressTravel,progressTranslation,progressDelta,progressCommitMask
+    case recenterTarget,recenterTargetEnabled,recenterTargetScene,recenterControlsVisible,recenterSettingsVisible
+    case recenterRoute,recenterBaselineRoute,recenterParentMatches,recenterKnownMask
+    case recenterTotalDeltaDegrees,recenterPoseDeltaDegrees,recenterOffsetBeforeDegrees,recenterOffsetAfterDegrees,recenterOffsetDeltaDegrees
+    case recenterReferenceEpoch,recenterBaselineReferenceEpoch,recenterValidity,recenterBaselineValidity
+    case recenterUnavailable,recenterBaselineUnavailable,recenterCoordinateDomain
+    case recenterExpectedErrorDegrees,recenterParentErrorDegrees
+    case recenterQueryMS,recenterQueryToCaptureMS,recenterQueryToObservationMS,recenterSensorAgeKnown
+    case command,nativeClock,nativeInstance,nativeEpisode,rate,revision,available,recordBytes,logDropped,logFailures
 }
 public enum LifecycleOperation:Int,Codable,Sendable {
     case connect=1,listShares,listDirectory,attributes,rangeRead,tagRead,finderInfo,disconnect
@@ -82,6 +93,9 @@ public final class LifecycleDiagnostics:@unchecked Sendable {
     private var pending:[(LifecycleRecord,Bool)]=[],draining=false,lastSample:[LifecycleOperation:Double]=[:]
     // The following state is owned exclusively by queue.
     private var handle:FileHandle?,size=0,prepared=false,lastSync = -Double.infinity
+    #if DEBUG
+    private var timelineWriterForTesting:(@Sendable (FileHandle,Data)throws->Void)?
+    #endif
     public init(directory:URL,build:String=Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "0",fileLimit:Int=262144,pendingLimit:Int=128,mirror:Bool=true,criticalDurability:Bool=true,criticalFileLimit:Int=65536) {
         self.directory=directory;self.fileLimit=max(4096,fileLimit);self.pendingLimit=max(2,pendingLimit);self.mirror=mirror
         self.criticalJournal=criticalDurability ? LifecycleCriticalJournal(directory:directory,fileLimit:criticalFileLimit):nil
@@ -126,7 +140,7 @@ public final class LifecycleDiagnostics:@unchecked Sendable {
         switch event {
         case .processStart,.scenePhase,.browseIntent,.cancelRequested,.requestStart,
              .taskCreated,.taskEntered,.taskExited,.sessionLookup,.sessionReused,.sessionCreateRequested,
-             .cacheHit,.cacheMiss,.directoryMappingDone,.resultApplied,.resultDiscarded,.requestError,.recoveryStage,.playbackBoundary,.playbackSourceRecovery:
+             .cacheHit,.cacheMiss,.directoryMappingDone,.resultApplied,.resultDiscarded,.requestError,.recoveryStage,.playbackBoundary,.playbackSourceRecovery,.playbackAudioBoundary:
             return true
         case .providerWillCall,.providerEntered,.providerExited,.apiStart,.apiReturned,.apiError:
             return [1.0,2.0,3.0].contains(fields[LifecycleField.operation.rawValue] ?? 0)
@@ -189,13 +203,25 @@ public final class LifecycleDiagnostics:@unchecked Sendable {
             let url=file(i)
             if let date=try? url.resourceValues(forKeys:[.contentModificationDateKey]).contentModificationDate,Date().timeIntervalSince(date)>7*86400 {try fm.removeItem(at:url)}
         }
-        size=(try? fm.attributesOfItem(atPath:file(0).path)[.size] as? NSNumber)?.intValue ?? 0
+        if fm.fileExists(atPath:file(0).path) {
+            guard let bytes=try fm.attributesOfItem(atPath:file(0).path)[.size] as? NSNumber,
+                  bytes.int64Value>=0,bytes.int64Value<=Int.max else{throw CocoaError(.fileReadUnknown)}
+            size=bytes.intValue
+        } else {size=0}
         prepared=true
     }
     private func write(_ data:Data)throws {
+        do {try appendTimeline(data)} catch {
+            // A failed write may already have appended bytes. Remeasure before
+            // another append; a stale cached size must never bypass rotation.
+            try? handle?.close();handle=nil;prepared=false
+            throw error
+        }
+    }
+    private func appendTimeline(_ data:Data)throws {
         let fm=FileManager.default
         if !prepared {try prepare()}
-        if size+data.count>fileLimit {
+        if size>fileLimit-data.count-1 {
             try handle?.close();handle=nil
             if fm.fileExists(atPath:file(3).path) {try fm.removeItem(at:file(3))}
             for i in stride(from:2,through:0,by:-1) where fm.fileExists(atPath:file(i).path) {try fm.moveItem(at:file(i),to:file(i+1))}
@@ -208,12 +234,28 @@ public final class LifecycleDiagnostics:@unchecked Sendable {
                 try fm.setAttributes([.protectionKey:FileProtectionType.completeUntilFirstUserAuthentication],ofItemAtPath:file(0).path)
                 #endif
             }
-            handle=try FileHandle(forWritingTo:file(0));try handle?.seekToEnd()
+            let opened=try FileHandle(forUpdating:file(0))
+            do {
+                let end=try opened.seekToEnd()
+                if end>0 {
+                    try opened.seek(toOffset:end-1)
+                    let last=try opened.read(upToCount:1)
+                    try opened.seekToEnd()
+                    if last != Data([10]) {try opened.write(contentsOf:Data([10]));size += 1}
+                }
+                handle=opened
+            } catch {try? opened.close();throw error}
         }
-        try handle?.write(contentsOf:data);size += data.count
+        guard let handle else{throw CocoaError(.fileWriteUnknown)}
+        #if DEBUG
+        if let timelineWriterForTesting {try timelineWriterForTesting(handle,data)}else{try handle.write(contentsOf:data)}
+        #else
+        try handle.write(contentsOf:data)
+        #endif
+        size += data.count
         let now=ProcessInfo.processInfo.systemUptime
         // Priority controls admission, not fsync. Bound synchronization to at most 4 Hz.
-        if now-lastSync>=0.25 {lastSync=now;try handle?.synchronize()}
+        if now-lastSync>=0.25 {lastSync=now;try handle.synchronize()}
     }
     #if DEBUG
     public func setCriticalSynchronizerForTesting(_ sync:(@Sendable (FileHandle)throws->Void)?) {
@@ -221,6 +263,9 @@ public final class LifecycleDiagnostics:@unchecked Sendable {
     }
     public func setCriticalWriterForTesting(_ writer:(@Sendable (FileHandle,Data)throws->Void)?) {
         criticalJournal?.setWriterForTesting(writer)
+    }
+    public func setTimelineWriterForTesting(_ writer:(@Sendable (FileHandle,Data)throws->Void)?) {
+        queue.sync{timelineWriterForTesting=writer}
     }
     public func drainForTesting(){queue.sync{try? handle?.synchronize()}}
     public func withPausedWriterForTesting(_ body:()->Void){queue.sync{};queue.suspend();defer{queue.resume()};body()}
@@ -270,7 +315,11 @@ private final class LifecycleCriticalJournal:@unchecked Sendable {
             let url=file(index)
             if let date=try? url.resourceValues(forKeys:[.contentModificationDateKey]).contentModificationDate,Date().timeIntervalSince(date)>7*86400 {try fm.removeItem(at:url)}
         }
-        size=(try? fm.attributesOfItem(atPath:file(0).path)[.size] as? NSNumber)?.intValue ?? 0
+        if fm.fileExists(atPath:file(0).path) {
+            guard let bytes=try fm.attributesOfItem(atPath:file(0).path)[.size] as? NSNumber,
+                  bytes.int64Value>=0,bytes.int64Value<=Int.max else{throw CocoaError(.fileReadUnknown)}
+            size=bytes.intValue
+        } else {size=0}
         prepared=true
     }
     private func synchronize(_ handle:FileHandle)throws {
@@ -282,7 +331,7 @@ private final class LifecycleCriticalJournal:@unchecked Sendable {
     private func writeAndSynchronize(_ data:Data)throws {
         let fm=FileManager.default
         if !prepared {try prepare()}
-        if size+data.count+1>fileLimit {
+        if size>fileLimit-data.count-1 {
             // A failed prior sync must not silently become a successful rotation acknowledgment.
             if let handle {try synchronize(handle);try handle.close()}
             handle=nil

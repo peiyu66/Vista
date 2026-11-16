@@ -101,7 +101,7 @@ struct PlaybackView: View {
                                 let submitted = scrubInteraction.finish(owner: scrubOwner) { target in
                                     player.seek(to: target)
                                 }
-                                if !submitted { scrubTime = player.position }
+                                if !submitted { scrubTime = player.progressPosition }
                             }
                         })
                             .id(scrubOwner)
@@ -109,7 +109,7 @@ struct PlaybackView: View {
                                 if scrubInteraction.owner == scrubOwner {scrubInteraction.cancel();isScrubbing=false}
                             }
                             .accessibilityLabel("播放位置").accessibilityIdentifier("playbackPosition")
-                        Text("\(timeLabel(isScrubbing ? scrubTime : player.position)) / \(timeLabel(trackInfo.duration))")
+                        Text("\(timeLabel(isScrubbing ? scrubTime : player.progressPosition)) / \(timeLabel(trackInfo.duration))")
                             .monospacedDigit().accessibilityIdentifier("playbackTime")
                     }
                     VRSettingsView(presentation: vr, edited: chooseManualFormat).disabled(!preferencesReady)
@@ -168,6 +168,7 @@ struct PlaybackView: View {
         .task(id:PreviewKey(pixel:player.pixelFrame.map(ObjectIdentifier.init),immersive:vr.active)) {
             // Flat preview retains the original packed 2D image; immersive rendering never pays this conversion.
             guard !vr.active,let frame=player.pixelFrame else {pixelPreview=nil;return}
+            let flow=PlaybackFlowTrace.begin(.preview,parent:frame.flow);defer{PlaybackFlowTrace.end(flow,.preview,a:Task.isCancelled ? 1:0)}
             let image=frame.makeImage(context:previewContext)
             guard !Task.isCancelled else{return}
             pixelPreview=image
@@ -181,9 +182,9 @@ struct PlaybackView: View {
         }
         .onChange(of: player.playbackGeneration) { _, owner in
             scrubInteraction.retainOnly(owner: owner);isScrubbing=scrubInteraction.isActive
-            if !isScrubbing {scrubTime=player.position}
+            if !isScrubbing {scrubTime=player.progressPosition}
         }
-        .onChange(of: player.position) { _, position in
+        .onChange(of: player.progressPosition) { _, position in
             if !isScrubbing { scrubTime = position }
         }
         .task(id: playingSelection.id + "#" + String(attempt)) {

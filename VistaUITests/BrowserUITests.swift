@@ -1422,6 +1422,14 @@ final class VistaUITests:XCTestCase {
         XCTAssertTrue(app.staticTexts["affectedShortcut-分享根捷徑"].exists)
         XCTAssertFalse(app.staticTexts["affectedShortcut-其他主機外的捷徑"].exists)
         XCTAssertEqual(app.buttons["confirmSourceRemoval"].label,"一併移除")
+        let cancel=app.buttons["cancelSourceRemoval"]
+        let confirm=app.buttons["confirmSourceRemoval"]
+        XCTAssertTrue(cancel.isHittable)
+        XCTAssertTrue(confirm.isHittable)
+        XCTAssertLessThan(abs(cancel.frame.midY-confirm.frame.midY),8)
+        XCTAssertLessThan(confirm.frame.minX-cancel.frame.maxX,40)
+        XCTAssertLessThan(confirm.frame.maxY-app.staticTexts["affectedShortcut-保留的捷徑"].frame.minY,320)
+
         app.buttons["cancelSourceRemoval"].tap()
         XCTAssertTrue(app.buttons["prototypeConnect"].exists)
         XCTAssertTrue(app.descendants(matching:.any).matching(identifier:"rename-保留的捷徑").firstMatch.exists)

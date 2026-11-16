@@ -1,0 +1,16 @@
+{
+  "scope": "Vista178 corresponding source, no later product changes",
+  "cleanSourceRebuild": true,
+  "modifiedLGPLModuleRelink": true,
+  "modifiedMarkerVerifiedInExecutable": true,
+  "upstreamArchiveHashes": "archives.json",
+  "overlayCompileUnits": 34,
+  "originalProductFilesCompared": 402,
+  "signed": false,
+  "installed": false,
+  "executedOnDevice": false,
+  "bitIdenticalBuildClaimed": false,
+  "appStoreOrLegalComplianceClaimed": false,
+  "knownBuildToolPrerequisites": "README.md",
+  "licensingLimits": "../docs/development/元件與分發核對.md"
+}

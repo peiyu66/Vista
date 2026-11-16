@@ -1,0 +1,2614 @@
+[
+  {
+    "path": "inputs/current/vista-flow-141/native/source/src/clock/clock.c",
+    "sha256": "5ce6cb1fa3d2ae98800b85b34b9f8d7792475ff2e6b52cd8043651276d2f06c0"
+  },
+  {
+    "path": "inputs/current/vista-flow-141/native/source/src/clock/clock.h",
+    "sha256": "54048274201bd42c6c8c7d1d16848b5dfbe81911f04a97399b9c2aeadf6c3941"
+  },
+  {
+    "path": "inputs/current/vista-flow-141/native/source/vista_resume_observer.h",
+    "sha256": "0806f454d5df0074a8b23d48a24e947817b4de1ac783d849f2983ec35f234358"
+  },
+  {
+    "path": "inputs/current/vista-flow-141/native/source/vista_resume_observer_internal.h",
+    "sha256": "7194d118c44bdd054de9b357897c9472cca96cdd5f0bdf6b3aaa407c2a32804b"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_ancillary.h",
+    "sha256": "71f3589d6adbda05c9a3fa6c854693ccbebf1c3744db8f83e2932e04b56c5d12"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_atomic.h",
+    "sha256": "37075270312113bd3ec8797ecd196cb0ee8e34254749a9293c440ba5e978de97"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_common.h",
+    "sha256": "b120c798b3b12644815601ecf33a60e8c56bf0a0e9c99f114adfda3b65c38809"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_config.h",
+    "sha256": "b83bad3c35fea9c9239e8105f56db2d053f9f924c90242a6a6f743eb9bedcefb"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_es.h",
+    "sha256": "b55f9e1ad54412ee2b0f91e2c57a7c29aa5b2ebfa42d8dbc352942282c59b6c7"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_fixups.h",
+    "sha256": "fab373d138132a115c7c11335da6005f967a05673144eb548f5e4d3112483816"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_fourcc.h",
+    "sha256": "791d95b431d9ec0de72100c2f0f6890537734aa4518224d24c1925f311b6b331"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_messages.h",
+    "sha256": "f4f56a23087342f9307f2f26399b55e943073e9b1549c8d4c4eae1b39f4adb36"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_objects.h",
+    "sha256": "ab9722e861b558490cc0c7eec85f054b9e940f922887f13528fc798b1f896774"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_picture.h",
+    "sha256": "78c4ff929b83543e6f58e50325fec60542f3f140a261451835be4ccaec0f47b2"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_replay_gain.h",
+    "sha256": "bc4ba7e6f47fe7132c29f6258ceec2b6a10a53c533aa36bf22fd441b047d0dcd"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_tick.h",
+    "sha256": "473d8d9926c68f249a0d69fc259b468509013828289c54b64f35b828471bed9c"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_variables.h",
+    "sha256": "55fac8989ca5b38eb079e8cb2cd4b9bfc77a1f10d4cdb450fc5742a9f1a8b4dc"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_vector.h",
+    "sha256": "e249e1d0fac8277b16525104aebce358ab86914de7e803477ad15ef4f1eb41b0"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_viewpoint.h",
+    "sha256": "22603dc1b826d22fa4d9c70cce26250a1ef4d6b3b3b239c382f8c5349877c43d"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_vista_cvpx.h",
+    "sha256": "1f4e54cb95bde41d6e142c52b9acd5a901149b4d5b856580b89886fdab3cf673"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_vista_recovery.h",
+    "sha256": "f86f5ff20289e7a37f1775ce47aed48a87da6ddf1d9cc4a1ebc25cec84a26b44"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/engine/vlc/Vendor/include/vlc_vout.h",
+    "sha256": "db5f04cdada548f1302e5083b2d6c8719e81ab41df56e05bad9174993430d25f"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/native/source/flow/vista_flow_trace.h",
+    "sha256": "6c9067fbb3a87f1fbf3963c9500dabb38fa14ea4a19b31563abe42d230c065cf"
+  },
+  {
+    "path": "inputs/current/vista-flow-142/native/source/src/video_output/vista_cvpx_bridge.c",
+    "sha256": "be333f651a7514e82782c16e1675b5871fd560cfdbfff23bc165802f5d3c3ac0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc.h",
+    "sha256": "1dcbb888c2c8d7ea2f5d403b17bcd6e7fc0607d82236d7481be9c5b980125a4e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc_dialog.h",
+    "sha256": "b3035a0fddc6668f22ef2c85ad91ef6cf13256376c8bc6ead66f8cca30d5b023"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc_downloader.h",
+    "sha256": "26012a4f7882e996eef9c3505b3061d0980d1d1b482c635308295e249b20d854"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc_media.h",
+    "sha256": "2926e1e9638dd2181fbde2a0502732fd1750c538531f8a14afb26e474e381bb9"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc_media_discoverer.h",
+    "sha256": "27c2b3ceee220f6fcc462af4282738d58959b938cf2781d64adb712ef99ef24b"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc_media_list.h",
+    "sha256": "7ae58342fc18fbc408d9905d88a770234d1a4eee7e68d4babe3cfc224dd6472a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc_media_list_player.h",
+    "sha256": "6e855c0597bb2d4ca5d078a3710ee0b81e4bc0af3a2724fca0e5ec588d0ae5f5"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc_media_player.h",
+    "sha256": "958bc506dd38b50bfc6c4fc32d700f8c766d409b074644f3aa03392c46cd8fbc"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc_media_track.h",
+    "sha256": "fc5796fe979a4f8e0799b75ade1705dbc3b407fc05b8d4f58bc419f9701c89a8"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc_parser.h",
+    "sha256": "7fd91fa3f999eae8381b5e681c11153810bbce2eeeb1cd477fd656740cf72380"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc_picture.h",
+    "sha256": "8256cb655a9e782b0ae6ce7207b1076a388a5339b0e416f8768b98697c181171"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc_renderer_discoverer.h",
+    "sha256": "d0cde7132f642bb1860f4750f70a62466717311f97652d14bfebaf870f7ce402"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc_version.h",
+    "sha256": "39e504b138aaf2401da4b87d534c2850557064b88cc876da4a84ca08872427b7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/libvlc_video.h",
+    "sha256": "e4b13715164349813606d8c2993f2c256e076ae35e6a955f1d8c8145ca0b6a32"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc/vlc.h",
+    "sha256": "3907a5505fea1eaa5850c6caaa815fb16cdb68d984f3fbcbe788c01e6dff548f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_ancillary.h",
+    "sha256": "71f3589d6adbda05c9a3fa6c854693ccbebf1c3744db8f83e2932e04b56c5d12"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_aout.h",
+    "sha256": "f32b1e35a049a60a8ed2cff28edd659d016c84ecaed731edde91aab44354f20a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_arrays.h",
+    "sha256": "698e53aa3502d6938e9b8cf48f1e105804f57448855409cc604169018712c6ac"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_atomic.h",
+    "sha256": "37075270312113bd3ec8797ecd196cb0ee8e34254749a9293c440ba5e978de97"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_block.h",
+    "sha256": "b006f6c61c1159019b88db280ab4927aa813faa44713ef5a1291d425c15e8623"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_common.h",
+    "sha256": "b120c798b3b12644815601ecf33a60e8c56bf0a0e9c99f114adfda3b65c38809"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_config.h",
+    "sha256": "b83bad3c35fea9c9239e8105f56db2d053f9f924c90242a6a6f743eb9bedcefb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_epg.h",
+    "sha256": "959ec60fdc13c373bade68b812cc6710f75955279fc9130f0ea17dc3a50384a0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_es.h",
+    "sha256": "b55f9e1ad54412ee2b0f91e2c57a7c29aa5b2ebfa42d8dbc352942282c59b6c7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_fixups.h",
+    "sha256": "fab373d138132a115c7c11335da6005f967a05673144eb548f5e4d3112483816"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_fourcc.h",
+    "sha256": "791d95b431d9ec0de72100c2f0f6890537734aa4518224d24c1925f311b6b331"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_frame.h",
+    "sha256": "23d0a7434806df1df1bfd6d48f56fc1f132d73d70fce6719df8595601c1d8755"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_http.h",
+    "sha256": "8a6720675b1e328698be41d468cd924c262db8bca6fa62972ea9f5ed60525d89"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_input.h",
+    "sha256": "b215c44a42755cbc86e929b1d0c94dab984f9adf8a80956ebe553089fad22588"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_input_item.h",
+    "sha256": "fa59db239c43a117fcc9d78570cfbfaece7c8564685d7a903aaed4d3a1a6e7b3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_list.h",
+    "sha256": "ddbb6bc2ea899dcd036cbe78e08224adf2d4e014739557f20e879bbf49c3bcc3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_messages.h",
+    "sha256": "f4f56a23087342f9307f2f26399b55e943073e9b1549c8d4c4eae1b39f4adb36"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_meta.h",
+    "sha256": "80907b25a154bfe6cdb4f8ba700e5fb368eefcd7f84a2bfffe6b851410c82ea0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_objects.h",
+    "sha256": "ab9722e861b558490cc0c7eec85f054b9e940f922887f13528fc798b1f896774"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_picture.h",
+    "sha256": "78c4ff929b83543e6f58e50325fec60542f3f140a261451835be4ccaec0f47b2"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_player.h",
+    "sha256": "2dffef4d26d0659067f3171e2bcb011dd4c9ffd0109fb3d4f594fb0cd981c38e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_preparser.h",
+    "sha256": "d89b1ec3584d7dae46cfeaafd56637897eb44356cd423cd3b4a11ae0d32cc9d7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_queue.h",
+    "sha256": "53bdf3d502c93b97bf7a8947ade229d12846f5c5da86204fbb69d1841a01b46a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_replay_gain.h",
+    "sha256": "bc4ba7e6f47fe7132c29f6258ceec2b6a10a53c533aa36bf22fd441b047d0dcd"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_threads.h",
+    "sha256": "f2c75f39b46e0625e634aa5c9a4c72657bcfb07229f8a791c6e04587d4c0de4a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_tick.h",
+    "sha256": "473d8d9926c68f249a0d69fc259b468509013828289c54b64f35b828471bed9c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_url.h",
+    "sha256": "70e34b37a4d68a622324b7e8d0c3f2ca614b2dc7ff93d4606aba1ea470f7605a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_variables.h",
+    "sha256": "55fac8989ca5b38eb079e8cb2cd4b9bfc77a1f10d4cdb450fc5742a9f1a8b4dc"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_vector.h",
+    "sha256": "e249e1d0fac8277b16525104aebce358ab86914de7e803477ad15ef4f1eb41b0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_viewpoint.h",
+    "sha256": "22603dc1b826d22fa4d9c70cce26250a1ef4d6b3b3b239c382f8c5349877c43d"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/engine/vlc/Vendor/include/vlc_vout.h",
+    "sha256": "db5f04cdada548f1302e5083b2d6c8719e81ab41df56e05bad9174993430d25f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/native/source/flow/vista_flow_trace.c",
+    "sha256": "8b54774b5de376d3244fa2abe39a8d8ab29669891f15251275737b0bd089dc0f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/native/source/flow/vista_flow_trace.h",
+    "sha256": "9c38e0edceb97ba375fc9c1f9e60a9d937cc1abcce99bd1d391381aa2191ff06"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/native/source/vista_frame_stage.c",
+    "sha256": "b35181b0a180999d2203ff0fe2e719e8ee62eda58ea598efc42ebc1316380c1a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/native/source/vista_frame_stage.h",
+    "sha256": "c8859339c26c68ee5399a24d1f19d9abad4e9fa3b6bfa005f23da02222d7ada0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/native/source/vista_frame_stage_internal.h",
+    "sha256": "0d653a07701b75153ab5462cdd657674816ad0d46d581a9010869107815dd7eb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-144/native/source/vista_frame_stage_player.c",
+    "sha256": "72bba26a207ee8a33ac2218479d3adf1b047945d95c0be3137474a7a5d6d077e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_ancillary.h",
+    "sha256": "71f3589d6adbda05c9a3fa6c854693ccbebf1c3744db8f83e2932e04b56c5d12"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_aout.h",
+    "sha256": "f32b1e35a049a60a8ed2cff28edd659d016c84ecaed731edde91aab44354f20a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_arrays.h",
+    "sha256": "698e53aa3502d6938e9b8cf48f1e105804f57448855409cc604169018712c6ac"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_atomic.h",
+    "sha256": "37075270312113bd3ec8797ecd196cb0ee8e34254749a9293c440ba5e978de97"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_block.h",
+    "sha256": "b006f6c61c1159019b88db280ab4927aa813faa44713ef5a1291d425c15e8623"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_charset.h",
+    "sha256": "f8f92f03fd20f8d7a96bfa3b37f92b6659f0ee9285eb78a0dad4c5b17d339e06"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_clock.h",
+    "sha256": "98686088d90ca37f7dbddae2cd7f1bc7a20738ede64a54f0f374cf6d6e832718"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_common.h",
+    "sha256": "b120c798b3b12644815601ecf33a60e8c56bf0a0e9c99f114adfda3b65c38809"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_config.h",
+    "sha256": "b83bad3c35fea9c9239e8105f56db2d053f9f924c90242a6a6f743eb9bedcefb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_decoder.h",
+    "sha256": "20c604bd2688d20c40682e5828da73654eef25cde0010b763fd3ca356b3c0b0c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_demux.h",
+    "sha256": "dfdf8194ae02044d474dc6cd7ff4febcfb5ed77a53f95820c4a47607c994463e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_dialog.h",
+    "sha256": "504a13b58cb47c2731446603f8b6d9207474a7f757dd991e37f9a8099d6b9cd8"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_epg.h",
+    "sha256": "959ec60fdc13c373bade68b812cc6710f75955279fc9130f0ea17dc3a50384a0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_es.h",
+    "sha256": "b55f9e1ad54412ee2b0f91e2c57a7c29aa5b2ebfa42d8dbc352942282c59b6c7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_es_out.h",
+    "sha256": "67ec526d05cf82eedb17c2d6262a0a1037007ecb4c7faa070e6e6d626028f494"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_fixups.h",
+    "sha256": "fab373d138132a115c7c11335da6005f967a05673144eb548f5e4d3112483816"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_fourcc.h",
+    "sha256": "791d95b431d9ec0de72100c2f0f6890537734aa4518224d24c1925f311b6b331"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_frame.h",
+    "sha256": "23d0a7434806df1df1bfd6d48f56fc1f132d73d70fce6719df8595601c1d8755"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_fs.h",
+    "sha256": "d9b0fc2732b3a9d98614f74851318594a941f56c2bf019ff3eee77293d499c09"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_hash.h",
+    "sha256": "0b93e26d0ed7706b4d70fae4988f9c64d877923baa4dde3ada408e055aa04e51"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_input.h",
+    "sha256": "b215c44a42755cbc86e929b1d0c94dab984f9adf8a80956ebe553089fad22588"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_input_item.h",
+    "sha256": "fa59db239c43a117fcc9d78570cfbfaece7c8564685d7a903aaed4d3a1a6e7b3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_interrupt.h",
+    "sha256": "ff1dfdaba8b495d5e12cd0cf67e403bcbf9f0f802351f35acfc2af41d03a276c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_list.h",
+    "sha256": "ddbb6bc2ea899dcd036cbe78e08224adf2d4e014739557f20e879bbf49c3bcc3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_memstream.h",
+    "sha256": "b36c989de287a7a45dbeb3cf14b3125319c7c75b4c83d1b605cd2119dac8773e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_messages.h",
+    "sha256": "f4f56a23087342f9307f2f26399b55e943073e9b1549c8d4c4eae1b39f4adb36"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_meta.h",
+    "sha256": "80907b25a154bfe6cdb4f8ba700e5fb368eefcd7f84a2bfffe6b851410c82ea0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_modules.h",
+    "sha256": "3e17cc151feff2391523497ea861efa158949bb2bc944acd3ba60b5b17f434be"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_mouse.h",
+    "sha256": "58b4533d82d5ca2ae656ebdc1f6edde29e7306ec90568efb1901c71def9e1af6"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_network.h",
+    "sha256": "ac784d3a45bd9ac58bb3fcb513c6290eec96a478e13b5841886ce362149508c7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_objects.h",
+    "sha256": "ab9722e861b558490cc0c7eec85f054b9e940f922887f13528fc798b1f896774"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_picture.h",
+    "sha256": "78c4ff929b83543e6f58e50325fec60542f3f140a261451835be4ccaec0f47b2"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_probe.h",
+    "sha256": "317dccea03a70c27d01df7bcacda9a85acc537a71570eab203b01b4503c1e9c0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_queue.h",
+    "sha256": "53bdf3d502c93b97bf7a8947ade229d12846f5c5da86204fbb69d1841a01b46a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_renderer_discovery.h",
+    "sha256": "7f8360a8270ff6058802c39e55722ee78ee569d6c8d6e1ca7bd533802fba2cd2"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_replay_gain.h",
+    "sha256": "bc4ba7e6f47fe7132c29f6258ceec2b6a10a53c533aa36bf22fd441b047d0dcd"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_sout.h",
+    "sha256": "9a22da44e2995bce8d625225fac1ca6af96170212476f3d7172a02ccfd17199a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_stream.h",
+    "sha256": "3ef1ceec15072ad87890f8297529543f5be3ba95585ee8b4b84115272776ca59"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_stream_extractor.h",
+    "sha256": "fd5cf9c59a858165b4c3f96c0ddae7e740b897e19f5246004f039ecd6bdc7c49"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_strings.h",
+    "sha256": "fe27f374b346f7ea7b222205d54a059a9f7c5128c281af077a97c82912615603"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_threads.h",
+    "sha256": "f2c75f39b46e0625e634aa5c9a4c72657bcfb07229f8a791c6e04587d4c0de4a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_tick.h",
+    "sha256": "473d8d9926c68f249a0d69fc259b468509013828289c54b64f35b828471bed9c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_url.h",
+    "sha256": "70e34b37a4d68a622324b7e8d0c3f2ca614b2dc7ff93d4606aba1ea470f7605a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_variables.h",
+    "sha256": "55fac8989ca5b38eb079e8cb2cd4b9bfc77a1f10d4cdb450fc5742a9f1a8b4dc"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_vector.h",
+    "sha256": "e249e1d0fac8277b16525104aebce358ab86914de7e803477ad15ef4f1eb41b0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_viewpoint.h",
+    "sha256": "22603dc1b826d22fa4d9c70cce26250a1ef4d6b3b3b239c382f8c5349877c43d"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_vout.h",
+    "sha256": "db5f04cdada548f1302e5083b2d6c8719e81ab41df56e05bad9174993430d25f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_vout_display.h",
+    "sha256": "c0e35ba444bf7733c5a14a42357daf6b40e8ccb4708ccce6dd873dd25083b06f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/engine/vlc/Vendor/include/vlc_window.h",
+    "sha256": "c695d6c985f1b398acb62c162168bb719d131b13193cd45662c767218f8d311e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/native/source/flow/vista_flow_trace.h",
+    "sha256": "7183cca210faa65bf69bba72eb0d1e1514636a1bdc00a2760c6a136c062e9e5a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-145/native/source/src/input/input.c",
+    "sha256": "18a44271286f308baab9bbe26ba9b96a481d0c56273782a03d08afef0e67a9d6"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_ancillary.h",
+    "sha256": "71f3589d6adbda05c9a3fa6c854693ccbebf1c3744db8f83e2932e04b56c5d12"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_arrays.h",
+    "sha256": "698e53aa3502d6938e9b8cf48f1e105804f57448855409cc604169018712c6ac"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_atomic.h",
+    "sha256": "37075270312113bd3ec8797ecd196cb0ee8e34254749a9293c440ba5e978de97"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_block.h",
+    "sha256": "b006f6c61c1159019b88db280ab4927aa813faa44713ef5a1291d425c15e8623"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_clock.h",
+    "sha256": "98686088d90ca37f7dbddae2cd7f1bc7a20738ede64a54f0f374cf6d6e832718"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_codec.h",
+    "sha256": "b55e0a24b90a4120e1332c4cd5f531af530ea2564da8d32214b059a5c839bae3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_common.h",
+    "sha256": "b120c798b3b12644815601ecf33a60e8c56bf0a0e9c99f114adfda3b65c38809"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_config.h",
+    "sha256": "b83bad3c35fea9c9239e8105f56db2d053f9f924c90242a6a6f743eb9bedcefb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_configuration.h",
+    "sha256": "afa19d639a446f643912fa77db71496dc4985525077d40adc3a0c883716e5b04"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_epg.h",
+    "sha256": "959ec60fdc13c373bade68b812cc6710f75955279fc9130f0ea17dc3a50384a0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_es.h",
+    "sha256": "b55f9e1ad54412ee2b0f91e2c57a7c29aa5b2ebfa42d8dbc352942282c59b6c7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_filter.h",
+    "sha256": "376d8aa920da9fd24137649bf1cd20918382ce1e021ceb50c0301fa4619cff47"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_fixups.h",
+    "sha256": "fab373d138132a115c7c11335da6005f967a05673144eb548f5e4d3112483816"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_fourcc.h",
+    "sha256": "791d95b431d9ec0de72100c2f0f6890537734aa4518224d24c1925f311b6b331"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_frame.h",
+    "sha256": "23d0a7434806df1df1bfd6d48f56fc1f132d73d70fce6719df8595601c1d8755"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_image.h",
+    "sha256": "1c0fbb27e41b2815a88df10411791300d36cb44ac66f24da6fa90ee5232b3eb8"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_input_item.h",
+    "sha256": "fa59db239c43a117fcc9d78570cfbfaece7c8564685d7a903aaed4d3a1a6e7b3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_list.h",
+    "sha256": "ddbb6bc2ea899dcd036cbe78e08224adf2d4e014739557f20e879bbf49c3bcc3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_messages.h",
+    "sha256": "f4f56a23087342f9307f2f26399b55e943073e9b1549c8d4c4eae1b39f4adb36"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_meta.h",
+    "sha256": "80907b25a154bfe6cdb4f8ba700e5fb368eefcd7f84a2bfffe6b851410c82ea0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_mouse.h",
+    "sha256": "58b4533d82d5ca2ae656ebdc1f6edde29e7306ec90568efb1901c71def9e1af6"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_objects.h",
+    "sha256": "ab9722e861b558490cc0c7eec85f054b9e940f922887f13528fc798b1f896774"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_picture.h",
+    "sha256": "78c4ff929b83543e6f58e50325fec60542f3f140a261451835be4ccaec0f47b2"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_picture_fifo.h",
+    "sha256": "33a85e001d457ccf8ec26f994daee31b74836d0542113b9ae6afc8d7c9af1798"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_picture_pool.h",
+    "sha256": "1f3277494ccd39f61242482debfb9f92950ded8481f1ea1cf51257ae133aee62"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_plugin.h",
+    "sha256": "836846396d902d711852625d1e0977cfe1238de3011e92d4e005f0f25ebcaadb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_queue.h",
+    "sha256": "53bdf3d502c93b97bf7a8947ade229d12846f5c5da86204fbb69d1841a01b46a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_replay_gain.h",
+    "sha256": "bc4ba7e6f47fe7132c29f6258ceec2b6a10a53c533aa36bf22fd441b047d0dcd"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_spu.h",
+    "sha256": "4a6a42d1ec3b3415c73cc3421c763f8727136fc5bc627b14afa7af2f4b626398"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_subpicture.h",
+    "sha256": "4e2040b973fdb736a36d145873bee040285f2aa21319810910467cae77e40559"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_text_style.h",
+    "sha256": "831110820c64656dbe78216eec3536ac94413a4708f3026cf2303c50cd70a462"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_threads.h",
+    "sha256": "f2c75f39b46e0625e634aa5c9a4c72657bcfb07229f8a791c6e04587d4c0de4a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_tick.h",
+    "sha256": "473d8d9926c68f249a0d69fc259b468509013828289c54b64f35b828471bed9c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_tracer.h",
+    "sha256": "9417aa2f1955da099f2761940687b25d42eadd228419de2caab8dc7b05129045"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_variables.h",
+    "sha256": "55fac8989ca5b38eb079e8cb2cd4b9bfc77a1f10d4cdb450fc5742a9f1a8b4dc"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_vector.h",
+    "sha256": "e249e1d0fac8277b16525104aebce358ab86914de7e803477ad15ef4f1eb41b0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_viewpoint.h",
+    "sha256": "22603dc1b826d22fa4d9c70cce26250a1ef4d6b3b3b239c382f8c5349877c43d"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_vista_recovery.h",
+    "sha256": "f86f5ff20289e7a37f1775ce47aed48a87da6ddf1d9cc4a1ebc25cec84a26b44"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_vout.h",
+    "sha256": "db5f04cdada548f1302e5083b2d6c8719e81ab41df56e05bad9174993430d25f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_vout_display.h",
+    "sha256": "c0e35ba444bf7733c5a14a42357daf6b40e8ccb4708ccce6dd873dd25083b06f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_vout_osd.h",
+    "sha256": "831da65a7a379374dec548599d8668ac1ffe67966abe9c174892f7c4422e4868"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/engine/vlc/Vendor/include/vlc_window.h",
+    "sha256": "c695d6c985f1b398acb62c162168bb719d131b13193cd45662c767218f8d311e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/native/source/flow/vista_flow_trace.h",
+    "sha256": "cdd9cd639a0e901674cedd55d3bb462ec0b23b3ca9bb8b111c90cb98dea77721"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/native/source/src/clock/clock.h",
+    "sha256": "54048274201bd42c6c8c7d1d16848b5dfbe81911f04a97399b9c2aeadf6c3941"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/native/source/src/video_output/video_output.c",
+    "sha256": "3212a76774fa1444d0abd4f122505a107bc6243231a6e9c9111dec58775b75db"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/native/source/src/video_output/vout_internal.h",
+    "sha256": "2e756011426adbd62e24f56b6c2e36da1d7f3e19187bbaac3bb1ed07be3449ee"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/native/source/vista_frame_stage.h",
+    "sha256": "c8859339c26c68ee5399a24d1f19d9abad4e9fa3b6bfa005f23da02222d7ada0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/native/source/vista_frame_stage_internal.h",
+    "sha256": "0d653a07701b75153ab5462cdd657674816ad0d46d581a9010869107815dd7eb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/native/source/vista_resume_observer.h",
+    "sha256": "0806f454d5df0074a8b23d48a24e947817b4de1ac783d849f2983ec35f234358"
+  },
+  {
+    "path": "inputs/current/vista-recovery-146/native/source/vista_resume_observer_internal.h",
+    "sha256": "7194d118c44bdd054de9b357897c9472cca96cdd5f0bdf6b3aaa407c2a32804b"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_ancillary.h",
+    "sha256": "71f3589d6adbda05c9a3fa6c854693ccbebf1c3744db8f83e2932e04b56c5d12"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_aout.h",
+    "sha256": "f32b1e35a049a60a8ed2cff28edd659d016c84ecaed731edde91aab44354f20a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_arrays.h",
+    "sha256": "698e53aa3502d6938e9b8cf48f1e105804f57448855409cc604169018712c6ac"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_atomic.h",
+    "sha256": "37075270312113bd3ec8797ecd196cb0ee8e34254749a9293c440ba5e978de97"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_block.h",
+    "sha256": "b006f6c61c1159019b88db280ab4927aa813faa44713ef5a1291d425c15e8623"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_clock.h",
+    "sha256": "98686088d90ca37f7dbddae2cd7f1bc7a20738ede64a54f0f374cf6d6e832718"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_codec.h",
+    "sha256": "b55e0a24b90a4120e1332c4cd5f531af530ea2564da8d32214b059a5c839bae3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_common.h",
+    "sha256": "b120c798b3b12644815601ecf33a60e8c56bf0a0e9c99f114adfda3b65c38809"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_config.h",
+    "sha256": "b83bad3c35fea9c9239e8105f56db2d053f9f924c90242a6a6f743eb9bedcefb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_configuration.h",
+    "sha256": "afa19d639a446f643912fa77db71496dc4985525077d40adc3a0c883716e5b04"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_decoder.h",
+    "sha256": "20c604bd2688d20c40682e5828da73654eef25cde0010b763fd3ca356b3c0b0c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_demux.h",
+    "sha256": "dfdf8194ae02044d474dc6cd7ff4febcfb5ed77a53f95820c4a47607c994463e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_epg.h",
+    "sha256": "959ec60fdc13c373bade68b812cc6710f75955279fc9130f0ea17dc3a50384a0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_es.h",
+    "sha256": "b55f9e1ad54412ee2b0f91e2c57a7c29aa5b2ebfa42d8dbc352942282c59b6c7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_es_out.h",
+    "sha256": "67ec526d05cf82eedb17c2d6262a0a1037007ecb4c7faa070e6e6d626028f494"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_fixups.h",
+    "sha256": "fab373d138132a115c7c11335da6005f967a05673144eb548f5e4d3112483816"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_fourcc.h",
+    "sha256": "791d95b431d9ec0de72100c2f0f6890537734aa4518224d24c1925f311b6b331"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_frame.h",
+    "sha256": "23d0a7434806df1df1bfd6d48f56fc1f132d73d70fce6719df8595601c1d8755"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_input.h",
+    "sha256": "b215c44a42755cbc86e929b1d0c94dab984f9adf8a80956ebe553089fad22588"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_input_item.h",
+    "sha256": "fa59db239c43a117fcc9d78570cfbfaece7c8564685d7a903aaed4d3a1a6e7b3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_interrupt.h",
+    "sha256": "ff1dfdaba8b495d5e12cd0cf67e403bcbf9f0f802351f35acfc2af41d03a276c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_iso_lang.h",
+    "sha256": "ca79bd0227d139c04f15e82eb5c00574374d1b64ceba11496359232260f35bb2"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_list.h",
+    "sha256": "ddbb6bc2ea899dcd036cbe78e08224adf2d4e014739557f20e879bbf49c3bcc3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_memstream.h",
+    "sha256": "b36c989de287a7a45dbeb3cf14b3125319c7c75b4c83d1b605cd2119dac8773e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_messages.h",
+    "sha256": "f4f56a23087342f9307f2f26399b55e943073e9b1549c8d4c4eae1b39f4adb36"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_meta.h",
+    "sha256": "80907b25a154bfe6cdb4f8ba700e5fb368eefcd7f84a2bfffe6b851410c82ea0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_mouse.h",
+    "sha256": "58b4533d82d5ca2ae656ebdc1f6edde29e7306ec90568efb1901c71def9e1af6"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_network.h",
+    "sha256": "ac784d3a45bd9ac58bb3fcb513c6290eec96a478e13b5841886ce362149508c7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_objects.h",
+    "sha256": "ab9722e861b558490cc0c7eec85f054b9e940f922887f13528fc798b1f896774"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_picture.h",
+    "sha256": "78c4ff929b83543e6f58e50325fec60542f3f140a261451835be4ccaec0f47b2"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_queue.h",
+    "sha256": "53bdf3d502c93b97bf7a8947ade229d12846f5c5da86204fbb69d1841a01b46a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_replay_gain.h",
+    "sha256": "bc4ba7e6f47fe7132c29f6258ceec2b6a10a53c533aa36bf22fd441b047d0dcd"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_sout.h",
+    "sha256": "9a22da44e2995bce8d625225fac1ca6af96170212476f3d7172a02ccfd17199a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_stream.h",
+    "sha256": "3ef1ceec15072ad87890f8297529543f5be3ba95585ee8b4b84115272776ca59"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_subpicture.h",
+    "sha256": "4e2040b973fdb736a36d145873bee040285f2aa21319810910467cae77e40559"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_text_style.h",
+    "sha256": "831110820c64656dbe78216eec3536ac94413a4708f3026cf2303c50cd70a462"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_threads.h",
+    "sha256": "f2c75f39b46e0625e634aa5c9a4c72657bcfb07229f8a791c6e04587d4c0de4a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_tick.h",
+    "sha256": "473d8d9926c68f249a0d69fc259b468509013828289c54b64f35b828471bed9c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_tracer.h",
+    "sha256": "9417aa2f1955da099f2761940687b25d42eadd228419de2caab8dc7b05129045"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_variables.h",
+    "sha256": "55fac8989ca5b38eb079e8cb2cd4b9bfc77a1f10d4cdb450fc5742a9f1a8b4dc"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_vector.h",
+    "sha256": "e249e1d0fac8277b16525104aebce358ab86914de7e803477ad15ef4f1eb41b0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_viewpoint.h",
+    "sha256": "22603dc1b826d22fa4d9c70cce26250a1ef4d6b3b3b239c382f8c5349877c43d"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_vout.h",
+    "sha256": "db5f04cdada548f1302e5083b2d6c8719e81ab41df56e05bad9174993430d25f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_vout_display.h",
+    "sha256": "c0e35ba444bf7733c5a14a42357daf6b40e8ccb4708ccce6dd873dd25083b06f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/engine/vlc/Vendor/include/vlc_window.h",
+    "sha256": "c695d6c985f1b398acb62c162168bb719d131b13193cd45662c767218f8d311e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/native/source/flow/vista_flow_trace.h",
+    "sha256": "cdd9cd639a0e901674cedd55d3bb462ec0b23b3ca9bb8b111c90cb98dea77721"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/native/source/src/clock/clock.h",
+    "sha256": "54048274201bd42c6c8c7d1d16848b5dfbe81911f04a97399b9c2aeadf6c3941"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/native/source/src/clock/input_clock.h",
+    "sha256": "2dc833722d98219aea7841f7f443345dd8301285a4270b26be2fe38a55f1b5ec"
+  },
+  {
+    "path": "inputs/current/vista-recovery-153/native/source/src/input/es_out.c",
+    "sha256": "5f44ff20f5a00242fddce60132c0dac766d84d8e9f675be0df4944a7271f9ade"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc.h",
+    "sha256": "1dcbb888c2c8d7ea2f5d403b17bcd6e7fc0607d82236d7481be9c5b980125a4e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc_dialog.h",
+    "sha256": "b3035a0fddc6668f22ef2c85ad91ef6cf13256376c8bc6ead66f8cca30d5b023"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc_downloader.h",
+    "sha256": "26012a4f7882e996eef9c3505b3061d0980d1d1b482c635308295e249b20d854"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc_media.h",
+    "sha256": "2926e1e9638dd2181fbde2a0502732fd1750c538531f8a14afb26e474e381bb9"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc_media_discoverer.h",
+    "sha256": "27c2b3ceee220f6fcc462af4282738d58959b938cf2781d64adb712ef99ef24b"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc_media_list.h",
+    "sha256": "7ae58342fc18fbc408d9905d88a770234d1a4eee7e68d4babe3cfc224dd6472a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc_media_list_player.h",
+    "sha256": "6e855c0597bb2d4ca5d078a3710ee0b81e4bc0af3a2724fca0e5ec588d0ae5f5"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc_media_player.h",
+    "sha256": "958bc506dd38b50bfc6c4fc32d700f8c766d409b074644f3aa03392c46cd8fbc"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc_media_track.h",
+    "sha256": "fc5796fe979a4f8e0799b75ade1705dbc3b407fc05b8d4f58bc419f9701c89a8"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc_parser.h",
+    "sha256": "7fd91fa3f999eae8381b5e681c11153810bbce2eeeb1cd477fd656740cf72380"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc_picture.h",
+    "sha256": "8256cb655a9e782b0ae6ce7207b1076a388a5339b0e416f8768b98697c181171"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc_renderer_discoverer.h",
+    "sha256": "d0cde7132f642bb1860f4750f70a62466717311f97652d14bfebaf870f7ce402"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc_version.h",
+    "sha256": "39e504b138aaf2401da4b87d534c2850557064b88cc876da4a84ca08872427b7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/libvlc_video.h",
+    "sha256": "e4b13715164349813606d8c2993f2c256e076ae35e6a955f1d8c8145ca0b6a32"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/engine/vlc/Vendor/include/vlc/vlc.h",
+    "sha256": "3907a5505fea1eaa5850c6caaa815fb16cdb68d984f3fbcbe788c01e6dff548f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/flow/vista_flow_trace.h",
+    "sha256": "cdd9cd639a0e901674cedd55d3bb462ec0b23b3ca9bb8b111c90cb98dea77721"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/Ebml_dispatcher.hpp",
+    "sha256": "3feb3388e1ce2afec1e51e6a2a586ca6b81073eec88d637b75f7338ec67a5166"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/Ebml_parser.cpp",
+    "sha256": "a041f6663a60ec8c0933ff692e297d1d086e34b101fa5b551a0cc44380bfb6bd"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/Ebml_parser.hpp",
+    "sha256": "04c8afbaa0636a689fc763f5ff1b8c40adf69a764dc1df208186044f28ff9638"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/chapter_command.cpp",
+    "sha256": "e10a9636e36cf7d94df71d5da2ecc1002f38b527620c3bedb05f32c584d3bcfe"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/chapter_command.hpp",
+    "sha256": "933a670a8fde39dd54555bf562f7d23d2949cc0335775aa5932c2e8d6d445edc"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/chapter_command_dvd.cpp",
+    "sha256": "a041dc8026bb4679e691f9ba568df5c3f2c4b3e88d6247065d2d7a94dae2eea5"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/chapter_command_dvd.hpp",
+    "sha256": "ce446d6f716dc9c10785abe274be27a2c97fb2997ce77de0340bcd5f49f3a5c7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/chapter_command_script.cpp",
+    "sha256": "f971cab4d42eec984dad525bcce1684832263483a7280903cc56a08ca34f0090"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/chapter_command_script.hpp",
+    "sha256": "07feb20f6a0247b5f0edee8f4eac969ce9dbb19cd3771a8dc6b1669c0aa7dbe8"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/chapter_command_script_common.cpp",
+    "sha256": "fe4ab609d32837cf94eb1970958a3faf8013f66c9bdbac99772bac7e4e57917d"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/chapter_command_script_common.hpp",
+    "sha256": "e5a036438dec8f9077bd97a9faddb9a7cf1dc267e12ab9941d5aa0a1a63d0760"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/chapters.hpp",
+    "sha256": "032b84fccb1830712fa3af92bf413ad36a8acb653278ae59d9bdf5fd0a719433"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/demux.cpp",
+    "sha256": "79ba8773996f9258fae5a12efa695fb1acfa0247570c04f656abdc746670c267"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/demux.hpp",
+    "sha256": "177bd96931d0292ce3b58692ede3616cd1ddc9c87c94a385871ea84862e2910e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/dispatcher.hpp",
+    "sha256": "ca3b38e474fa65e54a91a43495bbcef16b92e0afbd91e0bbe4750d5e71ac6b7b"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/dvd_types.hpp",
+    "sha256": "94ca066a89f3d05ed0e2d3e995085c4d43cb74ebf688720f5a0afeafebae1b65"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/events.cpp",
+    "sha256": "c7a3ccf20579ef460151bebf018bdd412e8bc0bfd01822fdbec9f41150b85963"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/events.hpp",
+    "sha256": "32c39ada79efa5bf975844bcfe733567cbd599a12f6a308469c7fa91695463cd"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/lzokay.hpp",
+    "sha256": "c45e4919278a61205e5f6da3e7dc57ec6ffb3b1bb134851831b69f55a43ff512"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/matroska_segment.cpp",
+    "sha256": "53daf5e7c8c19a68ba7e1b8b78893fde65f607957081377f0d846f0ec6e4c298"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/matroska_segment.hpp",
+    "sha256": "ba46060cf1b2dc8c587fb351f911f3d0efd205879774e452bb8149e371249b9a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/matroska_segment_parse.cpp",
+    "sha256": "1a2226a16df7b3c8683c1f9df55edf9539a6472f846247aad6c9e7a7a2cf2143"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/matroska_segment_seeker.cpp",
+    "sha256": "7197128da3d763288c712e71bfb7b1dd2af4cd7e7e147dc20e17038a1720a0a3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/matroska_segment_seeker.hpp",
+    "sha256": "69a55b3ac2dd2f4c9fe84568be4b6442457f94efc7303cb579e93e41bd5314e1"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/mkv.cpp",
+    "sha256": "48306a55907d5533a841e2b87d38ec168219bcbc1def957217b154d8ba7dd513"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/mkv.hpp",
+    "sha256": "f0f77f2fde0d087a6d50e5fabe7c95e904d7f04f26a92a43ef270e84467b3b0c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/stream_io_callback.hpp",
+    "sha256": "b1fe7f335996c96097c635b1725a0e7f299947c3eba3cec90316a98c32d3c862"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/string_dispatcher.hpp",
+    "sha256": "0ce41bb574767b5348642dd3bba2f1a4c800369943370755a51d8a24890f0fd4"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/util.cpp",
+    "sha256": "947056187295b3c8d1be4fbc8998879a14e4650636eae673065650755a751908"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/util.hpp",
+    "sha256": "0ca64c46486d21c8741b637d31436f34d8bc8fd80b0b731f43acdfe7602baba5"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/virtual_segment.cpp",
+    "sha256": "b71126daec5b699c254bdfbbc156a419f91e8fe2e532c68cc7153394020d609a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/virtual_segment.hpp",
+    "sha256": "fd52d26b07045d5e98a48fbcbb625146841b2c633e7ae2d09b0c21de6eecb33b"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/vista_mkv_bitrate.hpp",
+    "sha256": "9c4dde14b3eb423087ff21d14dcc809f8bcdd80eee3bf0119ff95cf5e676f76b"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/vlc_colors.h",
+    "sha256": "d774fe7acba51ce7d0629b6006ed6555ba33c81204e1a161da97f11a6adf0de0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/modules/demux/mkv/vsc_capture.hpp",
+    "sha256": "220bcc348aae58d68bbc9e47389b1bfaaa2fc36d3b04d39378674a4ab72f2115"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/vista_seek_cost.c",
+    "sha256": "1de46a54bd78258e94895bc28c3a019e12734adde4a9823c6e9109b3bd4fde8c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-159/native/source/vista_seek_cost.h",
+    "sha256": "e2a05a727781442709ea55f3464d6587f84ee07b76305188da9e2cfd4424c0cc"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_ancillary.h",
+    "sha256": "71f3589d6adbda05c9a3fa6c854693ccbebf1c3744db8f83e2932e04b56c5d12"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_aout.h",
+    "sha256": "f32b1e35a049a60a8ed2cff28edd659d016c84ecaed731edde91aab44354f20a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_atomic.h",
+    "sha256": "37075270312113bd3ec8797ecd196cb0ee8e34254749a9293c440ba5e978de97"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_block.h",
+    "sha256": "b006f6c61c1159019b88db280ab4927aa813faa44713ef5a1291d425c15e8623"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_clock.h",
+    "sha256": "98686088d90ca37f7dbddae2cd7f1bc7a20738ede64a54f0f374cf6d6e832718"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_codec.h",
+    "sha256": "b55e0a24b90a4120e1332c4cd5f531af530ea2564da8d32214b059a5c839bae3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_common.h",
+    "sha256": "b120c798b3b12644815601ecf33a60e8c56bf0a0e9c99f114adfda3b65c38809"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_config.h",
+    "sha256": "b83bad3c35fea9c9239e8105f56db2d053f9f924c90242a6a6f743eb9bedcefb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_epg.h",
+    "sha256": "959ec60fdc13c373bade68b812cc6710f75955279fc9130f0ea17dc3a50384a0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_es.h",
+    "sha256": "b55f9e1ad54412ee2b0f91e2c57a7c29aa5b2ebfa42d8dbc352942282c59b6c7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_filter.h",
+    "sha256": "376d8aa920da9fd24137649bf1cd20918382ce1e021ceb50c0301fa4619cff47"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_fixups.h",
+    "sha256": "fab373d138132a115c7c11335da6005f967a05673144eb548f5e4d3112483816"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_fourcc.h",
+    "sha256": "791d95b431d9ec0de72100c2f0f6890537734aa4518224d24c1925f311b6b331"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_frame.h",
+    "sha256": "23d0a7434806df1df1bfd6d48f56fc1f132d73d70fce6719df8595601c1d8755"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_input_item.h",
+    "sha256": "fa59db239c43a117fcc9d78570cfbfaece7c8564685d7a903aaed4d3a1a6e7b3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_list.h",
+    "sha256": "ddbb6bc2ea899dcd036cbe78e08224adf2d4e014739557f20e879bbf49c3bcc3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_messages.h",
+    "sha256": "f4f56a23087342f9307f2f26399b55e943073e9b1549c8d4c4eae1b39f4adb36"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_meta.h",
+    "sha256": "80907b25a154bfe6cdb4f8ba700e5fb368eefcd7f84a2bfffe6b851410c82ea0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_mouse.h",
+    "sha256": "58b4533d82d5ca2ae656ebdc1f6edde29e7306ec90568efb1901c71def9e1af6"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_objects.h",
+    "sha256": "ab9722e861b558490cc0c7eec85f054b9e940f922887f13528fc798b1f896774"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_picture.h",
+    "sha256": "78c4ff929b83543e6f58e50325fec60542f3f140a261451835be4ccaec0f47b2"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_queue.h",
+    "sha256": "53bdf3d502c93b97bf7a8947ade229d12846f5c5da86204fbb69d1841a01b46a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_replay_gain.h",
+    "sha256": "bc4ba7e6f47fe7132c29f6258ceec2b6a10a53c533aa36bf22fd441b047d0dcd"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_subpicture.h",
+    "sha256": "4e2040b973fdb736a36d145873bee040285f2aa21319810910467cae77e40559"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_text_style.h",
+    "sha256": "831110820c64656dbe78216eec3536ac94413a4708f3026cf2303c50cd70a462"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_threads.h",
+    "sha256": "f2c75f39b46e0625e634aa5c9a4c72657bcfb07229f8a791c6e04587d4c0de4a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_tick.h",
+    "sha256": "473d8d9926c68f249a0d69fc259b468509013828289c54b64f35b828471bed9c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_tracer.h",
+    "sha256": "9417aa2f1955da099f2761940687b25d42eadd228419de2caab8dc7b05129045"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_variables.h",
+    "sha256": "55fac8989ca5b38eb079e8cb2cd4b9bfc77a1f10d4cdb450fc5742a9f1a8b4dc"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_vector.h",
+    "sha256": "e249e1d0fac8277b16525104aebce358ab86914de7e803477ad15ef4f1eb41b0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_viewpoint.h",
+    "sha256": "22603dc1b826d22fa4d9c70cce26250a1ef4d6b3b3b239c382f8c5349877c43d"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_vout.h",
+    "sha256": "db5f04cdada548f1302e5083b2d6c8719e81ab41df56e05bad9174993430d25f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_vout_display.h",
+    "sha256": "c0e35ba444bf7733c5a14a42357daf6b40e8ccb4708ccce6dd873dd25083b06f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/engine/vlc/Vendor/include/vlc_window.h",
+    "sha256": "c695d6c985f1b398acb62c162168bb719d131b13193cd45662c767218f8d311e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/native/source/dec.c",
+    "sha256": "06e9dc7207a56450781db0a363a85a7154b00c8c972faa246ce8aab93e93c2c8"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/native/source/flow/vista_flow_trace.h",
+    "sha256": "cdd9cd639a0e901674cedd55d3bb462ec0b23b3ca9bb8b111c90cb98dea77721"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/native/source/src/clock/clock.h",
+    "sha256": "54048274201bd42c6c8c7d1d16848b5dfbe81911f04a97399b9c2aeadf6c3941"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/native/source/vista_audio_boundary162.h",
+    "sha256": "35a313fb9d1c7ee1dd82501135a32a4aa77206442e1f42cab5faeb146712f220"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/native/source/vista_audio_flow144.h",
+    "sha256": "23dd14bfbd753fb66d17ad6d606bbf925831c1d647dc3509d030245d8106a00f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/native/source/vista_audio_rate_map.h",
+    "sha256": "64cf081e5d28440c5787e4a2620c64fd8913ececaab2c02c676d23e846d08a9e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/native/source/vista_resume_observer.h",
+    "sha256": "0806f454d5df0074a8b23d48a24e947817b4de1ac783d849f2983ec35f234358"
+  },
+  {
+    "path": "inputs/current/vista-recovery-162/native/source/vista_resume_observer_internal.h",
+    "sha256": "7194d118c44bdd054de9b357897c9472cca96cdd5f0bdf6b3aaa407c2a32804b"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_ancillary.h",
+    "sha256": "71f3589d6adbda05c9a3fa6c854693ccbebf1c3744db8f83e2932e04b56c5d12"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_aout.h",
+    "sha256": "f32b1e35a049a60a8ed2cff28edd659d016c84ecaed731edde91aab44354f20a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_atomic.h",
+    "sha256": "37075270312113bd3ec8797ecd196cb0ee8e34254749a9293c440ba5e978de97"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_block.h",
+    "sha256": "b006f6c61c1159019b88db280ab4927aa813faa44713ef5a1291d425c15e8623"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_clock.h",
+    "sha256": "98686088d90ca37f7dbddae2cd7f1bc7a20738ede64a54f0f374cf6d6e832718"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_codec.h",
+    "sha256": "b55e0a24b90a4120e1332c4cd5f531af530ea2564da8d32214b059a5c839bae3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_common.h",
+    "sha256": "b120c798b3b12644815601ecf33a60e8c56bf0a0e9c99f114adfda3b65c38809"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_config.h",
+    "sha256": "b83bad3c35fea9c9239e8105f56db2d053f9f924c90242a6a6f743eb9bedcefb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_configuration.h",
+    "sha256": "afa19d639a446f643912fa77db71496dc4985525077d40adc3a0c883716e5b04"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_decoder.h",
+    "sha256": "20c604bd2688d20c40682e5828da73654eef25cde0010b763fd3ca356b3c0b0c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_demux.h",
+    "sha256": "dfdf8194ae02044d474dc6cd7ff4febcfb5ed77a53f95820c4a47607c994463e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_dialog.h",
+    "sha256": "504a13b58cb47c2731446603f8b6d9207474a7f757dd991e37f9a8099d6b9cd8"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_epg.h",
+    "sha256": "959ec60fdc13c373bade68b812cc6710f75955279fc9130f0ea17dc3a50384a0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_es.h",
+    "sha256": "b55f9e1ad54412ee2b0f91e2c57a7c29aa5b2ebfa42d8dbc352942282c59b6c7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_es_out.h",
+    "sha256": "67ec526d05cf82eedb17c2d6262a0a1037007ecb4c7faa070e6e6d626028f494"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_filter.h",
+    "sha256": "376d8aa920da9fd24137649bf1cd20918382ce1e021ceb50c0301fa4619cff47"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_fixups.h",
+    "sha256": "fab373d138132a115c7c11335da6005f967a05673144eb548f5e4d3112483816"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_fourcc.h",
+    "sha256": "791d95b431d9ec0de72100c2f0f6890537734aa4518224d24c1925f311b6b331"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_frame.h",
+    "sha256": "23d0a7434806df1df1bfd6d48f56fc1f132d73d70fce6719df8595601c1d8755"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_input.h",
+    "sha256": "b215c44a42755cbc86e929b1d0c94dab984f9adf8a80956ebe553089fad22588"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_input_item.h",
+    "sha256": "fa59db239c43a117fcc9d78570cfbfaece7c8564685d7a903aaed4d3a1a6e7b3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_interrupt.h",
+    "sha256": "ff1dfdaba8b495d5e12cd0cf67e403bcbf9f0f802351f35acfc2af41d03a276c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_list.h",
+    "sha256": "ddbb6bc2ea899dcd036cbe78e08224adf2d4e014739557f20e879bbf49c3bcc3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_messages.h",
+    "sha256": "f4f56a23087342f9307f2f26399b55e943073e9b1549c8d4c4eae1b39f4adb36"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_meta.h",
+    "sha256": "80907b25a154bfe6cdb4f8ba700e5fb368eefcd7f84a2bfffe6b851410c82ea0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_modules.h",
+    "sha256": "3e17cc151feff2391523497ea861efa158949bb2bc944acd3ba60b5b17f434be"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_mouse.h",
+    "sha256": "58b4533d82d5ca2ae656ebdc1f6edde29e7306ec90568efb1901c71def9e1af6"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_network.h",
+    "sha256": "ac784d3a45bd9ac58bb3fcb513c6290eec96a478e13b5841886ce362149508c7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_objects.h",
+    "sha256": "ab9722e861b558490cc0c7eec85f054b9e940f922887f13528fc798b1f896774"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_picture.h",
+    "sha256": "78c4ff929b83543e6f58e50325fec60542f3f140a261451835be4ccaec0f47b2"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_picture_pool.h",
+    "sha256": "1f3277494ccd39f61242482debfb9f92950ded8481f1ea1cf51257ae133aee62"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_plugin.h",
+    "sha256": "836846396d902d711852625d1e0977cfe1238de3011e92d4e005f0f25ebcaadb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_queue.h",
+    "sha256": "53bdf3d502c93b97bf7a8947ade229d12846f5c5da86204fbb69d1841a01b46a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_replay_gain.h",
+    "sha256": "bc4ba7e6f47fe7132c29f6258ceec2b6a10a53c533aa36bf22fd441b047d0dcd"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_sout.h",
+    "sha256": "9a22da44e2995bce8d625225fac1ca6af96170212476f3d7172a02ccfd17199a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_spu.h",
+    "sha256": "4a6a42d1ec3b3415c73cc3421c763f8727136fc5bc627b14afa7af2f4b626398"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_stream.h",
+    "sha256": "3ef1ceec15072ad87890f8297529543f5be3ba95585ee8b4b84115272776ca59"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_subpicture.h",
+    "sha256": "4e2040b973fdb736a36d145873bee040285f2aa21319810910467cae77e40559"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_text_style.h",
+    "sha256": "831110820c64656dbe78216eec3536ac94413a4708f3026cf2303c50cd70a462"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_threads.h",
+    "sha256": "f2c75f39b46e0625e634aa5c9a4c72657bcfb07229f8a791c6e04587d4c0de4a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_tick.h",
+    "sha256": "473d8d9926c68f249a0d69fc259b468509013828289c54b64f35b828471bed9c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_tracer.h",
+    "sha256": "9417aa2f1955da099f2761940687b25d42eadd228419de2caab8dc7b05129045"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_variables.h",
+    "sha256": "55fac8989ca5b38eb079e8cb2cd4b9bfc77a1f10d4cdb450fc5742a9f1a8b4dc"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_vector.h",
+    "sha256": "e249e1d0fac8277b16525104aebce358ab86914de7e803477ad15ef4f1eb41b0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_viewpoint.h",
+    "sha256": "22603dc1b826d22fa4d9c70cce26250a1ef4d6b3b3b239c382f8c5349877c43d"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_vista_recovery.h",
+    "sha256": "f86f5ff20289e7a37f1775ce47aed48a87da6ddf1d9cc4a1ebc25cec84a26b44"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_vout.h",
+    "sha256": "db5f04cdada548f1302e5083b2d6c8719e81ab41df56e05bad9174993430d25f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_vout_display.h",
+    "sha256": "c0e35ba444bf7733c5a14a42357daf6b40e8ccb4708ccce6dd873dd25083b06f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/engine/vlc/Vendor/include/vlc_window.h",
+    "sha256": "c695d6c985f1b398acb62c162168bb719d131b13193cd45662c767218f8d311e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/audiounit_ios.m",
+    "sha256": "a6cd15c8c897deb16557019d9f46f948a2b4b1c4a5ea7c38bba70f58b3f727ac"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/coreaudio_common.c",
+    "sha256": "ad6e27c1f878b18592b23c54f2868775d9759bd18ecf880a4b3a9cedf7693520"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/coreaudio_common.h",
+    "sha256": "14c0c3d6bf255c8c13d78ccac476643fba9fcfa0cb3888d8339965494fe0aa98"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/flow/vista_flow_trace.h",
+    "sha256": "cdd9cd639a0e901674cedd55d3bb462ec0b23b3ca9bb8b111c90cb98dea77721"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/src/clock/clock.h",
+    "sha256": "54048274201bd42c6c8c7d1d16848b5dfbe81911f04a97399b9c2aeadf6c3941"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/src/input/decoder.c",
+    "sha256": "183d9bb6bf8d8fe52a7ad2d02a7a539a7aa4569e684967915f26b5e125d8910f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/src/video_output/vout_internal.h",
+    "sha256": "2e756011426adbd62e24f56b6c2e36da1d7f3e19187bbaac3bb1ed07be3449ee"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/vista_audio_boundary162.h",
+    "sha256": "35a313fb9d1c7ee1dd82501135a32a4aa77206442e1f42cab5faeb146712f220"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/vista_audio_flow144.h",
+    "sha256": "23dd14bfbd753fb66d17ad6d606bbf925831c1d647dc3509d030245d8106a00f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/vista_audio_producer164.h",
+    "sha256": "e4aa0bcbe51d7d64c1c8409b8bdf2537e4f3245eaac3c62b60b750069124841d"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/vista_frame_stage.h",
+    "sha256": "c8859339c26c68ee5399a24d1f19d9abad4e9fa3b6bfa005f23da02222d7ada0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/vista_frame_stage_internal.h",
+    "sha256": "0d653a07701b75153ab5462cdd657674816ad0d46d581a9010869107815dd7eb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/vista_queue_trace.h",
+    "sha256": "fcadc570d775a77b093cd93d78d2ab08f81f8b40259a7c4ed31045de6f7ba8cc"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/vista_resume_observer.h",
+    "sha256": "0806f454d5df0074a8b23d48a24e947817b4de1ac783d849f2983ec35f234358"
+  },
+  {
+    "path": "inputs/current/vista-recovery-164/native/source/vista_resume_observer_internal.h",
+    "sha256": "7194d118c44bdd054de9b357897c9472cca96cdd5f0bdf6b3aaa407c2a32804b"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_ancillary.h",
+    "sha256": "71f3589d6adbda05c9a3fa6c854693ccbebf1c3744db8f83e2932e04b56c5d12"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_atomic.h",
+    "sha256": "37075270312113bd3ec8797ecd196cb0ee8e34254749a9293c440ba5e978de97"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_bits.h",
+    "sha256": "07a76832541bf9493231aae9baf78e1d2e668abfb397326ad49ebc55af8d7b62"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_block.h",
+    "sha256": "b006f6c61c1159019b88db280ab4927aa813faa44713ef5a1291d425c15e8623"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_boxes.h",
+    "sha256": "480ac00e6439b1b0ed37480406adf5ba14c9af247fd2d25061383853589dc451"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_codec.h",
+    "sha256": "b55e0a24b90a4120e1332c4cd5f531af530ea2564da8d32214b059a5c839bae3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_common.h",
+    "sha256": "b120c798b3b12644815601ecf33a60e8c56bf0a0e9c99f114adfda3b65c38809"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_config.h",
+    "sha256": "b83bad3c35fea9c9239e8105f56db2d053f9f924c90242a6a6f743eb9bedcefb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_cpu.h",
+    "sha256": "a3b1bb0422f6e0a659f3cf52c409765fb543b57fea42fcaafa6e2310b31b5635"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_es.h",
+    "sha256": "b55f9e1ad54412ee2b0f91e2c57a7c29aa5b2ebfa42d8dbc352942282c59b6c7"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_fixups.h",
+    "sha256": "fab373d138132a115c7c11335da6005f967a05673144eb548f5e4d3112483816"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_fourcc.h",
+    "sha256": "791d95b431d9ec0de72100c2f0f6890537734aa4518224d24c1925f311b6b331"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_frame.h",
+    "sha256": "23d0a7434806df1df1bfd6d48f56fc1f132d73d70fce6719df8595601c1d8755"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_list.h",
+    "sha256": "ddbb6bc2ea899dcd036cbe78e08224adf2d4e014739557f20e879bbf49c3bcc3"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_messages.h",
+    "sha256": "f4f56a23087342f9307f2f26399b55e943073e9b1549c8d4c4eae1b39f4adb36"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_mouse.h",
+    "sha256": "58b4533d82d5ca2ae656ebdc1f6edde29e7306ec90568efb1901c71def9e1af6"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_objects.h",
+    "sha256": "ab9722e861b558490cc0c7eec85f054b9e940f922887f13528fc798b1f896774"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_picture.h",
+    "sha256": "78c4ff929b83543e6f58e50325fec60542f3f140a261451835be4ccaec0f47b2"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_plugin.h",
+    "sha256": "836846396d902d711852625d1e0977cfe1238de3011e92d4e005f0f25ebcaadb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_queue.h",
+    "sha256": "53bdf3d502c93b97bf7a8947ade229d12846f5c5da86204fbb69d1841a01b46a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_replay_gain.h",
+    "sha256": "bc4ba7e6f47fe7132c29f6258ceec2b6a10a53c533aa36bf22fd441b047d0dcd"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_subpicture.h",
+    "sha256": "4e2040b973fdb736a36d145873bee040285f2aa21319810910467cae77e40559"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_text_style.h",
+    "sha256": "831110820c64656dbe78216eec3536ac94413a4708f3026cf2303c50cd70a462"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_threads.h",
+    "sha256": "f2c75f39b46e0625e634aa5c9a4c72657bcfb07229f8a791c6e04587d4c0de4a"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_tick.h",
+    "sha256": "473d8d9926c68f249a0d69fc259b468509013828289c54b64f35b828471bed9c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_variables.h",
+    "sha256": "55fac8989ca5b38eb079e8cb2cd4b9bfc77a1f10d4cdb450fc5742a9f1a8b4dc"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_vector.h",
+    "sha256": "e249e1d0fac8277b16525104aebce358ab86914de7e803477ad15ef4f1eb41b0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_viewpoint.h",
+    "sha256": "22603dc1b826d22fa4d9c70cce26250a1ef4d6b3b3b239c382f8c5349877c43d"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_vista_cvpx.h",
+    "sha256": "1f4e54cb95bde41d6e142c52b9acd5a901149b4d5b856580b89886fdab3cf673"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_vout.h",
+    "sha256": "db5f04cdada548f1302e5083b2d6c8719e81ab41df56e05bad9174993430d25f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_vout_display.h",
+    "sha256": "c0e35ba444bf7733c5a14a42357daf6b40e8ccb4708ccce6dd873dd25083b06f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/engine/vlc/Vendor/include/vlc_window.h",
+    "sha256": "c695d6c985f1b398acb62c162168bb719d131b13193cd45662c767218f8d311e"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/native/source/flow/vista_flow_trace.h",
+    "sha256": "56b44b4e81c8e493abac57ec35cee669e0693410b56eed23291a09b56967438f"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/native/source/modules/codec/videotoolbox/decoder.c",
+    "sha256": "078615d2e371fe73e8def08b22dffc89e872de3627168ebde1c984dd57b07f5c"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/native/source/vista_frame_stage.h",
+    "sha256": "c8859339c26c68ee5399a24d1f19d9abad4e9fa3b6bfa005f23da02222d7ada0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/native/source/vista_frame_stage_internal.h",
+    "sha256": "0d653a07701b75153ab5462cdd657674816ad0d46d581a9010869107815dd7eb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/native/source/vista_vt_diagnostics165.h",
+    "sha256": "151be14fb6e1d153303c4ceb80f9067c021ce7607b5fb25d25350f8c732efccb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/native/source/vista_vt_preroll145.h",
+    "sha256": "746bfe661f0cf6507409323893442e0626baeea424e8a696312aa8235ff31367"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/native/source/vista_vt_sample168.h",
+    "sha256": "d84e32269f3280e1363b63a2a44751d8bcdaaeff4b1130c41db36db7f69f2293"
+  },
+  {
+    "path": "inputs/current/vista-recovery-178/native/source/vista_frame_stage.h",
+    "sha256": "c8859339c26c68ee5399a24d1f19d9abad4e9fa3b6bfa005f23da02222d7ada0"
+  },
+  {
+    "path": "inputs/current/vista-recovery-178/native/source/vista_frame_stage_internal.h",
+    "sha256": "0d653a07701b75153ab5462cdd657674816ad0d46d581a9010869107815dd7eb"
+  },
+  {
+    "path": "inputs/current/vista-recovery-178/native/source/vista_resume_observer.c",
+    "sha256": "f15a1df96607d35e1df0ec9e4a9e192761f68a9e2faf09da08736ad45f177923"
+  },
+  {
+    "path": "inputs/current/vista-recovery-178/native/source/vista_resume_observer.h",
+    "sha256": "0806f454d5df0074a8b23d48a24e947817b4de1ac783d849f2983ec35f234358"
+  },
+  {
+    "path": "inputs/current/vista-recovery-178/native/source/vista_resume_observer_internal.h",
+    "sha256": "7194d118c44bdd054de9b357897c9472cca96cdd5f0bdf6b3aaa407c2a32804b"
+  },
+  {
+    "path": "inputs/current/vista-source-delivery-178/source-materials/static-module-list-xros.c",
+    "sha256": "c91007f504ba1debc211c1dac4e09a25142f0a05eae0a2008968a05e9ee3d6be"
+  },
+  {
+    "path": "inputs/legacy/vista-audio-boundary-native134-20261111/source/vista_audio_boundary.c",
+    "sha256": "2ef3d578b3f407044960fdedbbcf25afb496b9d1909f95de74e423075d158fbe"
+  },
+  {
+    "path": "inputs/legacy/vista-audio-boundary-native134-20261111/source/vista_audio_boundary.h",
+    "sha256": "4b64a619cbf21e00ebeb5d6230569d2eb2d4b28594b646d259f4f4acd872fc00"
+  },
+  {
+    "path": "inputs/legacy/vista-audio-boundary-native134-20261111/source/vista_audio_boundary_internal.h",
+    "sha256": "c4eeb7cc0724f3d2ef5bf9e4d647affdf3504e029b1e81d9389814e594119ee4"
+  },
+  {
+    "path": "inputs/legacy/vista-audio-boundary-native134-20261111/source/vista_audio_boundary_player.c",
+    "sha256": "31abdf3f16041fc9d6f118304e02805775f39f088b87bcb81b0424c7df13002b"
+  },
+  {
+    "path": "inputs/legacy/vista-resume-observer-native-20261112/source/src/clock/clock.h",
+    "sha256": "e6aa46fec24dd7651fe6389d8eade7f929af82a5d486a0d9da5a9b46a269cbf1"
+  },
+  {
+    "path": "inputs/legacy/vista-resume-observer-native-20261112/source/src/clock/input_clock.c",
+    "sha256": "b533a4ead73e4692e03b081a50cc1f6516119e8bb2b81aeaf572a85873642c4e"
+  },
+  {
+    "path": "inputs/legacy/vista-resume-observer-native-20261112/source/src/clock/input_clock.h",
+    "sha256": "2dc833722d98219aea7841f7f443345dd8301285a4270b26be2fe38a55f1b5ec"
+  },
+  {
+    "path": "inputs/legacy/vista-resume-observer-native-20261112/source/vista_resume_observer.h",
+    "sha256": "0806f454d5df0074a8b23d48a24e947817b4de1ac783d849f2983ec35f234358"
+  },
+  {
+    "path": "inputs/legacy/vista-resume-observer-native-20261112/source/vista_resume_observer_internal.h",
+    "sha256": "7194d118c44bdd054de9b357897c9472cca96cdd5f0bdf6b3aaa407c2a32804b"
+  },
+  {
+    "path": "inputs/legacy/vista-resume-observer-native-20261112/source/vista_resume_observer_player.c",
+    "sha256": "7e135f6ffc592b3b0893c3de81ed172e608a733bbac06e6e2b08757345b7d2a1"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/compat/stdbit/stdbit.h",
+    "sha256": "18c5b4e57f7d9e5e88f3b5fc397837c3aedcddd21f2463817d9e824842aec5fa"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_ancillary.h",
+    "sha256": "71f3589d6adbda05c9a3fa6c854693ccbebf1c3744db8f83e2932e04b56c5d12"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_aout.h",
+    "sha256": "f32b1e35a049a60a8ed2cff28edd659d016c84ecaed731edde91aab44354f20a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_arrays.h",
+    "sha256": "698e53aa3502d6938e9b8cf48f1e105804f57448855409cc604169018712c6ac"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_atomic.h",
+    "sha256": "37075270312113bd3ec8797ecd196cb0ee8e34254749a9293c440ba5e978de97"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_bits.h",
+    "sha256": "07a76832541bf9493231aae9baf78e1d2e668abfb397326ad49ebc55af8d7b62"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_block.h",
+    "sha256": "b006f6c61c1159019b88db280ab4927aa813faa44713ef5a1291d425c15e8623"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_codecs.h",
+    "sha256": "8b965a808ab61ae6b94bfda93443748cf1bd38c2d6bd9708be58b6a07333cc3f"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_common.h",
+    "sha256": "b120c798b3b12644815601ecf33a60e8c56bf0a0e9c99f114adfda3b65c38809"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_config.h",
+    "sha256": "b83bad3c35fea9c9239e8105f56db2d053f9f924c90242a6a6f743eb9bedcefb"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_cxx_helpers.hpp",
+    "sha256": "44e73fc6cdbd95f2e05e1da0ec1fcf5146fa52899e04ee0e817dd50e5fa26d4f"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_demux.h",
+    "sha256": "dfdf8194ae02044d474dc6cd7ff4febcfb5ed77a53f95820c4a47607c994463e"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_epg.h",
+    "sha256": "959ec60fdc13c373bade68b812cc6710f75955279fc9130f0ea17dc3a50384a0"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_es.h",
+    "sha256": "b55f9e1ad54412ee2b0f91e2c57a7c29aa5b2ebfa42d8dbc352942282c59b6c7"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_es_out.h",
+    "sha256": "67ec526d05cf82eedb17c2d6262a0a1037007ecb4c7faa070e6e6d626028f494"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_fixups.h",
+    "sha256": "fab373d138132a115c7c11335da6005f967a05673144eb548f5e4d3112483816"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_fourcc.h",
+    "sha256": "791d95b431d9ec0de72100c2f0f6890537734aa4518224d24c1925f311b6b331"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_frame.h",
+    "sha256": "23d0a7434806df1df1bfd6d48f56fc1f132d73d70fce6719df8595601c1d8755"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_fs.h",
+    "sha256": "d9b0fc2732b3a9d98614f74851318594a941f56c2bf019ff3eee77293d499c09"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_input.h",
+    "sha256": "b215c44a42755cbc86e929b1d0c94dab984f9adf8a80956ebe553089fad22588"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_input_item.h",
+    "sha256": "fa59db239c43a117fcc9d78570cfbfaece7c8564685d7a903aaed4d3a1a6e7b3"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_interrupt.h",
+    "sha256": "ff1dfdaba8b495d5e12cd0cf67e403bcbf9f0f802351f35acfc2af41d03a276c"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_iso_lang.h",
+    "sha256": "ca79bd0227d139c04f15e82eb5c00574374d1b64ceba11496359232260f35bb2"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_list.h",
+    "sha256": "ddbb6bc2ea899dcd036cbe78e08224adf2d4e014739557f20e879bbf49c3bcc3"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_messages.h",
+    "sha256": "f4f56a23087342f9307f2f26399b55e943073e9b1549c8d4c4eae1b39f4adb36"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_meta.h",
+    "sha256": "80907b25a154bfe6cdb4f8ba700e5fb368eefcd7f84a2bfffe6b851410c82ea0"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_mouse.h",
+    "sha256": "58b4533d82d5ca2ae656ebdc1f6edde29e7306ec90568efb1901c71def9e1af6"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_objects.h",
+    "sha256": "ab9722e861b558490cc0c7eec85f054b9e940f922887f13528fc798b1f896774"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_picture.h",
+    "sha256": "78c4ff929b83543e6f58e50325fec60542f3f140a261451835be4ccaec0f47b2"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_plugin.h",
+    "sha256": "836846396d902d711852625d1e0977cfe1238de3011e92d4e005f0f25ebcaadb"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_queue.h",
+    "sha256": "53bdf3d502c93b97bf7a8947ade229d12846f5c5da86204fbb69d1841a01b46a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_replay_gain.h",
+    "sha256": "bc4ba7e6f47fe7132c29f6258ceec2b6a10a53c533aa36bf22fd441b047d0dcd"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_stream.h",
+    "sha256": "3ef1ceec15072ad87890f8297529543f5be3ba95585ee8b4b84115272776ca59"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_subpicture.h",
+    "sha256": "4e2040b973fdb736a36d145873bee040285f2aa21319810910467cae77e40559"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_text_style.h",
+    "sha256": "831110820c64656dbe78216eec3536ac94413a4708f3026cf2303c50cd70a462"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_threads.h",
+    "sha256": "f2c75f39b46e0625e634aa5c9a4c72657bcfb07229f8a791c6e04587d4c0de4a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_tick.h",
+    "sha256": "473d8d9926c68f249a0d69fc259b468509013828289c54b64f35b828471bed9c"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_url.h",
+    "sha256": "70e34b37a4d68a622324b7e8d0c3f2ca614b2dc7ff93d4606aba1ea470f7605a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_variables.h",
+    "sha256": "55fac8989ca5b38eb079e8cb2cd4b9bfc77a1f10d4cdb450fc5742a9f1a8b4dc"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_vector.h",
+    "sha256": "e249e1d0fac8277b16525104aebce358ab86914de7e803477ad15ef4f1eb41b0"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_viewpoint.h",
+    "sha256": "22603dc1b826d22fa4d9c70cce26250a1ef4d6b3b3b239c382f8c5349877c43d"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_vout.h",
+    "sha256": "db5f04cdada548f1302e5083b2d6c8719e81ab41df56e05bad9174993430d25f"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_vout_display.h",
+    "sha256": "c0e35ba444bf7733c5a14a42357daf6b40e8ccb4708ccce6dd873dd25083b06f"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/include/vlc_window.h",
+    "sha256": "c695d6c985f1b398acb62c162168bb719d131b13193cd45662c767218f8d311e"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/codec/hxxx_helper.h",
+    "sha256": "e900e900cea7d67250791f93d23184ffbdca72fc60b5f7010252a53698d75c3c"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/codec/videotoolbox/dpb.h",
+    "sha256": "5096ffcf5645cfe6ae9ae3a9f6706847d624e4a3c2867f58623fe952af6a1d1c"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/codec/videotoolbox/pacer.h",
+    "sha256": "6d98f7f2c3c4b405dde8e878eb45c3e528bf26b535524f7c5eea8c1ea9906972"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/codec/videotoolbox/vp9_repack.h",
+    "sha256": "e65d657ceb23263d449ff4af191fc55473a19ece76ae5979d5e85cf32c29e2ca"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/codec/vt_utils.h",
+    "sha256": "94449c1e1cdef2c484a51fbe64570bf82eafc13d5c928f8ad1514d9ee3c9d32d"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/codec/webvtt/helpers.h",
+    "sha256": "83923a37ec984d4274aea297dd41ae771ad8f9e7a51ac9552c9b9d80de35744d"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/demux/av1_unpack.h",
+    "sha256": "3d072a4c28067c6854413e84a3882ca455c03ae478aa5a053b24ac8c5d30dd6e"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/demux/mp4/coreaudio.h",
+    "sha256": "6015b1affde18e48b5873e82a2b6c9ba9259f93ec3e805a60b6c049519a9e174"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/demux/mp4/libmp4.h",
+    "sha256": "ccdeb5af60d3be7d958561f664eb23a89bffb72826798e4de4c370d00aed97cb"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/demux/vobsub.h",
+    "sha256": "06088253233fa02451093765d5158dce891ce2741c9c3ecdef5292e060522284"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/demux/windows_audio_commons.h",
+    "sha256": "541a2f290793b5d61c346cac21f1fccfa7f80ad8e96e4f0ce9647503e00237f9"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/demux/xiph.h",
+    "sha256": "b5d5caf2d17eaa83811c71fde516d1b55a5b0f2c176e65bc771dafad85add8be"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/packetizer/av1_obu.h",
+    "sha256": "b17aaf9ca9dc6ee5cb99cadf816a31f9aa090ebbb7c7327ebfc0599227a57b59"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/packetizer/h264_nal.h",
+    "sha256": "b7fba9ac75755cd71fd61a6b66d07fbaf1c3fda84de36cfd03f0afcc68caf445"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/packetizer/h264_slice.h",
+    "sha256": "f2f286f0af5e66f62d65096d9412a0634614a79ce7b53ff8b36291212274c5b8"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/packetizer/hevc_nal.h",
+    "sha256": "085f4b81c78ef00ebce12eea4b6eec820101d6fe492b426ef7a6bc5a37daadc3"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/packetizer/hxxx_nal.h",
+    "sha256": "f4322ba2da1355f0940ba4fb50e24ac1cb65965bb5fd1e3da0244e7f4bc791f0"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/packetizer/hxxx_sei.h",
+    "sha256": "247f8181699ab65c58c93eb49859bffb98796f9e8f10667217b9d2d7112303fe"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/packetizer/startcode_helper.h",
+    "sha256": "0855ff7ed2d569cc7ede94b68f5e04d810a6729798aa9c336ce1e206d99e43cf"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/modules/packetizer/vp9_frame.h",
+    "sha256": "8bfe275d0db7cb79ae20f6032cfd13b0ab5672545aed6d963dec8f442a8153e9"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/clock/clock_internal.h",
+    "sha256": "0565f753a7cf17069fb589482ef295882651b1a4cf11e492268eded7f0109870"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/input/decoder.h",
+    "sha256": "bd3a32c45e3b178c1f930219f85ef2322d2f09a885ccbb424a02f9eb5fbc6431"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/input/decoder_prevframe.h",
+    "sha256": "eb7911cbdaa1ad70424f35d0a763eb2ee738c4844bfa47775a320a3870ec4f73"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/input/demux.h",
+    "sha256": "68ffc009aea26b2699b46363cc02bcd6ede4ad4e7ae81ac2bc55e30db4096f28"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/input/es_out.h",
+    "sha256": "b84b49566eb0c16daa1fcb7ec0b0ca89483b69c22ff1b3c4bcba9dfd93f33e4a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/input/event.h",
+    "sha256": "7f97e965971c181cd8ac204a7ee00d8dab48ce292c621c7c916dccb7c2ffde87"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/input/info.h",
+    "sha256": "8b81c8347665ead2f5e1e9ba7f45c1967fe3fdae98b1a4ae28d7fc0b760470f3"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/input/input_interface.h",
+    "sha256": "2d85c07cd110de09a8cabec1c817eba1c57ce512fe473659f7c9ae89aa30eecc"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/input/input_internal.h",
+    "sha256": "42eb1b2627e011f13936bdfe8fc454eb5de2a83fb3d8eeefa9b0b5b1c55fe9d8"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/input/item.h",
+    "sha256": "5b272a91f91b314febb041b296cc52bef233309a31e8cfa48c5d6e261123c987"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/input/mrl_helpers.h",
+    "sha256": "7a1440433dbe5952e86c62aeb97804973d630b14633c2e00dddd0db1f1d3c211"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/input/resource.h",
+    "sha256": "25137c044c802e4219a4580f2491344c40040d96c6ce2e0da2d1ff185910cfdb"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/input/source.h",
+    "sha256": "558336b7ccb76ba55e90ba08388e8bf3a0fe18e14781cf46988f92368d217575"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/input/stream.h",
+    "sha256": "d3a1c2747af7131e0aaaf570e6e88827df75fb40d9a4e515663da33c8348c657"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/libvlc.h",
+    "sha256": "cb6f96a805c339b1fac28f41dffffe2b66b5f914c77eb4d757758d54acb54581"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/misc/interrupt.h",
+    "sha256": "d8e0efcc020ec4ae86b8a5a25cdaf5fd3c340ac86d0c93a4dd0fc34512cdfe86"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/video_output/chrono.h",
+    "sha256": "7f9082bdf5631fa048705a0485a96322f9621a7f27951c4d19633cc6d5d5dd6a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/video_output/control.h",
+    "sha256": "139b970af7c0d444bf0df81da7b11ebbf455367c5e1387a5dde112a2d0a2e515"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/video_output/display.h",
+    "sha256": "7f956035699581fe3a49e6362bd61e41e7b4c99ab7044e96cdf4e643092927ee"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/video_output/snapshot.h",
+    "sha256": "ce43a13ad887bdac488d053429691889ecc0bb4905ec36fcbab6628487cc2448"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/video_output/statistic.h",
+    "sha256": "d56cd96d322a0ca000d7dab0a6145808d90b35c34201c8eed3e1ec29f13a9591"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/video_output/video_window.h",
+    "sha256": "1685ede04da3bf1c3aadd4b1f514c738f0f158c2e85596a75a27d95465bbf8f9"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/video_output/vout_internal.h",
+    "sha256": "c0aae5200385ffb74ace766e997dbaf2db2da4fdadf4d0b2f364b00b66e5ebd0"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/video_output/vout_private.h",
+    "sha256": "3ff2ea66b9aa68cad2cc48cb2b293ba0bf5e8d2e095afa327ef3131a2804010b"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-format7-20261110/source/vlc/src/video_output/vout_wrapper.h",
+    "sha256": "4046f813c236d4177f491cd8052361c4ff1959a9d357f930396604170ac94770"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc.h",
+    "sha256": "1dcbb888c2c8d7ea2f5d403b17bcd6e7fc0607d82236d7481be9c5b980125a4e"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc_dialog.h",
+    "sha256": "b3035a0fddc6668f22ef2c85ad91ef6cf13256376c8bc6ead66f8cca30d5b023"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc_downloader.h",
+    "sha256": "26012a4f7882e996eef9c3505b3061d0980d1d1b482c635308295e249b20d854"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc_media.h",
+    "sha256": "2926e1e9638dd2181fbde2a0502732fd1750c538531f8a14afb26e474e381bb9"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc_media_discoverer.h",
+    "sha256": "27c2b3ceee220f6fcc462af4282738d58959b938cf2781d64adb712ef99ef24b"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc_media_list.h",
+    "sha256": "7ae58342fc18fbc408d9905d88a770234d1a4eee7e68d4babe3cfc224dd6472a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc_media_list_player.h",
+    "sha256": "6e855c0597bb2d4ca5d078a3710ee0b81e4bc0af3a2724fca0e5ec588d0ae5f5"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc_media_player.h",
+    "sha256": "958bc506dd38b50bfc6c4fc32d700f8c766d409b074644f3aa03392c46cd8fbc"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc_media_track.h",
+    "sha256": "fc5796fe979a4f8e0799b75ade1705dbc3b407fc05b8d4f58bc419f9701c89a8"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc_parser.h",
+    "sha256": "7fd91fa3f999eae8381b5e681c11153810bbce2eeeb1cd477fd656740cf72380"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc_picture.h",
+    "sha256": "8256cb655a9e782b0ae6ce7207b1076a388a5339b0e416f8768b98697c181171"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc_renderer_discoverer.h",
+    "sha256": "d0cde7132f642bb1860f4750f70a62466717311f97652d14bfebaf870f7ce402"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc_version.h",
+    "sha256": "39e504b138aaf2401da4b87d534c2850557064b88cc876da4a84ca08872427b7"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/libvlc_video.h",
+    "sha256": "e4b13715164349813606d8c2993f2c256e076ae35e6a955f1d8c8145ca0b6a32"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc/vlc.h",
+    "sha256": "3907a5505fea1eaa5850c6caaa815fb16cdb68d984f3fbcbe788c01e6dff548f"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_ancillary.h",
+    "sha256": "71f3589d6adbda05c9a3fa6c854693ccbebf1c3744db8f83e2932e04b56c5d12"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_aout.h",
+    "sha256": "f32b1e35a049a60a8ed2cff28edd659d016c84ecaed731edde91aab44354f20a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_arrays.h",
+    "sha256": "698e53aa3502d6938e9b8cf48f1e105804f57448855409cc604169018712c6ac"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_atomic.h",
+    "sha256": "37075270312113bd3ec8797ecd196cb0ee8e34254749a9293c440ba5e978de97"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_block.h",
+    "sha256": "b006f6c61c1159019b88db280ab4927aa813faa44713ef5a1291d425c15e8623"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_clock.h",
+    "sha256": "98686088d90ca37f7dbddae2cd7f1bc7a20738ede64a54f0f374cf6d6e832718"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_codec.h",
+    "sha256": "b55e0a24b90a4120e1332c4cd5f531af530ea2564da8d32214b059a5c839bae3"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_common.h",
+    "sha256": "b120c798b3b12644815601ecf33a60e8c56bf0a0e9c99f114adfda3b65c38809"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_config.h",
+    "sha256": "b83bad3c35fea9c9239e8105f56db2d053f9f924c90242a6a6f743eb9bedcefb"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_epg.h",
+    "sha256": "959ec60fdc13c373bade68b812cc6710f75955279fc9130f0ea17dc3a50384a0"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_es.h",
+    "sha256": "b55f9e1ad54412ee2b0f91e2c57a7c29aa5b2ebfa42d8dbc352942282c59b6c7"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_filter.h",
+    "sha256": "376d8aa920da9fd24137649bf1cd20918382ce1e021ceb50c0301fa4619cff47"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_fixups.h",
+    "sha256": "fab373d138132a115c7c11335da6005f967a05673144eb548f5e4d3112483816"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_fourcc.h",
+    "sha256": "791d95b431d9ec0de72100c2f0f6890537734aa4518224d24c1925f311b6b331"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_frame.h",
+    "sha256": "23d0a7434806df1df1bfd6d48f56fc1f132d73d70fce6719df8595601c1d8755"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_http.h",
+    "sha256": "8a6720675b1e328698be41d468cd924c262db8bca6fa62972ea9f5ed60525d89"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_input.h",
+    "sha256": "b215c44a42755cbc86e929b1d0c94dab984f9adf8a80956ebe553089fad22588"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_input_item.h",
+    "sha256": "fa59db239c43a117fcc9d78570cfbfaece7c8564685d7a903aaed4d3a1a6e7b3"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_list.h",
+    "sha256": "ddbb6bc2ea899dcd036cbe78e08224adf2d4e014739557f20e879bbf49c3bcc3"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_messages.h",
+    "sha256": "f4f56a23087342f9307f2f26399b55e943073e9b1549c8d4c4eae1b39f4adb36"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_meta.h",
+    "sha256": "80907b25a154bfe6cdb4f8ba700e5fb368eefcd7f84a2bfffe6b851410c82ea0"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_modules.h",
+    "sha256": "3e17cc151feff2391523497ea861efa158949bb2bc944acd3ba60b5b17f434be"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_mouse.h",
+    "sha256": "58b4533d82d5ca2ae656ebdc1f6edde29e7306ec90568efb1901c71def9e1af6"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_objects.h",
+    "sha256": "ab9722e861b558490cc0c7eec85f054b9e940f922887f13528fc798b1f896774"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_picture.h",
+    "sha256": "78c4ff929b83543e6f58e50325fec60542f3f140a261451835be4ccaec0f47b2"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_player.h",
+    "sha256": "2dffef4d26d0659067f3171e2bcb011dd4c9ffd0109fb3d4f594fb0cd981c38e"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_plugin.h",
+    "sha256": "836846396d902d711852625d1e0977cfe1238de3011e92d4e005f0f25ebcaadb"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_preparser.h",
+    "sha256": "d89b1ec3584d7dae46cfeaafd56637897eb44356cd423cd3b4a11ae0d32cc9d7"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_queue.h",
+    "sha256": "53bdf3d502c93b97bf7a8947ade229d12846f5c5da86204fbb69d1841a01b46a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_replay_gain.h",
+    "sha256": "bc4ba7e6f47fe7132c29f6258ceec2b6a10a53c533aa36bf22fd441b047d0dcd"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_subpicture.h",
+    "sha256": "4e2040b973fdb736a36d145873bee040285f2aa21319810910467cae77e40559"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_text_style.h",
+    "sha256": "831110820c64656dbe78216eec3536ac94413a4708f3026cf2303c50cd70a462"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_threads.h",
+    "sha256": "f2c75f39b46e0625e634aa5c9a4c72657bcfb07229f8a791c6e04587d4c0de4a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_tick.h",
+    "sha256": "473d8d9926c68f249a0d69fc259b468509013828289c54b64f35b828471bed9c"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_tracer.h",
+    "sha256": "9417aa2f1955da099f2761940687b25d42eadd228419de2caab8dc7b05129045"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_url.h",
+    "sha256": "70e34b37a4d68a622324b7e8d0c3f2ca614b2dc7ff93d4606aba1ea470f7605a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_variables.h",
+    "sha256": "55fac8989ca5b38eb079e8cb2cd4b9bfc77a1f10d4cdb450fc5742a9f1a8b4dc"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_vector.h",
+    "sha256": "e249e1d0fac8277b16525104aebce358ab86914de7e803477ad15ef4f1eb41b0"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_viewpoint.h",
+    "sha256": "22603dc1b826d22fa4d9c70cce26250a1ef4d6b3b3b239c382f8c5349877c43d"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_vout.h",
+    "sha256": "db5f04cdada548f1302e5083b2d6c8719e81ab41df56e05bad9174993430d25f"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_vout_display.h",
+    "sha256": "c0e35ba444bf7733c5a14a42357daf6b40e8ccb4708ccce6dd873dd25083b06f"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/include/vlc_window.h",
+    "sha256": "c695d6c985f1b398acb62c162168bb719d131b13193cd45662c767218f8d311e"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/lib/libvlc_internal.h",
+    "sha256": "ad494d4b6ec85cc8625699f1a103f9c9712324e3e79f6063b30a43021f12d284"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/lib/media_internal.h",
+    "sha256": "cba5543cb95fdbd941a519bbdcfd9b2dd09c370264e48978db28bdce7ed3c9fa"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/lib/media_player_internal.h",
+    "sha256": "c779876c036902fcc75ec9e6a65b8e5ec4e6de5ba6f2bd234739188d56acea5e"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/modules/audio_filter/equalizer_presets.h",
+    "sha256": "4119034a6d8b235f632e3408a22385875f644600404c67f6c208a9e480747ab9"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/modules/audio_output/apple/avaudiosession_common.h",
+    "sha256": "0bd8e6732201c59d977d00731dbe9db62f24c18dce5a72726f0cbd2ded5a7296"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/modules/audio_output/apple/channel_layout.h",
+    "sha256": "41aa504553e4008da188fb2628fed10d5dde67c6a10f852db5a834f34afcb9f6"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/modules/audio_output/volume.h",
+    "sha256": "9c372c601cbedd991859105849c650bf172be264ff76bc33a6c83c8848c033d8"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/src/audio_output/aout_internal.h",
+    "sha256": "f7cd9f7af646cf3aa1de234e7c63d177b6bda2dce9cf76db21aa9b6af4c6ac4f"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/src/clock/clock.h",
+    "sha256": "8e552b7221bb50a030d5bdc6a3a70e63609c8dc1a09d38ec33b2bcf7c48eaa91"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/src/libvlc.h",
+    "sha256": "cb6f96a805c339b1fac28f41dffffe2b66b5f914c77eb4d757758d54acb54581"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/src/misc/threads.h",
+    "sha256": "1dfbca20237fe40ad61c996d1e13a291a825a8a66c4074a469c2198bb5cf39ab"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/src/misc/variables.h",
+    "sha256": "552028cd76b685921e472bd7cfac53f56aaf9bd41a3f34570f8d1fd6a571698b"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/source/vlc/src/stream_output/stream_output.h",
+    "sha256": "a7a8e797b279ba61965cb68a01850929fc1a502c55f156d07b492e3f1902508d"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-audio-research-20261110/vlc-build-xros/config.h",
+    "sha256": "4bc0106de38891d6c36eb624bdd250c4fa410e0c54e7c2efde1266dbab78525b"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlBinary.h",
+    "sha256": "5909e94aa919a4d5b0bdf840adec50cf7c1bd530f76b2713e667c28223c15800"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlConfig.h",
+    "sha256": "e3d09742d2c68f0c0c70fd929186c3c3097df18bee6f9b65cc25dd87bbef5e51"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlContexts.h",
+    "sha256": "aa1ccf5cdf8c7833581cc7910d1d2eaa001b516e183f74fc92fbf3d0c56d62cd"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlCrc32.h",
+    "sha256": "36e976296a1e03a376723708c880afab334fea7089f0b54658cff5b5a4f7db42"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlDate.h",
+    "sha256": "d7c108ce60cf4da145d794dd7e54f0df8d800c1318d2815b55a983382b25cdfa"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlElement.h",
+    "sha256": "c0eead055b59cff4f4216e6061b722d8b91c8b142568abc614dff45d74e24132"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlEndian.h",
+    "sha256": "5ef636074db17c8f9e0517bf8315d056006c4a7b83c40b2cd2f6447c0c3e6f0a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlFloat.h",
+    "sha256": "6a99a81c74905571bf52984da6f8a2c148bc2a4bf6230bcd1eafbc2ae028aa53"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlHead.h",
+    "sha256": "434aee6210ee6b0741fc7d2c8c59afe04847bb777894cd46016b54ca3a05458c"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlId.h",
+    "sha256": "ac5e8b6caf0c6c204e3f128e6ed300ef16e334e6e919ad57feb24d2b698ee587"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlMaster.h",
+    "sha256": "bcfd8c2b1a476aa9fde8d31d274c41b1633cf4cb1b8e0078f54f7fc80f91d905"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlSInteger.h",
+    "sha256": "edcc8ee8b3bf40730afc9282955347b138136b8ffd3de82adcb51c123a4ebdf7"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlStream.h",
+    "sha256": "b4fa2a8c3f1d5a5edb15da865cfc9e87c04fb03d2ccbe42ebbffd031b82dbbd1"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlString.h",
+    "sha256": "ae158ad62e6fa05e7784af1c87ea61cbf7a7fb900427ba04f0038c248cf0b3df"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlSubHead.h",
+    "sha256": "bef4196f03e32befdbc7ad5930a1fd645a0f418fdda7d02d1003b5f17c6cfbaa"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlTypes.h",
+    "sha256": "8c88a85a5e8327496315a0516ff0029d5dd32afc385da66e59005821073c59b5"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlUInteger.h",
+    "sha256": "8dee05901ca85b21a0ef4c6349c5ab886ec82b04b095bf2e21ac1cf9d1086776"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlUnicodeString.h",
+    "sha256": "f3387516723cb259d1cad9b36fd4ccae4e574a43a09099f3aacb96315f06f782"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlVersion.h",
+    "sha256": "79c2c7ce313f9bca7bf4e430eb54d72f2c8305e545f7dc527e07e3fa6dd144e0"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/EbmlVoid.h",
+    "sha256": "ede1ac306ae89c5e47884cdc4420aa31744bda47bd17c127be14e532e416abda"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/IOCallback.h",
+    "sha256": "3fad72e0edd1e1a10910cbd7704e26be21b07ec8cfb871c141de5ef9b2b98a8a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/c/libebml_t.h",
+    "sha256": "502e2d7f83fe36b528cb9422d866363f295d41de28bdf38f51607da41b1455b7"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/ebml/ebml_export.h",
+    "sha256": "a75a36e9505f5049833e14ba903e91b01f14564fbf5c668cbe7804601557086b"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxAttached.h",
+    "sha256": "e1c548b32e78ed04649166fafdcaf3f79a81feded5ddc7ffc2e623073f70d331"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxAttachments.h",
+    "sha256": "6ddc736f1d71c15ecd786cfbcedd564cbb1cdf89eadca286fbd32a7ba6bb2753"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxBlock.h",
+    "sha256": "5bd1ab92ae148328c566b377bad34d3693ec2e224d9b8d4a01344f1168242742"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxBlockData.h",
+    "sha256": "4125e9bc051db893a33006d26c41ef1634f70ae74932475bc112c6c74a19026f"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxChapters.h",
+    "sha256": "1ccee685ed04734e7464dc68d709dde416e238239a5d5df06da600cd23fa14e1"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxCluster.h",
+    "sha256": "435031eeae01b4c192f31ad6191b2bf399ad8f33bc4a6096670571bd9a22bd1b"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxClusterData.h",
+    "sha256": "4535aa39847c96b592a1687cc5a79d0ec2bf83cbc157f75936ee95071d521c54"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxConfig.h",
+    "sha256": "a51600616bfd6886d662a323050f0302b93f50680a8d253c519eeff4234205a3"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxContentEncoding.h",
+    "sha256": "0a55446ba1450e4ee9fe0b17b2502f008ec54fa1399c0acd3215be4084b69c32"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxContexts.h",
+    "sha256": "425d8a91a49b36260eb8b6b506ef01b93eba87655d6aebccc39a570f6315679b"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxCues.h",
+    "sha256": "1a5828b603535f2f65705d76b0dcc2159a73dae54c8b6288510e44367f603ebb"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxCuesData.h",
+    "sha256": "d5ef808a753568b826de23d2f38e0f62938d541e63a39ffa154ad56ae50845a1"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxDefines.h",
+    "sha256": "4a65e700ecf4b2654ea524434b205c012ec8bedb08bf6eb4313ff700a511f58d"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxInfo.h",
+    "sha256": "a01fb13b9436eed6196d77db592a64006037f7fdc5dc226d9b8d21503e1d6030"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxInfoData.h",
+    "sha256": "5f006f2d985257dce91fb57a4583aecbd3b458f52c2573c640162e43198bd202"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxSeekHead.h",
+    "sha256": "8d782448aca1df4f9519d80ed678a8b21a69e18b5f5041058238f66c201e0974"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxSegment.h",
+    "sha256": "17162f6dfb5009f46c1599e9d07c84c307352e8c63a50c2da0de6a48a540f1f3"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxSemantic.h",
+    "sha256": "f30c44343f3b328c837a3c230ab963f359a45409adc85e7379ed20dc399a8d8e"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxTag.h",
+    "sha256": "5840edd6b07a4f43f4453c5c518aaf8973971a5357fd811b90162b6f9de47e36"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxTags.h",
+    "sha256": "206c3052aa11f8d4660e59b4d6dff3e9ab5937ef8205cc9c3b033a685d7ddaed"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxTrackAudio.h",
+    "sha256": "34c035cf174b60395942eed790322e1082fcec6d3db50245f56eb6c70f7396d7"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxTrackEntryData.h",
+    "sha256": "b98bf1a3361bc66068ea28ac17a5b2008347e2069fa6554113ad82346c4d0d6a"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxTrackVideo.h",
+    "sha256": "2113fc8fba0158773ee037f52a20ab94fe03e74bc165402c9c73465a623c9742"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxTracks.h",
+    "sha256": "c7d80e8796c871141062e0bd2e06e61fe41d84a2bedb58be627b1dfd44f371f5"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxTypes.h",
+    "sha256": "3597f3c2a27375fcd3a6101472c325421f304ec8d73c6ac41743bf969a2af822"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/KaxVersion.h",
+    "sha256": "17047d3e288c651969c18eed4d96d8a1928494090b5333da9772b83aab253f89"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/c/libmatroska_t.h",
+    "sha256": "c6901d11c13b7a997a8aaccef5d33a99af28bf9b3a43951a4af09751de1a1120"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-fixed-build-20261110/contrib-prefix-xros/include/matroska/matroska_export.h",
+    "sha256": "b1ef968f9c00da173a2927ce498ce5da93bb98b96d4db4cf4dd5c184683beb25"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-hevc-delivery-20261110/tests/cache_read-prototype.c",
+    "sha256": "2f3d5f86951dfece26cfe3c54b3af62b59102a444f7ba061f736eb6aeab9a6ef"
+  },
+  {
+    "path": "inputs/legacy/vista-vlc-pitch-preserve-20261111/source/scaletempo.c",
+    "sha256": "bb6ec4858fede7f9fe182ac09768ea425e8c33739d82dc48dd397e850f7d2be1"
+  }
+]

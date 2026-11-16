@@ -29,6 +29,18 @@ struct PlaybackAutomaticSpeedPolicyTests {
    for _ in 0..<Int(seconds*90) {step(frame:false,clockMoving:false,playing:false,waiting:true)}
   }
  }
+ // Invalid observations still clear all old evidence. Once valid playback resumes,
+ // a fresh independent gap may mature without rebuilding a healthy reference.
+ private func expectFreshGapAfterReset(_ sim:inout Simulation,recovering:Bool=false) {
+  let count=sim.decisions.count,began=sim.time
+  for _ in 0..<9 {sim.step(frame:false,recovering:recovering)}
+  #expect(sim.decisions.count==count) // No reuse of the pre-reset partial gap.
+  for _ in 0..<45 where sim.decisions.count==count {sim.step(frame:false,recovering:recovering)}
+  #expect(sim.decisions.count==count+1)
+  if let last=sim.decisions.last {
+   #expect(last.time-began>=0.2 && last.value.sparseTrigger == .frameGap)
+  }
+ }
  private func status(_ speed:Double=5,waiting:Bool=true)->PlaybackSpeedStatus {
   .init(selected:speed,effectiveRate:waiting ? 0:speed,ready:true,supportsFastForward:true,waiting:waiting)
  }
@@ -71,6 +83,35 @@ struct PlaybackAutomaticSpeedPolicyTests {
     eligible:true,playing:!waiting,clock:clock,outputPolled:poll,copiedFramePTS:frame ? pts ?? clock:nil)
    if let value {decision=value};return value
   }
+ }
+ @Test(arguments:[2.5,3.5]) func independentGapDoesNotNeedHealthyBaseline(speed:Double) {
+  for duplicate in [false,true] {
+   var sim=Simulation();sim.speed=speed
+   sim.policy.manualSpeedDidChange(now:sim.time)
+   let began=sim.time,pts=sim.clock
+   for _ in 0..<18 {sim.step(frame:duplicate,repeatedPTS:pts)}
+   #expect(sim.decisions.isEmpty && !sim.policy.diagnostics.baselineReady)
+   for _ in 0..<30 where sim.decisions.isEmpty {sim.step(frame:duplicate,repeatedPTS:pts)}
+   #expect(sim.decisions.count==1 && sim.speed==speed-0.5)
+   #expect(sim.decisions.first?.value.sparseTrigger == .frameGap)
+   #expect((sim.decisions.first?.time ?? began)-began>=0.2)
+  }
+ }
+ @Test(arguments:0..<6) func independentGapRetainsInvalidObservationGates(kind:Int) {
+  var sim=Simulation();sim.speed=3.5
+  sim.policy.manualSpeedDidChange(now:sim.time)
+  for _ in 0..<90 {
+   switch kind {
+    case 0:sim.step(frame:false,paused:true)
+    case 1:sim.step(frame:false,eligible:false) // seek/background/source/end
+    case 2:sim.step(frame:false,clockMoving:false)
+    case 3:sim.step(frame:false,effective:0)
+    case 4:sim.step(frame:false,effective:3)
+    default:sim.step(frame:false,poll:false)
+   }
+  }
+  #expect(sim.decisions.isEmpty)
+  expectFreshGapAfterReset(&sim)
  }
  @Test func build100IndependentGapKeepsRollingAndWaitingUnchanged() {
   #expect(PlaybackAutomaticSpeedPolicy.sparseInterval==0.3 && PlaybackAutomaticSpeedPolicy.minimumSparseFrameGap==0.2)
@@ -155,7 +196,10 @@ struct PlaybackAutomaticSpeedPolicyTests {
   for invalid in [Double.nan,.infinity,-.infinity,-1] {
    var replay=RapidReplay();#expect(replay.send(0.03,frame:true,pts:invalid)==nil)
    #expect(!replay.policy.diagnostics.baselineReady)
-   for tick in 4...100 {#expect(replay.send(Double(tick)/100)==nil)}
+   for tick in 4...24 {#expect(replay.send(Double(tick)/100)==nil)}
+   for tick in 25...60 where replay.decision==nil {_=replay.send(Double(tick)/100)}
+   #expect(replay.decision?.sparseTrigger == .frameGap)
+   #expect(!replay.policy.diagnostics.baselineReady)
   }
  }
  @Test func lowerGateClearsBothBranchesAndAReincreaseNeedsFreshConfirmation() {
@@ -261,8 +305,8 @@ struct PlaybackAutomaticSpeedPolicyTests {
   #expect(sim.decisions.isEmpty && sim.speed==5)
  }
  @Test func consistentlyLowFrameRateNeverEstablishesDenseBaseline() {
-  var sim=Simulation();sim.sparse(30)
-  #expect(sim.decisions.isEmpty)
+  var sim=Simulation();sim.sparse(30,frameEvery:9) // 10fps, never a .2s gap.
+  #expect(sim.decisions.isEmpty && !sim.policy.diagnostics.baselineReady)
  }
  @Test func recoveredOutputAfterRateStartDoesNotCauseExtraStep() {
   var sim=firstSparseReduction()
@@ -282,8 +326,8 @@ struct PlaybackAutomaticSpeedPolicyTests {
  @Test func clockStopAndInsufficientPollingCannotProveSparseOutput() {
   var stopped=Simulation();stopped.dense()
   for _ in 0..<900 {stopped.step(frame:false,clockMoving:false)}
-  stopped.sparse(10)
-  #expect(stopped.decisions.isEmpty)
+  #expect(stopped.decisions.isEmpty) // No decision while the clock was stopped.
+  expectFreshGapAfterReset(&stopped)
   var slow=Simulation();slow.dense()
   for _ in 0..<400 {slow.step(dt:0.05,frame:false)}
   #expect(slow.decisions.isEmpty)
@@ -300,8 +344,7 @@ struct PlaybackAutomaticSpeedPolicyTests {
    case 3:sim.step(frame:false,ready:false)
    default:sim.policy.interruptObservation()
   }
-  sim.sparse(10)
-  #expect(sim.decisions.isEmpty)
+  expectFreshGapAfterReset(&sim)
  }
  @Test(arguments:[false,true]) func healthyTwoTimesThenManualIncreaseCanDetectImmediateSparseOutput(explicitHook:Bool) {
   var sim=Simulation();sim.speed=2;sim.dense()
@@ -314,15 +357,15 @@ struct PlaybackAutomaticSpeedPolicyTests {
  @Test func staleOrInterruptedHealthyBaselineCannotTransferOnManualIncrease() {
   for interrupted in [false,true] {
    var sim=Simulation();sim.speed=2;sim.dense()
-   if interrupted {sim.policy.interruptObservation()}else{sim.sparse(11)}
-   sim.policy.manualSpeedDidChange(now:sim.time);sim.speed=2.5;sim.sparse(10)
+   if interrupted {sim.policy.interruptObservation()}else{sim.sparse(11,frameEvery:9)}
+   sim.policy.manualSpeedDidChange(now:sim.time);sim.speed=2.5;sim.sparse(10,frameEvery:9)
    #expect(sim.decisions.isEmpty)
   }
  }
  @Test func healthyOneTimesBaselineCanTransferButLowFPSOneTimesCannot() {
   var normal=Simulation();normal.speed=1;normal.dense();normal.speed=2.5;normal.sparse(6)
   #expect(normal.decisions.count==1 && normal.speed==2)
-  var low=Simulation();low.speed=1;low.sparse(5);low.speed=2.5;low.sparse(6)
+  var low=Simulation();low.speed=1;low.sparse(5,frameEvery:9);low.speed=2.5;low.sparse(6,frameEvery:9)
   #expect(low.decisions.isEmpty)
  }
  @Test(arguments:[1.0,1.5,2.0]) func manualLowRatesNeverAutomaticallyIncreaseOrReduce(speed:Double) {
@@ -338,8 +381,7 @@ struct PlaybackAutomaticSpeedPolicyTests {
     case 2:sim.clock += 10;sim.step(frame:false)
     default:sim.step(repeatedPTS:0)
    }
-   sim.sparse(10)
-   #expect(sim.decisions.isEmpty)
+   expectFreshGapAfterReset(&sim)
   }
  }
  @Test func bothSymptomsSameUpdatePreferWaitingAndOnlyOneReduction() {
@@ -465,8 +507,7 @@ struct PlaybackAutomaticSpeedPolicyTests {
    default:sim.policy.interruptObservation()
   }
   #expect(!sim.policy.diagnostics.baselineReady)
-  sim.sparse(8)
-  #expect(sim.decisions.isEmpty)
+  expectFreshGapAfterReset(&sim)
  }
  @Test func manualTransferredBaselineMustStillBeFreshAtActualRateStart() {
   var sim=Simulation();sim.speed=2;sim.dense()
@@ -476,8 +517,7 @@ struct PlaybackAutomaticSpeedPolicyTests {
   sim.step(frame:false);sim.step(frame:false)
   #expect(!sim.policy.diagnostics.baselineReady)
   #expect(sim.policy.diagnostics.lastResetReason == .staleManualBaseline)
-  sim.sparse(8)
-  #expect(sim.decisions.isEmpty)
+  expectFreshGapAfterReset(&sim)
  }
  @Test func stoppedOrDiscontinuousClockDuringRateStartCannotUseOldProgress() {
   for reversed in [false,true] {
@@ -485,8 +525,7 @@ struct PlaybackAutomaticSpeedPolicyTests {
    sim.clock += reversed ? -10:10
    sim.step(frame:false)
    #expect(!sim.policy.diagnostics.baselineReady && sim.policy.diagnostics.lastResetReason == .clock)
-   sim.sparse(8)
-   #expect(sim.decisions.count==1)
+   expectFreshGapAfterReset(&sim)
   }
  }
  @Test func diagnosticSnapshotsDoNotCountRepeatedUnchangedResetsEveryLoop() {
@@ -563,10 +602,10 @@ struct PlaybackAutomaticSpeedPolicyTests {
   #expect(sim.decisions.count==1 && sim.speed==2 && sim.decisions[0].value.reason == .sparseOutput)
  }
  @Test func ordinaryRecoveryCannotInventNeverObservedHealthyReference() {
-  var sim=Simulation();sim.speed=2.5;sim.sparse(3)
-  for _ in 0..<450 {sim.step(frame:sim.tick%180==0,recovering:true)}
+  var sim=Simulation();sim.speed=2.5;sim.sparse(3,frameEvery:9)
+  for _ in 0..<450 {sim.step(frame:sim.tick%9==0,recovering:true)}
   #expect(!sim.policy.diagnostics.baselineReady)
-  sim.sparse(8)
+  sim.sparse(8,frameEvery:9)
   #expect(sim.decisions.isEmpty)
  }
  @Test(arguments:[0,360]) func pendingNeverRefreshesManualBaselineExpiryBeforeEffectiveRateActuallyStarts(manualAfter:Int) {
@@ -578,8 +617,7 @@ struct PlaybackAutomaticSpeedPolicyTests {
   #expect(sim.decisions.isEmpty && sim.policy.diagnostics.awaitingRateStart)
   sim.step(frame:false,recovering:true);sim.step(frame:false,recovering:true)
   #expect(!sim.policy.diagnostics.baselineReady && sim.policy.diagnostics.lastResetReason == .staleManualBaseline)
-  sim.sparse(8)
-  #expect(sim.decisions.isEmpty)
+  expectFreshGapAfterReset(&sim)
  }
  @Test func manualChangeInRecoveryRetainsOnlyStillFreshReference() {
   var sim=Simulation();sim.speed=2;sim.dense()
@@ -598,10 +636,8 @@ struct PlaybackAutomaticSpeedPolicyTests {
    case 2:for _ in 0..<450 {sim.step(frame:false,eligible:false,recovering:true)} // Bad/recovering source.
    default:sim.step(frame:false,ready:false,recovering:true)
   }
-  for _ in 0..<9 {sim.step(frame:false,recovering:true)}
-  #expect(!sim.policy.diagnostics.baselineReady)
-  sim.sparse(8)
-  #expect(sim.decisions.isEmpty)
+  #expect(!sim.policy.diagnostics.baselineReady && sim.decisions.isEmpty)
+  expectFreshGapAfterReset(&sim,recovering:true)
  }
  @Test(arguments:0..<4) func invalidFreshObservationAfterRecoveryStillClearsReference(kind:Int) {
   var sim=Simulation();sim.speed=2.5;sim.dense()
@@ -614,8 +650,7 @@ struct PlaybackAutomaticSpeedPolicyTests {
    default:sim.step(dt:0.5,frame:false)
   }
   #expect(!sim.policy.diagnostics.baselineReady)
-  sim.sparse(8)
-  #expect(sim.decisions.isEmpty)
+  expectFreshGapAfterReset(&sim)
  }
  @Test func waitingDuringRecoveryKeepsExistingCooldownAndFreshHalfSecondRules() {
   var sim=Simulation();sim.dense()
@@ -683,8 +718,8 @@ struct PlaybackAutomaticSpeedPolicyTests {
   for _ in 0..<9 {sim.step(frame:false,recovering:true)}
   for _ in 0..<30 {sim.step(frame:false,clockMoving:false,recovering:true)}
   #expect(!sim.policy.diagnostics.baselineReady && sim.policy.diagnostics.lastResetReason == .clock)
-  for _ in 0..<900 {sim.step(frame:false,recovering:true)}
   #expect(sim.decisions.isEmpty)
+  expectFreshGapAfterReset(&sim,recovering:true)
  }
  @Test func clearingPendingDoesNotRestartAlreadyVerifiedPlayingWindow() {
   var sim=Simulation();sim.speed=2.5;sim.dense()
@@ -767,7 +802,7 @@ struct PlaybackAutomaticSpeedPolicyTests {
    default:sim.policy.interruptObservation()
   }
   #expect(!sim.policy.diagnostics.baselineReady)
-  sim.sparse(8)
+  sim.sparse(8,frameEvery:9)
   #expect(sim.decisions.isEmpty)
  }
  @Test func normalDenseOutputAfterZeroRateDoesNotGetADeferredReduction() {
@@ -781,7 +816,7 @@ struct PlaybackAutomaticSpeedPolicyTests {
   if changeBeforeZero {sim.policy.manualSpeedDidChange(now:sim.time);sim.speed=2.5}
   for _ in 0..<1080 {sim.step(frame:false,clockMoving:false,effective:0)}
   if !changeBeforeZero {sim.policy.manualSpeedDidChange(now:sim.time);sim.speed=2.5}
-  sim.sparse(8)
+  sim.sparse(8,frameEvery:9) // Low-fps branch still cannot use the expired reference.
   #expect(sim.decisions.isEmpty && !sim.policy.diagnostics.baselineReady)
  }
  @Test func repeatedZeroRateTransitionsCannotBankEarlierPartialWindows() {
@@ -800,8 +835,8 @@ struct PlaybackAutomaticSpeedPolicyTests {
    var sim=Simulation();sim.speed=2.5;sim.dense()
    sim.step(frame:false,effective:invalid)
    #expect(!sim.policy.diagnostics.baselineReady)
-   sim.sparse(8)
    #expect(sim.decisions.isEmpty)
+   expectFreshGapAfterReset(&sim)
   }
  }
  @Test(arguments:[25.0,30.0,90.0]) func independentGapConservativelyCountsPollBoundary(hz:Double) {

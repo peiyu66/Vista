@@ -6,7 +6,6 @@ import VistaCore
 #endif
 
 /// Isolated APMP sample packaging experiment; does not choose a decoder or a playback clock.
-@available(macOS 26.0, visionOS 26.0, *)
 public final class SystemVideoSamples {
     private var base:CMFormatDescription?
     private var format:CMFormatDescription?
@@ -20,10 +19,11 @@ public final class SystemVideoSamples {
         return nil
     }
     public static func supports(_ frame:DecodedVideoFrame,settings:VRSettings)->Bool {fallbackReason(frame,settings:settings)==nil}
+    @available(macOS 26.0, visionOS 26.0, *)
     public func sample(_ frame:DecodedVideoFrame,settings value:VRSettings) throws -> CMSampleBuffer {
         guard Self.supports(frame,settings:value),frame.time.isFinite,frame.time>=0 else {throw PlaybackFailure.unsupportedTrack}
         let original=try CMVideoFormatDescription(imageBuffer:frame.pixel)
-        if base == nil || !CMFormatDescriptionEqual(base!,otherFormatDescription:original) || settings != value {
+        if base == nil || !CMFormatDescriptionEqual(base!,otherFormatDescription:original) || settings?.layout != value.layout || settings?.projection != value.projection {
             var ext=original.extensions
             if value.layout == .sideBySide {ext[.viewPackingKind] = .viewPackingKind(.sideBySide)}
             if value.layout == .overUnder {ext[.viewPackingKind] = .viewPackingKind(.overUnder)}

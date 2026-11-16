@@ -116,6 +116,28 @@ struct LifecycleDiagnosticsTests {
         #expect(try diagnosticRecords(dir).last?.sequence==101)
         #expect(store.status.writerFailures==0)
     }
+    @Test func timelinePartialWriteFailureRemeasuresAndPreservesNextRecord()throws {
+        let dir=diagnosticDirectory();defer{try? FileManager.default.removeItem(at:dir)}
+        let store=LifecycleDiagnostics(directory:dir,fileLimit:4096,mirror:false,criticalDurability:false)
+        store.drainForTesting()
+        store.setTimelineWriterForTesting{handle,data in
+            try handle.write(contentsOf:Data(data.prefix(32)))
+            throw CocoaError(.fileWriteOutOfSpace)
+        }
+        for n in 1...130 {
+            store.record(.requestStart,[.request:Double(n)]);store.drainForTesting()
+        }
+        #expect(store.status.writerFailures==130 && store.status.pending==0)
+        let files=try FileManager.default.contentsOfDirectory(at:dir,includingPropertiesForKeys:nil)
+        #expect(files.count<=4)
+        for file in files {#expect(try Data(contentsOf:file).count<=4096)}
+        store.setTimelineWriterForTesting(nil)
+        store.record(.resultApplied,[.request:200]);store.drainForTesting()
+        let data=try Data(contentsOf:dir.appendingPathComponent("current.jsonl"))
+        let valid=data.split(separator:10).compactMap{try? JSONDecoder().decode(LifecycleRecord.self,from:Data($0))}
+        #expect(valid.last?.event == .resultApplied && valid.last?.fields["request"]==200)
+        #expect(store.status.writerFailures==130)
+    }
     @Test func filesystemFailureDoesNotEscapeIntoApplication()throws {
         let dir=diagnosticDirectory();defer{try? FileManager.default.removeItem(at:dir)}
         try Data().write(to:dir)

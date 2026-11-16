@@ -16,6 +16,8 @@ struct PlaybackAutomaticRecoveryDiagnostics:Sendable {
  struct Record:Sendable {
   let sequence:UInt64,previousSpeed:Double,targetSpeed:Double
   let decisionAt:Double?,rateConfirmedAt:Double?,firstFrameAt:Double?,sustainedAt:Double?,endedAt:Double?
+  // Driver handoff is independent of rate confirmation and physical presentation.
+  let publicationTracked:Bool,firstPublishedAt:Double?,firstPublishedPTS:Double?,publishedCount:UInt64
   let reason:EndReason,cadenceApplicable:Bool,healthyReferenceFPS:Double
   let baselineMask:Int,resets:UInt64,invalidObservations:UInt64
   var milestoneMask:Int {(decisionAt == nil ? 0:1) | (rateConfirmedAt == nil ? 0:2) | (firstFrameAt == nil ? 0:4) | (sustainedAt == nil ? 0:8) | (endedAt == nil ? 0:16)}
@@ -30,6 +32,7 @@ struct PlaybackAutomaticRecoveryDiagnostics:Sendable {
   var lastObservedAt:Double?,lastClock:Double?,lastClockAdvanceAt:Double?,highPTS:Double?
   var confirmingAt:Double?,confirmingClock:Double?,currentConfirmedAt:Double?
   var rateConfirmedAt:Double?,firstFrameAt:Double?,sustainedAt:Double?
+  var publicationTracked:Bool=false,firstPublishedAt:Double?,firstPublishedPTS:Double?,publishedCount:UInt64=0
   var cadenceAt:Double?,cadenceClock:Double?,lastPollAt:Double?
   var frameTimes:[Double]=[],pollTimes:[Double]=[],clockSamples:[(time:Double,clock:Double)]=[]
   var lastCheckAt:Double?,goodChecks=0
@@ -53,7 +56,7 @@ struct PlaybackAutomaticRecoveryDiagnostics:Sendable {
  var retainedClockSamples:Int {active?.clockSamples.count ?? 0}
  init(){}
  @discardableResult mutating func begin(sequence:UInt64,now:Double,previousSpeed:Double,targetSpeed:Double,
-  decisionClock:Double?,lastFramePTS:Double?,healthyReferenceFPS:Double)->Record? {
+  decisionClock:Double?,lastFramePTS:Double?,healthyReferenceFPS:Double,trackPublications:Bool=false)->Record? {
   guard !closed else{return nil}
   let prior=interrupt(.superseded,now:now)
   Self.increment(&seen)
@@ -66,8 +69,17 @@ struct PlaybackAutomaticRecoveryDiagnostics:Sendable {
   active=Episode(sequence:sequence,previousSpeed:previousSpeed,targetSpeed:targetSpeed,
    decisionAt:now.isFinite ? now:nil,healthyReferenceFPS:reference,cadenceApplicable:reference>=Self.minimumCadenceFPS,
    baselineMask:(validClock == nil ? 0:1) | (validPTS == nil ? 0:2),
-   lastObservedAt:now.isFinite ? now:nil,lastClock:validClock,highPTS:validPTS)
+   lastObservedAt:now.isFinite ? now:nil,lastClock:validClock,highPTS:validPTS,publicationTracked:trackPublications)
   return prior
+ }
+ /// VLC calls at the actual driver -> onFrame handoff, including before or
+ /// during confirmation. This never changes cadence high-water or policy state.
+ /// No per-frame record is emitted; the existing episode summary carries it.
+ mutating func published(now:Double,pts:Double) {
+  guard var episode=active,episode.publicationTracked,let began=episode.decisionAt,
+        now.isFinite,now>=began,pts.isFinite,pts>=0 else{return}
+  if episode.firstPublishedAt == nil {episode.firstPublishedAt=now;episode.firstPublishedPTS=pts}
+  Self.increment(&episode.publishedCount);active=episode
  }
  /// Call once for each existing playback loop, including target rate 2x after
  /// the sparse policy has stopped. Call lifecycle interrupts before later frames.
@@ -181,6 +193,7 @@ struct PlaybackAutomaticRecoveryDiagnostics:Sendable {
   return Record(sequence:episode.sequence,previousSpeed:episode.previousSpeed,targetSpeed:episode.targetSpeed,
    decisionAt:episode.decisionAt,rateConfirmedAt:episode.rateConfirmedAt,firstFrameAt:episode.firstFrameAt,
    sustainedAt:episode.sustainedAt,endedAt:now.isFinite && (episode.decisionAt.map({now >= $0}) ?? true) ? now:nil,
+   publicationTracked:episode.publicationTracked,firstPublishedAt:episode.firstPublishedAt,firstPublishedPTS:episode.firstPublishedPTS,publishedCount:episode.publishedCount,
    reason:reason,cadenceApplicable:episode.cadenceApplicable,healthyReferenceFPS:episode.healthyReferenceFPS,
    baselineMask:episode.baselineMask,resets:episode.resets,invalidObservations:episode.invalidObservations)
  }

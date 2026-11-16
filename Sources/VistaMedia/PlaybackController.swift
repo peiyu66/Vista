@@ -15,12 +15,38 @@ import VistaCore
     public private(set) var frame: VideoFrame?
     public private(set) var pixelFrame:DecodedVideoFrame?
     public private(set) var message: String?
+    #if VISTA_LOCAL_MKV_CANDIDATE
+    private var mkvFatalState=MKVFatalAlertState()
+    public var mkvFatalMessage:String? {mkvFatalState.message}
+    public func dismissMKVFailure() {mkvFatalState.reset()}
+    #endif
     public private(set) var diagnosticsText = ""
     public private(set) var preparationText = ""
     public private(set) var isSeeking = false
     public private(set) var isBuffering = false
     public private(set) var speedStatus=PlaybackSpeedStatus()
     public private(set) var speedMessage:String?
+    // UI intent is never a decoded timestamp or an automatic-speed clock input.
+    private var pendingSeekTarget:Double?
+    private var pendingSeekID:UUID?
+    private var seekFrameOwner:UUID?
+    private var pendingSeekSourceEpoch:UInt64?
+    public var progressPosition:Double {pendingSeekTarget ?? position}
+    public var canRetargetPendingSeek:Bool {isPlaying && pendingSeekID != nil}
+    private func clearSeekPresentation() {
+        pendingSeekID=nil;pendingSeekTarget=nil;seekFrameOwner=nil;pendingSeekSourceEpoch=nil
+    }
+    /// A completion only acknowledges transport. The first owned frame releases preview.
+    private func acceptSeekFrame(from session:NativePlaybackSession)->Bool {
+        guard seekFrameOwner == nil || session.presentedSeekID == seekFrameOwner else{return false}
+        pendingSeekID=nil;pendingSeekTarget=nil;pendingSeekSourceEpoch=nil
+        return true
+    }
+    private func invalidateSeekSource(epoch:UInt64?) {
+        guard pendingSeekID != nil,let before=pendingSeekSourceEpoch,let epoch,epoch != before else{return}
+        clearSeekPresentation();isPreparing=false;isSeeking=false
+        message="來源已更新，請重新跳轉。"
+    }
     public var playbackGeneration:UUID {generation}
     public var canIncreaseSpeed:Bool {isPlaying && !isPreparing && speedStatus.canIncrease}
     public var canResetSpeed:Bool {isPlaying && !isPreparing && speedStatus.canReset}
@@ -68,6 +94,9 @@ import VistaCore
     @ObservationIgnored private var file: MediaFile?
     @ObservationIgnored private var source: (any MediaByteSource)?
     @ObservationIgnored private var nativeSession:NativePlaybackSession?
+    #if VISTA_VLC_CANDIDATE
+    @ObservationIgnored var vlcPresentationDrain:((Bool)async throws->Void)?
+    #endif
     @ObservationIgnored private var preparedRecoverySource:(any PlaybackRecoveryControlling)?
     @ObservationIgnored private var preparedSourceCleanup:Task<Void,any Error>?
     @ObservationIgnored private var playbackSceneActive=true
@@ -164,7 +193,11 @@ import VistaCore
         v[.projection]=Double(projection);v[.layout]=Double(layout);v[.route]=Double(route)
         if let snapshot=metrics?.snapshot() {v[.textureCount]=Double(snapshot.stages[.texture]?.count ?? 0);v[.textureMS]=(snapshot.stages[.texture]?.seconds ?? 0)*1000;v[.uploaded]=Double(snapshot.events[.uploaded,default:0]);v[.coalesced]=Double(snapshot.events[.coalesced,default:0])}
         v.merge(rendererValues){_,new in new}
+        #if VISTA_VLC_CANDIDATE
+        if v[.decoder]==nil {v[.decoder] = -1} // Preserve an observed VLC hardware result.
+        #else
         v[.decoder] = -1 // AVPlayer decoder implementation is not publicly observable.
+        #endif
         let status=PlaybackLogStore.shared.status;v[.logFailures]=Double(status.failures);v[.logDropped]=Double(status.dropped)
         PlaybackLogStore.shared.enqueue(PlaybackLogRecord(event:event,values:v))
     }
@@ -197,23 +230,32 @@ import VistaCore
         if let nativeSession,isPlaying {
             isSeeking=true;isPreparing=true
             preparationStart=ProcessInfo.processInfo.systemUptime;preparationMarks=[];preparationText="";submittedSession=nil
+            let requestID=UUID()
+            pendingSeekID=requestID;pendingSeekTarget=target;seekFrameOwner=requestID
+            pendingSeekSourceEpoch=nativeSession.seekSourceEpoch
             let seekOwner=generation
             let seekBoundaryOwner=boundaryGeneration
             Task { [weak self] in
+                // A newer drag can arrive before this task has even entered the transport.
+                guard let self,self.generation==seekOwner,self.pendingSeekID==requestID else{return}
                 do {
-                    try await nativeSession.seek(to:target,maximumBackward:min(1,max(0,target-minimum)))
-                    guard let self else{return}
-                    self.recordBoundary(self.generation==seekOwner ? .submitReturned:.discarded,
+                    try await nativeSession.seek(to:target,maximumBackward:min(1,max(0,target-minimum)),presentationID:requestID)
+                    let current=self.generation==seekOwner && self.seekFrameOwner==requestID
+                    self.recordBoundary(current ? .submitReturned:.discarded,
                         fields:[.cause:Double(BoundaryCause.seek.rawValue),.request:Double(seekBoundaryOwner),
-                            .outcome:self.generation==seekOwner ? 0:3],context:seekBoundary)
-                }
-                catch is CancellationError {
-                    guard let self else{return}
-                    self.recordBoundary(.submitReturned,fields:[.outcome:1],context:seekBoundary)
+                            .outcome:current ? 0:3],context:seekBoundary)
                 } catch {
-                    guard let self,self.generation==seekOwner else{return}
-                    self.recordBoundary(.failure,fields:LifecycleFailure(error).fields,context:seekBoundary)
-                    self.message="跳轉失敗，可停止後重試。";self.isPreparing=false;self.isSeeking=false
+                    guard self.generation==seekOwner,self.pendingSeekID==requestID else{return}
+                    self.clearSeekPresentation()
+                    self.isPreparing=false;self.isSeeking=false
+                    // Keep the last confirmed frame position; never claim the requested target.
+                    if error is CancellationError {
+                        self.recordBoundary(.submitReturned,fields:[.outcome:1],context:seekBoundary)
+                        self.message="跳轉已取消，可重新拖曳。"
+                    } else {
+                        self.recordBoundary(.failure,fields:LifecycleFailure(error).fields,context:seekBoundary)
+                        self.message="跳轉失敗，可停止後重試。"
+                    }
                 }
             }
             return
@@ -230,7 +272,7 @@ import VistaCore
         if let nativeSession,isPlaying,!isPreparing {
             beginBoundary(.togglePause)
             recordBoundary(.upstreamPauseEntered,fields:[.cause:Double(BoundaryCause.togglePause.rawValue)])
-            if isPaused {nativeSession.resume()}else{nativeSession.pause(userInitiated:userInitiated)};isPaused.toggle()
+            if isPaused {nativeSession.resume()}else{nativeSession.pause(userInitiated:userInitiated)};isPaused=nativeSession.isPlaybackPaused
             recordBoundary(.upstreamPauseReturned,fields:[.outcome:isPaused ? 5:6]);return
         }
         #endif
@@ -257,6 +299,9 @@ import VistaCore
         recordBoundary(.pauseReturned,fields:[.outcome:isPaused ? 5:0],context:pauseBoundary)
     }
     public func stop(discardTrackInfo:Bool=false) {
+        #if VISTA_LOCAL_MKV_CANDIDATE
+        mkvFatalState.reset()
+        #endif
         beginBoundary(.stop)
         recordBoundary(.stopEntered,fields:[.cause:Double(BoundaryCause.stop.rawValue)])
         if isPlaying || isPreparing {persistDiagnostics(event:.stopped)}
@@ -265,13 +310,14 @@ import VistaCore
         speedStatus=PlaybackSpeedStatus();speedMessage=nil
         finishMetrics()
         generation = UUID()
+        clearSeekPresentation()
         if discardTrackInfo {trackInfo=nil}
         changedBoundaryGeneration(.stop)
         timeline?.stopAudio()
         task?.cancel()
         // Keep the cancelled task until a replacement can join its cleanup.
         timeline = nil
-        isPlaying = false; isPaused = false; isPreparing = false; isBuffering=false
+        isPlaying = false; isPaused = false; isPreparing = false; isSeeking=false; isBuffering=false
         frame = nil; pixelFrame=nil; position = 0; message = "已停止"
         recordBoundary(.stopReturned,fields:[.outcome:0])
     }
@@ -331,7 +377,7 @@ import VistaCore
                 guard self.generation==id else{return}
                 measure.mark(.delivered)
                 if self.isPreparing {self.markPreparation("首幀交付")}
-                self.pixelFrame=next;self.position=next.time;self.isPreparing=false
+                PlaybackFlowTrace.mark(.property,parent:next.flow,a:Int64(bitPattern:PlaybackBoundaryIdentity.session(id)));self.pixelFrame=next;self.position=next.time;self.isPreparing=false
                 self.isPaused=control.isPaused
                 self.message=self.isPaused ? "已暫停":"系統影片呈現候選"
                 self.appliedPixelBoundary(next)
@@ -373,7 +419,7 @@ import VistaCore
                 if terminalFailure==nil {beginBoundary(.termination)}
                 recordBoundary(.stopEntered,fields:[.cause:Double(BoundaryCause.termination.rawValue)])
                 finishMetrics()
-                isPlaying = false; isPaused = false; isPreparing = false; isBuffering=false
+                isPlaying = false; isPaused = false; isPreparing = false; isSeeking=false; isBuffering=false
                 timeline = nil; task = nil
                 recordBoundary(.stopReturned,fields:[.outcome:terminalFailure.map{$0.isCancellation ? 1:2} ?? 7])
             }
@@ -382,10 +428,14 @@ import VistaCore
     }
     #if VISTA_NATIVE_PLAYER_EXPERIMENT
     private func launchNative(file:MediaFile,source:any MediaByteSource,startAt:Double,startPaused:Bool) {
+        #if VISTA_LOCAL_MKV_CANDIDATE
+        mkvFatalState.reset()
+        #endif
         beginBoundary(.launch)
         recordBoundary(.submitEntered,fields:[.cause:Double(BoundaryCause.launch.rawValue)])
         let old=task;nativeSession?.stop();old?.cancel();finishMetrics()
         let id=UUID();generation=id
+        clearSeekPresentation()
         changedBoundaryGeneration(.launch)
         let boundaryOwner=boundaryGeneration
         speedStatus=PlaybackSpeedStatus();speedMessage=nil
@@ -397,6 +447,22 @@ import VistaCore
             await old?.value
             guard generation==id,!Task.isCancelled else{return}
             let session=NativePlaybackSession();nativeSession=session
+            session.onSeekSourceEpoch = { [weak self] epoch in
+                guard let self,self.generation==id else{return}
+                self.invalidateSeekSource(epoch:epoch)
+            }
+            #if VISTA_VLC_CANDIDATE
+            session.clearVLCPresentation = { [weak self] in
+                guard let self,self.generation==id else{return}
+                self.pixelFrame=nil;self.frame=nil;self.submittedSession=nil
+            }
+            session.drainVLCPresentation = { [weak self] preserve in
+                guard let self,self.generation==id else{throw CancellationError()}
+                guard let drain=self.vlcPresentationDrain else{throw VLCPlaybackError.renderer}
+                try await drain(preserve)
+                guard self.generation==id else{throw CancellationError()}
+            }
+            #endif
             session.setPlaybackSceneActive(playbackSceneActive)
             var terminalFailure:LifecycleFailure?
             do {
@@ -408,12 +474,13 @@ import VistaCore
                     self.isPaused = session.isPlaybackPaused
                     self.message = state == .waiting ? "緩衝中…":state == .seeking ? "正在跳轉…":state == .paused ? "已暫停":"AVPlayer 系統播放"
                 },onFrame:{ [weak self] next in
+                    let flow=PlaybackFlowTrace.begin(.controller,parent:next.flow);defer{PlaybackFlowTrace.end(flow,.controller)}
                     guard let self else{return}
                     self.observePixelBoundary(next,owner:boundaryOwner,current:self.generation==id)
-                    guard self.generation==id else{return}
+                    guard self.generation==id,self.acceptSeekFrame(from:session) else{return}
                     if self.isPreparing {self.markPreparation("首幀交付")}
                     self.diagnosticsText=session.diagnosticsText
-                    self.pixelFrame=next;self.position=next.time;self.isPreparing=false;self.isSeeking=false
+                    PlaybackFlowTrace.mark(.property,parent:next.flow,a:Int64(bitPattern:PlaybackBoundaryIdentity.session(id)));self.pixelFrame=next;self.position=next.time;self.isPreparing=false;self.isSeeking=false
                     self.appliedPixelBoundary(next)
                 },onSpeed:{ [weak self] speed in
                     guard let self,self.generation==id else{return};self.speedStatus=speed
@@ -431,12 +498,28 @@ import VistaCore
                 }
                 if let failure=error as? NativePlaybackSession.Failure {
                     message=failure == .source ? "來源讀取失敗，請確認連線後重新播放。":failure == .stalled ? "資料等待逾時，請停止後重試。":"系統播放器無法播放這個檔案。"
-                }else if !(error is CancellationError) {message="系統播放失敗，請停止後重試。"}
+                }else if !(error is CancellationError) {
+                    #if VISTA_LOCAL_MKV_CANDIDATE
+                    #if VISTA_VLC_CANDIDATE
+                    if let vlc=error as? VLCPlaybackError {message=vlc.localizedDescription}
+                    else if let mkv=error as? MKVPlaybackError {message=mkv.localizedDescription}
+                    else {message="系統播放失敗，請停止後重試。"}
+                    #else
+                    if let mkv=error as? MKVPlaybackError {message=mkv.localizedDescription} else {message="系統播放失敗，請停止後重試。"}
+                    #endif
+                    #else
+                    message="系統播放失敗，請停止後重試。"
+                    #endif
+                }
             }
             if generation==id {
                 if terminalFailure==nil {beginBoundary(.termination)}
                 recordBoundary(.stopEntered,fields:[.cause:Double(BoundaryCause.termination.rawValue)])
+                clearSeekPresentation()
                 isPlaying=false;isPreparing=false;isSeeking=false;isBuffering=false;speedStatus=PlaybackSpeedStatus();speedMessage=nil;nativeSession=nil;task=nil
+                #if VISTA_LOCAL_MKV_CANDIDATE
+                if let terminalFailure {mkvFatalState.finish(message:session.mkvFailureMessage,cancelled:terminalFailure.isCancellation)}
+                #endif
                 recordBoundary(.stopReturned,fields:[.outcome:terminalFailure.map{$0.isCancellation ? 1:2} ?? 7])
             }
         }

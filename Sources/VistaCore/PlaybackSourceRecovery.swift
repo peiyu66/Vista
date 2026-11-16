@@ -51,6 +51,14 @@ public enum PlaybackSourceRecoveryPolicy {
     func awaitPlaybackCleanup() async throws
 }
 
+/// Optional source-owner contract for generated media. Unknown sources cannot
+/// claim revision or transport quiescence merely by returning a byte read.
+@MainActor public protocol PlaybackSourceRevisionProviding: AnyObject {
+    func freshPlaybackIdentity() async throws -> PlaybackSourceIdentity
+    func validatePlaybackRevision(_ baseline: PlaybackSourceIdentity) throws
+    func awaitSourceOperationsDrained() async throws
+}
+
 /// Optional capability for the bounded forward-cache layer. A nil epoch forbids cache
 /// use while validation/recovery is incomplete; throws preserve terminal/current checks.
 /// Speculative reads never create a recovery episode or new connection.
@@ -133,7 +141,7 @@ public extension PlaybackCacheSource {
 /// before any replacement. Factory must drain partial sessions before throwing; retirement must
 /// close admission, await actual operation/callback drain and finish local teardown. A failed
 /// retirement remains terminal; cleanup is never retried on an assumption that it completed.
-@MainActor public final class PlaybackRecoveringSource<Session: AnyObject & MediaByteSource>: PlaybackCacheSource {
+@MainActor public final class PlaybackRecoveringSource<Session: AnyObject & MediaByteSource>: PlaybackCacheSource, PlaybackSourceRevisionProviding {
     private enum ReadStateError: Error { case superseded }
 
     @MainActor private final class Slot {
@@ -175,6 +183,7 @@ public extension PlaybackCacheSource {
     private let makeFresh: @MainActor () async throws -> Session
     private let retire: @MainActor (Session) async throws -> Void
     private let finish: @MainActor (Session) async throws -> Void
+    private let sourceDrain: (@MainActor (Session) async throws -> Void)?
     private let shouldRecover: @MainActor (any Error) -> Bool
     private let shouldJoinExistingRecovery: @MainActor (any Error) -> Bool
     private let isCurrent: @MainActor () -> Bool
@@ -202,6 +211,7 @@ public extension PlaybackCacheSource {
         makeFresh: @escaping @MainActor () async throws -> Session,
         retire: @escaping @MainActor (Session) async throws -> Void,
         finish: @escaping @MainActor (Session) async throws -> Void = { _ in },
+        sourceDrain: (@MainActor (Session) async throws -> Void)? = nil,
         shouldRecover: @escaping @MainActor (any Error) -> Bool,
         shouldJoinExistingRecovery: @escaping @MainActor (any Error) -> Bool = { _ in false },
         isCurrent: @escaping @MainActor () -> Bool,
@@ -210,7 +220,7 @@ public extension PlaybackCacheSource {
         uptime: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     ) {
         self.file = file; self.current = Slot(initial, owned: false, epoch: 0)
-        self.metadata = metadata; self.makeFresh = makeFresh; self.retire = retire; self.finish = finish
+        self.metadata = metadata; self.makeFresh = makeFresh; self.retire = retire; self.finish = finish; self.sourceDrain = sourceDrain
         self.shouldRecover = shouldRecover; self.shouldJoinExistingRecovery = shouldJoinExistingRecovery
         self.isCurrent = isCurrent
         self.diagnostics = diagnostics; self.diagnosticTrace = diagnostics?.nextID() ?? 0
@@ -302,6 +312,96 @@ public extension PlaybackCacheSource {
         if let running = episode?.task { await running.value }
         if let stopRetirement { try await stopRetirement.value }
         if let cleanupFailure { throw cleanupFailure }
+    }
+
+    /// Fresh metadata, not fileSize's memoized baseline. Used by the MKV owner
+    /// before/after reads and before publishing generated segments.
+    public func freshPlaybackIdentity() async throws -> PlaybackSourceIdentity {
+        let flow = PlaybackFlowTrace.begin(.sourceIdentity, a: Int64(generation))
+        var outcome: Int64 = 3
+        defer { PlaybackFlowTrace.end(flow, .sourceIdentity, a: outcome) }
+        do {
+            let request = try beginRequest(file)
+            defer { endRequest(request) }
+            _ = try await traceIdentityStep(.sourceIdentityBaseline, parent: flow) { try await self.baselineIdentity(request) }
+            var slot = try await traceIdentityStep(.sourceIdentitySlot, parent: flow) { try await self.availableSlot(request) }
+            do {
+                try await traceIdentityStep(.sourceIdentityActive, parent: flow) { try await self.waitUntilActive(epoch: slot.epoch) }
+                try checkReadable(slot)
+                let observed = try await traceIdentityStep(.sourceIdentityMetadata, parent: flow) { try await self.metadata(slot.session, self.file) }
+                try checkReadable(slot)
+                try PlaybackFlowTrace.measure(.sourceIdentityAccept, parent: flow) { try acceptFreshIdentity(observed) }
+                if request.usedRecovery { episode?.delivered = true }
+                outcome = 0
+                return observed
+            } catch {
+                try checkCurrent()
+                guard !request.usedRecovery,
+                      eligible(error) || canJoinExisting(error, after: slot) else { throw publicError(error) }
+                slot = try await traceIdentityStep(.sourceIdentityRecovery, parent: flow) { try await self.recover(after: slot, request: request) }
+                try checkReadable(slot)
+                let observed = try await traceIdentityStep(.sourceIdentityMetadata, parent: flow) { try await self.metadata(slot.session, self.file) }
+                try checkReadable(slot)
+                try PlaybackFlowTrace.measure(.sourceIdentityAccept, parent: flow) { try acceptFreshIdentity(observed) }
+                episode?.delivered = true
+                outcome = 0
+                return observed
+            }
+        } catch {
+            outcome = error is CancellationError ? 2 : 3
+            throw error
+        }
+    }
+
+    /// Await the original operation once, with inherited parentage and balanced error exits.
+    /// This measures owner-side elapsed time, not server processing or individual network RTT.
+    private func traceIdentityStep<T>(_ stage: PlaybackFlowStage, parent: PlaybackFlowToken,
+                                      _ operation: () async throws -> T) async rethrows -> T {
+        let flow = PlaybackFlowTrace.begin(stage, parent: parent)
+        var outcome: Int64 = 3
+        defer { PlaybackFlowTrace.end(flow, stage, a: outcome) }
+        do {
+            let value = try await PlaybackFlowTrace.$parent.withValue(flow) { try await operation() }
+            outcome = 0
+            return value
+        } catch {
+            outcome = error is CancellationError ? 2 : 3
+            throw error
+        }
+    }
+
+    private func acceptFreshIdentity(_ observed: PlaybackSourceIdentity) throws {
+        guard let identity, identity.isComplete, observed.isComplete else {
+            throw PlaybackSourceRecoveryError.incompleteIdentity
+        }
+        guard identity == observed else {
+            terminalFailure = PlaybackSourceRecoveryError.identityChanged
+            cancelPlayback()
+            throw PlaybackSourceRecoveryError.identityChanged
+        }
+    }
+
+    /// No RPC: validates the current observed revision. Fresh observations occur
+    /// at parser generation/publication boundaries, plus ordinary recovery/scene
+    /// revalidation. Metadata fingerprints are never server-side snapshots.
+    public func validatePlaybackRevision(_ baseline: PlaybackSourceIdentity) throws {
+        try checkCurrent()
+        guard baseline.isComplete, identity == baseline else {
+            throw PlaybackSourceRecoveryError.identityChanged
+        }
+        if let terminalFailure { throw terminalFailure }
+        if let cleanupFailure { throw cleanupFailure }
+    }
+
+    /// Only after all caller/pump operations returned. A production source must
+    /// supply its real callback barrier; default/unknown sources cannot claim it.
+    public func awaitSourceOperationsDrained() async throws {
+        guard let sourceDrain else { throw PlaybackSourceRecoveryError.unavailable }
+        if let running = episode?.task { await running.value }
+        if let stopRetirement { try await stopRetirement.value }
+        if let cleanupFailure { throw cleanupFailure }
+        guard requests.isEmpty else { throw PlaybackSourceRecoveryError.unavailable }
+        try await sourceDrain(current.session)
     }
 
     public func fileSize(for file: MediaFile) async throws -> UInt64 {

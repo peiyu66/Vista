@@ -1,0 +1,33 @@
+[
+  {
+    "file": "ffmpeg-9.0.tar.xz",
+    "sha256": "7f607a00dd0d28a729d5a4811205812eef01cf6ef6155025febb6f36a9062d52",
+    "bytes": 12032020
+  },
+  {
+    "file": "libebml-1.4.6.tar.xz",
+    "sha256": "d06cf1d5ad89390389eeb1eb7d50f70b55ac7538b19aeac8859eed3f2a9908dc",
+    "bytes": 52424
+  },
+  {
+    "file": "libmatroska-1.7.2.tar.xz",
+    "sha256": "f3e4d406daf7f1399962c43940e4a87de089474d5bcfbf2e6ca516e98bb87cfc",
+    "bytes": 63016
+  },
+  {
+    "file": "utfcpp-3.2.5.tar.gz",
+    "sha256": "14fd1b3c466814cb4c40771b7f207b61d2c7a0aa6a5e620ca05c00df27f25afd",
+    "bytes": 28865
+  },
+  {
+    "file": "vlc-f7caf7922478f6cb7f1654b813d0c462d3e86f4a.tar.gz",
+    "sha256": "460d18200ad72999aa018d19db3e2e45c0ede0a14ddd41f2224e0381ab18e7fe",
+    "bytes": 38222256
+  },
+  {
+    "file": "gpac-26.07.0-vista-source.tar.xz",
+    "sha256": "10127e1df030a660a91081d0b70b6de30bbd8273aa0a79d847e8b331b7c3fa7c",
+    "bytes": 8077440,
+    "provenance": "Complete retained 26.07 source snapshot used for Vista ISO-BMFF subset; no inferred upstream commit."
+  }
+]

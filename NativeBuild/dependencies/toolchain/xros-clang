@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+link=yes
+for arg in "$@"; do
+ case "$arg" in -c|-E|-S|-fsyntax-only|--version|-v|-dumpmachine) link=no;; esac
+done
+if [ "$link" = yes ]; then
+ exec xcrun --sdk xros clang -target arm64-apple-xros2.0 -isysroot "$(xcrun --sdk xros --show-sdk-path)" -Werror=unguarded-availability-new -Wl,-no_adhoc_codesign "$@"
+else
+ exec xcrun --sdk xros clang -target arm64-apple-xros2.0 -isysroot "$(xcrun --sdk xros --show-sdk-path)" -Werror=unguarded-availability-new "$@"
+fi

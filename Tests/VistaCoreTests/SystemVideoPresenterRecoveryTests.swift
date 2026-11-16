@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import AVFoundation
 import CoreVideo
+import simd
 @testable import VistaCore
 @testable import VistaMedia
 
@@ -16,6 +17,7 @@ import CoreVideo
     var requiresFlush=false,failed=false,ready=true,holdFlushes=false,keepFailureAfterFlush=false
     var flushes=0,inFlight=0,maxInFlight=0,enqueuedTimes:[Double]=[]
     var enqueuedPacking:[String?]=[]
+    var enqueuedFormats:[CMFormatDescription]=[]
     var enqueuedDuringFlush=false
     var onEnqueue:(()->Void)?
     var removeImageFlags:[Bool]=[]
@@ -28,6 +30,7 @@ import CoreVideo
                   self.onEnqueue?()
                   self.enqueuedDuringFlush = self.enqueuedDuringFlush || self.inFlight>0
                   self.enqueuedTimes.append(CMSampleBufferGetPresentationTimeStamp(sample).seconds)
+                  if let format=CMSampleBufferGetFormatDescription(sample) {self.enqueuedFormats.append(format)}
                   self.enqueuedPacking.append(CMSampleBufferGetFormatDescription(sample).flatMap {
                       CMFormatDescriptionGetExtension($0,extensionKey:kCMFormatDescriptionExtension_ViewPackingKind) as? String
                   })
@@ -347,4 +350,126 @@ import CoreVideo
         #expect(io.immediateFlushes==1)
     }
 
+}
+
+
+extension SystemVideoPresenterRecoveryTests {
+    @Test func formatCacheSurvivesSeparateWorkersAndInvalidatesAtBoundaries() async throws {
+        guard #available(macOS 26.0,visionOS 26.0,*) else{return}
+        let io=ControlledRenderer(),p=SystemVideoPresenter(diagnostics:io.diagnostics)
+        defer{io.finish();p.stop()}
+        p.testIO=io.io
+        let first=try frame(0,session:UUID())
+        var settings=VRSettings()
+        // Each submit starts after the preceding worker has exited, matching ordinary ready delivery.
+        for index in 0..<1000 {
+            p.submit(DecodedVideoFrame(pixel:first.pixel,time:Double(index)/60,session:first.session),settings:settings)
+            try await until{!p.testWorkerActive}
+        }
+        #expect(io.enqueuedTimes.count==1000 && io.flushes==1)
+        let unique=Set(io.enqueuedFormats.map{ObjectIdentifier($0)}).count
+        let expected=ProcessInfo.processInfo.environment["VISTA_EXPECT_FORMAT_CACHE"] == "0" ? 1000:1
+        #expect(unique==expected)
+        print("RENDER_FORMAT_CACHE frames=1000 workers=1000 distinctTaggedFormats=\(unique)")
+        var previous=try #require(io.enqueuedFormats.last)
+        // Equal dimensions do not conceal changed source colour metadata.
+        CVBufferSetAttachment(first.pixel,kCVImageBufferColorPrimariesKey,kCVImageBufferColorPrimaries_ITU_R_2020,.shouldPropagate)
+        p.submit(first,settings:settings);try await until{!p.testWorkerActive}
+        var latest=try #require(io.enqueuedFormats.last)
+        #expect(latest !== previous)
+        #expect(CMFormatDescriptionGetExtension(latest,extensionKey:kCMFormatDescriptionExtension_ColorPrimaries) as? String == kCVImageBufferColorPrimaries_ITU_R_2020 as String)
+        previous=latest
+        settings.layout = .overUnder
+        p.submit(first,settings:settings);try await until{!p.testWorkerActive}
+        latest=try #require(io.enqueuedFormats.last);#expect(latest !== previous);previous=latest
+        settings.projection = .equirectangular360
+        p.submit(first,settings:settings);try await until{!p.testWorkerActive}
+        latest=try #require(io.enqueuedFormats.last);#expect(latest !== previous);previous=latest
+        let next=DecodedVideoFrame(pixel:first.pixel,time:0,session:UUID())
+        p.submit(next,settings:settings);try await until{!p.testWorkerActive}
+        latest=try #require(io.enqueuedFormats.last);#expect(latest !== previous);previous=latest
+        p.stop();p.submit(next,settings:settings);try await until{!p.testWorkerActive}
+        latest=try #require(io.enqueuedFormats.last);#expect(latest !== previous)
+        #expect(!io.enqueuedDuringFlush && io.maxInFlight==1 && p.error==nil)
+    }
+}
+
+
+extension SystemVideoPresenterRecoveryTests {
+    @Test func anglesDuringPlaybackAndPauseOnlyChangeTransform() async throws {
+        guard #available(macOS 26.0,visionOS 26.0,*) else{return}
+        let(p,io,first)=try await running();defer{io.finish();p.stop()}
+        let baseline=ProcessInfo.processInfo.environment["VISTA_EXPECT_TRANSFORM_ONLY"] == "0"
+        let flushes=io.flushes,materials=p.materialCreationCount,replacements=p.testRendererReplacementCount
+        var settings=VRSettings(),last=first
+        for index in 1...60 {
+            settings.yawDegrees=Double(index)*15;settings.pitchDegrees=Double(index%5)*15;settings.rollDegrees=Double(index%3)*15
+            last=try frame(1+Double(index)/60,session:first.session)
+            p.submit(last,settings:settings);try await until{!p.testWorkerActive}
+            if !baseline {expectOrientation(p,settings)}
+        }
+        let playingFlushes=io.flushes-flushes,playingEnqueues=io.enqueuedTimes.count-1
+        let pausedStart=io.enqueuedTimes.count
+        for index in 1...60 {
+            settings.yawDegrees=Double(index)*(-15)
+            p.submit(last,settings:settings)
+            if !baseline {#expect(!p.testWorkerActive);expectOrientation(p,settings)}
+            try await until{!p.testWorkerActive}
+        }
+        let pausedFlushes=io.flushes-flushes-playingFlushes,pausedEnqueues=io.enqueuedTimes.count-pausedStart
+        #expect(playingFlushes == (baseline ? 60:0) && playingEnqueues==60)
+        #expect(pausedFlushes == (baseline ? 60:0) && pausedEnqueues == (baseline ? 60:0))
+        #expect(p.materialCreationCount==materials && p.testRendererReplacementCount==replacements)
+        if !baseline {#expect(Set(io.enqueuedFormats.map{ObjectIdentifier($0)}).count==1)}
+        print("RENDER_ANGLES playingChanges=60 playingFlushes=\(playingFlushes) playingEnqueues=\(playingEnqueues) pausedChanges=60 pausedFlushes=\(pausedFlushes) pausedEnqueues=\(pausedEnqueues)")
+    }
+    @available(macOS 26.0,visionOS 26.0,*)
+    private func expectOrientation(_ p:SystemVideoPresenter,_ settings:VRSettings) {
+        let expected=VRInitialPose.manualRotation(yaw:settings.yawDegrees,pitch:settings.pitchDegrees,roll:settings.rollDegrees)
+        #expect(abs(simd_dot(p.entity.orientation.vector,expected.vector))>0.99999)
+    }
+    @Test(arguments:[false,true])
+    func newestAngleSurvivesSuspendedInitialOrRecoveryFlush(recovering:Bool) async throws {
+        guard #available(macOS 26.0,visionOS 26.0,*) else{return}
+        let io=ControlledRenderer(),p=SystemVideoPresenter(diagnostics:io.diagnostics),first=try frame(1,session:UUID())
+        defer{io.finish();p.stop()};p.testIO=io.io
+        if recovering {p.submit(first,settings:VRSettings());try await until{!p.testWorkerActive};io.requiresFlush=true}
+        let flushes=io.flushes
+        io.holdFlushes=true;p.submit(first,settings:VRSettings());try await until{io.inFlight==1}
+        var settings=VRSettings();settings.yawDegrees=75;settings.pitchDegrees=30;settings.rollDegrees=15
+        p.submit(first,settings:settings);expectOrientation(p,settings)
+        io.releaseNext();try await until{p.ready && !p.testWorkerActive}
+        expectOrientation(p,settings)
+        #expect(io.flushes==flushes+1 && !io.enqueuedDuringFlush && p.error==nil)
+        // Retained paused settings must also survive a later recovery without a fresh submit.
+        if !recovering {
+            io.holdFlushes=false;io.requiresFlush=true
+            let before=io.enqueuedTimes.count
+            try await until{io.enqueuedTimes.count==before+1 && !p.testWorkerActive}
+            expectOrientation(p,settings)
+        }
+    }
+    @Test func newestAngleWinsReadinessWaitAndSceneStopBoundaries() async throws {
+        guard #available(macOS 26.0,visionOS 26.0,*) else{return}
+        let(p,io,first)=try await running();defer{io.finish();p.stop()}
+        let next=try frame(2,session:first.session),flushes=io.flushes,reads=io.readyReads
+        io.ready=false;p.submit(next,settings:VRSettings());try await until{io.readyReads>reads}
+        var settings=VRSettings();settings.yawDegrees = -45;settings.pitchDegrees=15
+        p.submit(next,settings:settings);expectOrientation(p,settings);io.ready=true
+        try await until{!p.testWorkerActive};expectOrientation(p,settings)
+        #expect(io.flushes==flushes && io.enqueuedTimes.last==2)
+        p.setSceneActive(false);settings.rollDegrees=30;p.submit(next,settings:settings)
+        p.setSceneActive(true);p.submit(next,settings:settings);try await until{!p.testWorkerActive}
+        expectOrientation(p,settings);#expect(io.flushes==flushes+1)
+        p.stop();settings.yawDegrees=90;p.submit(next,settings:settings);try await until{!p.testWorkerActive}
+        expectOrientation(p,settings);#expect(io.flushes==flushes+2)
+        settings.layout = .overUnder;p.submit(next,settings:settings);try await until{!p.testWorkerActive}
+        #expect(io.flushes==flushes+3 && p.testRendererReplacementCount==1)
+        settings.projection = .equirectangular360;p.submit(next,settings:settings);try await until{!p.testWorkerActive}
+        #expect(io.flushes==flushes+4 && p.testRendererReplacementCount==1)
+        let newer=try frame(0,session:UUID());p.submit(newer,settings:settings);try await until{!p.testWorkerActive}
+        #expect(io.flushes==flushes+5 && p.lastSubmittedSession==newer.session)
+        io.failed=true;settings.yawDegrees=180;p.submit(newer,settings:settings)
+        #expect(p.error != nil && !p.ready)
+    }
 }

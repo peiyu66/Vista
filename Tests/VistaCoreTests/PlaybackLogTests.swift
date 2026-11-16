@@ -81,7 +81,7 @@ struct PlaybackLogTests {
   let store=PlaybackLogStore(directory:dir)
   for i in 0..<10000 {store.enqueue(.init(event:i==9999 ? .failed:.sample,values:[.frames:Double(i)]))};store.drainForTesting()
   #expect(!FileManager.default.fileExists(atPath:stale.path));#expect(store.status.dropped>0)
-  let text=try String(contentsOf:dir.appendingPathComponent("current.jsonl"),encoding:.utf8);#expect(text.contains("failed"))
+  let text=try String(contentsOf:dir.appendingPathComponent("recovery-current.jsonl"),encoding:.utf8);#expect(text.contains("failed"))
   let blocking=dir.appendingPathComponent("not-directory");try Data().write(to:blocking)
   let failure=PlaybackLogStore(directory:blocking);failure.enqueue(.init(event:.failed,values:[:]));failure.drainForTesting();#expect(failure.status.failures==1)
  }
@@ -95,10 +95,11 @@ struct PlaybackLogTests {
   for _ in 0..<40 {store.enqueue(.init(event:.prefetchTrace,values:[.bytes:2097152],build:"81"));store.drainForTesting()}
   store.enqueue(.init(event:.stopped,values:[:],build:"81"));store.drainForTesting()
   let files=try FileManager.default.contentsOfDirectory(at:dir,includingPropertiesForKeys:nil)
-  #expect(files.count<=4 && store.status.failures==0)
+  #expect(files.count<=5 && store.status.failures==0)
   for file in files {#expect(try Data(contentsOf:file).count<=4096)}
   let latest=try String(contentsOf:dir.appendingPathComponent("current.jsonl"),encoding:.utf8)
-  #expect(latest.contains("prefetchTrace") && latest.contains("stopped"))
+  let recovery=try String(contentsOf:dir.appendingPathComponent("recovery-current.jsonl"),encoding:.utf8)
+  #expect(latest.contains("prefetchTrace") && !latest.contains("stopped") && recovery.contains("stopped"))
  }
 
  @Test func prefetchRecordEncodesRelativeOffsetsWithoutFreeText()throws {

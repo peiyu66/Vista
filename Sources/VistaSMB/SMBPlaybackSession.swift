@@ -80,6 +80,11 @@ public final class SMBPlaybackSession: MediaByteSource, Sendable {
         catch { throw await provider.playbackFailure(error) }
     }
 
+    /// Caller has closed parser admission and joined the cache pump first.
+    public func awaitSourceOperationsDrained() async {
+        await transport.awaitSourceOperationsDrained()
+    }
+
     /// Normal stop only closes this playback's file, never the borrowed directory connection.
     public func finishPlayback() async throws {
         await reader.close()
@@ -174,6 +179,11 @@ actor SMBPlaybackHandleTransport: SMBRangeTransport {
         try Task.checkCancellation()
         guard !stopped else { throw SMBPlaybackReadFailure.retired }
         return data
+    }
+
+    func awaitSourceOperationsDrained() async {
+        await operations.waitForDrain()
+        await manager.awaitOperationsDrained()
     }
 
     /// Only callers that already completed provider retirement may use this path.

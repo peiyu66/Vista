@@ -1,0 +1,23 @@
+--- a/Dependencies/AMSMB2/AMSMB2/AMSMB2.swift
++++ b/Dependencies/AMSMB2/AMSMB2/AMSMB2.swift
+@@ -291,6 +291,20 @@
+             connectShareOnce(
+                 name: name, encrypted: encrypted, completionHandler: asyncHandler(continuation)
+             )
++        }
++    }
++
++    /// Non-destructive callback barrier. The playback owner must first close its
++    /// read admission and join its pump. This observes zero library operations,
++    /// including callback return; it does not retire the shared directory session.
++    open func awaitOperationsDrained() async {
++        await withCheckedContinuation { continuation in
++            q.async {
++                self.operationLock.lock()
++                while self.operationCount > 0 { self.operationLock.wait() }
++                self.operationLock.unlock()
++                continuation.resume()
++            }
+         }
+     }
+ 

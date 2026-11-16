@@ -10,7 +10,8 @@ struct LocalDirectoryTests {
         try FileManager.default.createDirectory(at:root.appendingPathComponent("Child"),withIntermediateDirectories:true)
         try Data([1,2,3,4]).write(to:root.appendingPathComponent("movie.mp4"))
         try Data().write(to:root.appendingPathComponent(".DS_Store"))
-        for n in 0..<520 {try Data().write(to:root.appendingPathComponent(String(format:"file-%04d.txt",n)))}
+        for n in 0..<520 {try Data().write(to:root.appendingPathComponent(String(format:"file-%04d.mp4",n)))}
+        try Data().write(to:root.appendingPathComponent("notes.txt"))
         let provider=LocalDirectoryProvider(testRoot:root)
         var offset=0, names:[String]=[]
         repeat {
@@ -21,6 +22,7 @@ struct LocalDirectoryTests {
         } while true
         #expect(names.count==522 && Set(names).count==522)
         #expect(!names.contains(".DS_Store"))
+        #expect(!names.contains("notes.txt"))
         let file=try MediaFile(components:["movie.mp4"])
         #expect(try await provider.fileSize(for:file)==4)
         #expect(try await provider.read(file,range:1..<3)==Data([2,3]))

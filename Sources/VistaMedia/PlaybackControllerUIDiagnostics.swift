@@ -2,20 +2,22 @@ import Foundation
 
 /// Observed controller flags only; never changes the actual UI disabled policy.
 public struct PlaybackControllerUIState: Equatable, Sendable {
+ public let canRetargetPendingSeek:Bool
  public let stopping:Bool, scrubbing:Bool, preparing:Bool, advancing:Bool
  public let requiresFormatConfirmation:Bool, canResetSpeed:Bool, canIncreaseSpeed:Bool
  public let canGoBack:Bool, canAdvance:Bool, hasDuration:Bool
  public init(stopping:Bool,scrubbing:Bool,preparing:Bool,advancing:Bool,
              requiresFormatConfirmation:Bool,canResetSpeed:Bool,canIncreaseSpeed:Bool,
-             canGoBack:Bool,canAdvance:Bool,hasDuration:Bool) {
+             canGoBack:Bool,canAdvance:Bool,hasDuration:Bool,canRetargetPendingSeek:Bool=false) {
+  self.canRetargetPendingSeek=canRetargetPendingSeek
   self.stopping=stopping;self.scrubbing=scrubbing;self.preparing=preparing;self.advancing=advancing
   self.requiresFormatConfirmation=requiresFormatConfirmation;self.canResetSpeed=canResetSpeed
   self.canIncreaseSpeed=canIncreaseSpeed;self.canGoBack=canGoBack;self.canAdvance=canAdvance;self.hasDuration=hasDuration
  }
- /// Bits: stop, scrub, prepare, advance, format, cannot reset/increase, no previous/next/duration.
+ /// Bits: stop, scrub, prepare, advance, format, cannot reset/increase, no previous/next/duration, pending seek can be retargeted.
  public var mask:Int {
   let flags=[stopping,scrubbing,preparing,advancing,requiresFormatConfirmation,
-             !canResetSpeed,!canIncreaseSpeed,!canGoBack,!canAdvance,!hasDuration]
+             !canResetSpeed,!canIncreaseSpeed,!canGoBack,!canAdvance,!hasDuration,canRetargetPendingSeek]
   return flags.enumerated().reduce(0) {$1.element ? $0 | (1 << $1.offset):$0}
  }
 }
@@ -83,7 +85,7 @@ public struct PlaybackControllerUIDiagnostics: Sendable {
    .uiPauseDisabledMask:Double(mask & (3|4|8|16)),
    .uiIncreaseDisabledMask:Double(mask & (3|8|16|64)),
    .uiResetSpeedDisabledMask:Double(mask & (3|8|16|32)),
-   .uiSeekDisabledMask:Double(mask & (1|4|8|16|512)),
+   .uiSeekDisabledMask:Double(mask & (1|(state?.canRetargetPendingSeek == true ? 0:4)|8|16|512)),
    .uiObservationStartedUptime:observationStarted ?? 0,.uiStateSinceUptime:stateSince ?? 0,.uiScrubbingSinceUptime:scrubbingSince ?? 0,.uiStoppingSinceUptime:stoppingSince ?? 0,
    .uiStateSequence:Double(stateSequence),.uiEventSequence:Double(eventSequence),.uiEventSuppressed:Double(suppressed),
    .uiEventAction:Double(eventAction.rawValue),.uiLastAction:Double(lastAction.rawValue),.uiLastActionUptime:lastActionUptime,

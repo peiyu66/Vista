@@ -55,7 +55,7 @@ import Testing
   #expect(ids == [6,5,4,3] && total<4*PlaybackLogStore.waitJournalLimit)
   #expect(!FileManager.default.fileExists(atPath:dir.appendingPathComponent("wait-previous-4.jsonl").path))
   store.enqueue(.init(event:.failed,values:[:]));store.drainForTesting()
-  let terminal=try #require(rows(dir.appendingPathComponent("current.jsonl")).last)
+  let terminal=try #require(rows(dir.appendingPathComponent("recovery-current.jsonl")).last)
   #expect(terminal.values["waitJournalRotatedFiles"] == 2 && terminal.values["waitJournalExpiredFiles"] == 0)
  }
  @Test func expirationCountsOnlyActuallyRemovedWaitFiles() throws {
@@ -71,7 +71,7 @@ import Testing
   let retained=try #require(rows(dir.appendingPathComponent("wait-current.jsonl")).first)
   #expect(retained.values["waitJournalExpiredFiles"] == 3 && retained.values["waitJournalRotatedFiles"] == 0)
   store.enqueue(.init(event:.failed,values:[:]));store.drainForTesting()
-  #expect(try rows(dir.appendingPathComponent("current.jsonl")).last?.values["waitJournalExpiredFiles"] == 3)
+  #expect(try rows(dir.appendingPathComponent("recovery-current.jsonl")).last?.values["waitJournalExpiredFiles"] == 3)
  }
  @Test func oversizeIsRejectedBeforeMutationAndDoesNotSplitRows() throws {
   let dir=directory();defer{try? FileManager.default.removeItem(at:dir)}
@@ -93,7 +93,7 @@ import Testing
   store.enqueue(episode());store.drainForTesting()
   #expect(store.status.failures == 1)
   store.enqueue(.init(event:.failed,values:[:]));store.drainForTesting()
-  let terminal=try #require(rows(dir.appendingPathComponent("current.jsonl")).first)
+  let terminal=try #require(rows(dir.appendingPathComponent("recovery-current.jsonl")).first)
   #expect(terminal.event == .failed && terminal.values["waitLogFailures"] == 1)
  }
 }

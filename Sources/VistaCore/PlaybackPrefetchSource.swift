@@ -2,19 +2,34 @@ import Foundation
 
 /// One-file, memory-only read ahead. Admission cancellation never claims that an already
 /// started transport read was preempted: the pump waits for its actual completion.
-@MainActor public final class PlaybackPrefetchSource: PlaybackRecoveryControlling {
+@MainActor public final class PlaybackPrefetchSource: PlaybackRecoveryControlling, PlaybackSourceRevisionProviding {
     public struct Configuration: Sendable {
-        /// Forward admission target; it is not a separately allocated cache.
+        /// High watermark (or explicit legacy admission target), not a separate allocation.
         public let capacityBytes: Int
         public let chunkBytes: Int
         public let totalCapacityBytes: Int
         public let historyCapacityBytes: Int
-        public init(capacityBytes: Int = 4 * 1_048_576, chunkBytes: Int = 2 * 1_048_576,
+        /// nil preserves explicit legacy fixed-credit fixtures. Production uses 8/16 MiB.
+        public let lowWatermarkBytes: Int?
+        public init(lowWatermarkBytes: Int = 8 * 1_048_576,
+                    highWatermarkBytes: Int = 16 * 1_048_576,
+                    chunkBytes: Int = 2 * 1_048_576,
+                    totalCapacityBytes: Int = 160 * 1_048_576) {
+            precondition(lowWatermarkBytes > 0 && lowWatermarkBytes < highWatermarkBytes
+                && highWatermarkBytes <= 16 * 1_048_576 && chunkBytes > 0
+                && UInt64(chunkBytes) <= MediaReadPlan.maximumChunkBytes && chunkBytes <= lowWatermarkBytes
+                && totalCapacityBytes >= highWatermarkBytes && totalCapacityBytes <= 160 * 1_048_576)
+            self.capacityBytes = highWatermarkBytes; self.lowWatermarkBytes = lowWatermarkBytes
+            self.chunkBytes = chunkBytes; self.totalCapacityBytes = totalCapacityBytes
+            self.historyCapacityBytes = totalCapacityBytes
+        }
+        /// Explicit legacy fixed-credit configuration for compatibility, never the production default.
+        public init(capacityBytes: Int, chunkBytes: Int = 2 * 1_048_576,
                     totalCapacityBytes: Int = 160 * 1_048_576) {
             precondition(capacityBytes > 0 && capacityBytes <= 4 * 1_048_576 && chunkBytes > 0
                 && UInt64(chunkBytes) <= MediaReadPlan.maximumChunkBytes && chunkBytes <= capacityBytes
                 && totalCapacityBytes >= capacityBytes && totalCapacityBytes <= 160 * 1_048_576)
-            self.capacityBytes = capacityBytes; self.chunkBytes = chunkBytes
+            self.capacityBytes = capacityBytes; self.chunkBytes = chunkBytes; self.lowWatermarkBytes = nil
             self.totalCapacityBytes = totalCapacityBytes; self.historyCapacityBytes = totalCapacityBytes
         }
         /// Compatibility for explicit small fixed-history callers. Production uses the
@@ -23,7 +38,7 @@ import Foundation
             precondition(capacityBytes > 0 && capacityBytes <= 4 * 1_048_576 && chunkBytes > 0
                 && UInt64(chunkBytes) <= MediaReadPlan.maximumChunkBytes && chunkBytes <= capacityBytes
                 && historyCapacityBytes >= 0 && historyCapacityBytes <= 160 * 1_048_576 - capacityBytes)
-            self.capacityBytes = capacityBytes; self.chunkBytes = chunkBytes
+            self.capacityBytes = capacityBytes; self.chunkBytes = chunkBytes; self.lowWatermarkBytes = nil
             self.totalCapacityBytes = capacityBytes + historyCapacityBytes
             self.historyCapacityBytes = historyCapacityBytes
         }
@@ -67,6 +82,14 @@ import Foundation
         /// Independent snapshots passed to the current demand; never views of storage.
         public fileprivate(set) var demandSnapshotBytes = 0
         public fileprivate(set) var maxDemandSnapshotBytes = 0
+        /// Only the synchronous bypass copy, never the serial demand's snapshot.
+        /// The caller owns returned Data; no payload waits for FIFO settlement.
+        public fileprivate(set) var directCacheSnapshotBytes = 0
+        public fileprivate(set) var maxDirectCacheSnapshotBytes = 0
+        public fileprivate(set) var directCacheReplyCount: UInt64 = 0
+        public fileprivate(set) var directCacheReplyBytes: UInt64 = 0
+        public fileprivate(set) var pendingCacheCompletions = 0
+        public fileprivate(set) var maxPendingCacheCompletions = 0
         public fileprivate(set) var speculativeWaitCount: UInt64 = 0
         public fileprivate(set) var speculativeWaitSeconds: TimeInterval = 0
         public fileprivate(set) var maxResidentBytes = 0
@@ -76,20 +99,26 @@ import Foundation
         public fileprivate(set) var demandWaitSeconds: TimeInterval = 0
         public fileprivate(set) var diagnostics = PrefetchDiagnosticsSnapshot()
     }
-    private enum Operation { case size, read(Range<UInt64>) }
-    private enum Response { case size(UInt64), bytes(Data) }
+    private enum Operation { case size, identity, read(Range<UInt64>) }
+    private enum Response { case size(UInt64), identity(PlaybackSourceIdentity), bytes(Data) }
     private final class Cancellation: @unchecked Sendable {
         private let lock = NSLock()
-        private var value = false
+        private var value = false, accepted = false
         var cancelled: Bool { lock.withLock { value } }
-        func cancel() { lock.withLock { value = true } }
+        func cancel() { lock.withLock { if !accepted { value = true } } }
+        /// Linearizes direct acceptance against cancellation on another executor.
+        func accept() -> Bool { lock.withLock {
+            guard !value else { return false }; accepted = true; return true
+        } }
     }
     private final class Request {
+        var readAheadEnd: UInt64?
+        var flow=PlaybackFlowToken.none
         let id: UInt64, generation: UInt64, operation: Operation, cancellation: Cancellation
         let submitted: TimeInterval
         var rangeDiagnostic: PlaybackRangeDiagnostics.Work
         let continuation: CheckedContinuation<Response, any Error>
-        let waitedForPrefetch: Bool
+        var waitedForPrefetch: Bool
         var waitStarted: TimeInterval?
         var speculativeWaitSeconds: TimeInterval = 0
         var usedCachedBytes = 0, sourceCallCount: UInt64 = 0
@@ -104,7 +133,7 @@ import Foundation
             self.submitted = submitted; self.continuation = continuation; self.waitedForPrefetch = waitedForPrefetch
             waitStarted = waitedForPrefetch ? submitted : nil
             let kind: PlaybackSupplyDiagnostics.Kind, range: Range<UInt64>?
-            switch operation { case .size: kind = .size; range = nil; case .read(let value): kind = .demand; range = value }
+            switch operation { case .size, .identity: kind = .size; range = nil; case .read(let value): kind = .demand; range = value }
             // Capture at enqueue: the existing serial pump may belong to an older Task.
             rangeDiagnostic = .init(kind: kind, id: id, generation: generation, queued: submitted,
                 range: range, correlation: PlaybackReadDiagnosticContext.correlation)
@@ -162,14 +191,16 @@ import Foundation
     private var quarantined = false
     private var generation: UInt64 = 0, admission: UInt64 = 0, nextID: UInt64 = 0
     private var epoch: UInt64?, size: UInt64?, lastEnd: UInt64?
-    /// A bounded window earned by a completed sequential demand, not by the greatest
-    /// retained offset. Ordinary demand cancellation preserves unspent valid credit.
+    /// One forward data-demand frontier, never a media playhead or a cache-tail cursor.
+    /// Its dormant checkpoint survives high-water completion and ordinary backreads.
+    /// Only accepted advancing demand may move it or renew the bounded IO allowance.
     private struct ForwardWindow {
         let cursor: UInt64, target: UInt64, epoch: UInt64, generation: UInt64
         // Explicit no-history callers may still prefetch while active. Only a
         // completed range actually stored in the arena can back a resumable checkpoint.
-        let evidence: Range<UInt64>?
+        var evidence: Range<UInt64>?
         var reads = 0
+        var refilling = false
     }
     private var forwardWindow: ForwardWindow?
     /// One consecutive higher-location candidate. No independent speculative lane.
@@ -222,18 +253,33 @@ import Foundation
         }
         guard let size else { return }
         pendingRebaseEnd = nil; lastEnd = nil
-        // The target is still contiguous retained end + one bounded window, not a
-        // rolling coverage promise. Only this successful demand earns new credit.
-        let anchor = contiguousEnd(from: range.upperBound)
+        // In watermark mode, only advancing DATA demand moves the high boundary.
+        // Prefetch completion can extend coverage but can never extend this target.
+        let anchor = configuration.lowWatermarkBytes == nil ? contiguousEnd(from: range.upperBound) : range.upperBound
         let target = anchor + min(UInt64(configuration.capacityBytes), size - min(size, anchor))
+        let ahead = contiguousEnd(from: range.upperBound) - range.upperBound
+        let refilling = configuration.lowWatermarkBytes.map {
+            (reason == .advance && forwardWindow.map { $0.refilling && contiguousEnd(from: $0.cursor) < $0.target } == true) || ahead < UInt64($0)
+        } ?? false
         let retained = PrefetchRangeObservation.measure(range, spans: readySpans + historySpans).overlapBytes == range.count
         if !retained { metrics.diagnostics.forwardUnretainedEvidenceCount &+= 1 }
         forwardWindowID &+= 1
         forwardWindow = ForwardWindow(cursor: range.upperBound, target: target,
-            epoch: token, generation: version, evidence: retained ? range : nil)
+            epoch: token, generation: version, evidence: retained ? range : nil, refilling: refilling)
         noteForward(reason)
     }
     private var canResumeForward: Bool { forwardWindow != nil }
+    /// Retains the old bounded-operation guard: at most one high window per genuine
+    /// advancing demand, even if metadata admission fails or ring churn removes data.
+    private var forwardReadLimit: Int {
+        configuration.lowWatermarkBytes == nil ? 2 :
+            (configuration.capacityBytes + configuration.chunkBytes - 1) / configuration.chunkBytes
+    }
+    private func needsForwardRefill(_ window: ForwardWindow, start: UInt64) -> Bool {
+        guard start < window.target, window.reads < forwardReadLimit else { return false }
+        guard let low = configuration.lowWatermarkBytes else { return true }
+        return window.refilling || start - window.cursor < UInt64(low)
+    }
     private func cancelForwardDemand(_ request: Request) {
         guard !request.forwardCancellationHandled else { return }
         request.forwardCancellationHandled = true
@@ -251,10 +297,23 @@ import Foundation
         entry.diagnostic.map { Block(start: entry.range.lowerBound, count: entry.range.count, diagnostic: $0) }
     }.sorted { $0.start < $1.start } }
     private var requests: [Request] = []
+    /// Replies may finish early; forward credit still settles in admission order.
+    /// Hard cap bounds metadata when an old source call stays blocked. No Data,
+    /// request, continuation or cancellation token survives in these markers.
+    private struct CacheCompletion {
+        let id: UInt64, generation: UInt64, epoch: UInt64
+        let range: Range<UInt64>
+    }
+    private static let cacheCompletionLimit = 64
+    private var cacheCompletions: [CacheCompletion] = []
+    private func updateCacheCompletionCount() {
+        metrics.pendingCacheCompletions = cacheCompletions.count
+        metrics.maxPendingCacheCompletions = max(metrics.maxPendingCacheCompletions, cacheCompletions.count)
+    }
     private var supplyDiagnostics = PlaybackSupplyDiagnostics()
     private var rangeDiagnostics = PlaybackRangeDiagnostics()
     /// Wait-boundary only: no payload copy, source getter, await or admission mutation.
-    public func rangeDiagnosticSnapshot() -> PlaybackRangeDiagnostics.Snapshot {
+    private func forwardDiagnosticSnapshot() -> PlaybackRangeDiagnostics.Forward {
         let window = forwardWindow
         let reason: Int
         if stopped || !enabled { reason = 1 }
@@ -262,20 +321,39 @@ import Foundation
         else if !requests.isEmpty || rangeDiagnostics.current != nil { reason = 3 }
         else if window == nil { reason = 4 }
         else if window?.epoch != epoch || window?.generation != generation { reason = 6 }
-        else if window!.reads >= 2 || contiguousEnd(from: window!.cursor) >= window!.target { reason = 7 }
+        else if !needsForwardRefill(window!, start: contiguousEnd(from: window!.cursor)) { reason = 7 }
         else { reason = 8 }
-        let forward = PlaybackRangeDiagnostics.Forward(cursor: window?.cursor, target: window?.target,
+        return PlaybackRangeDiagnostics.Forward(cursor: window?.cursor, target: window?.target,
             epoch: window?.epoch, generation: window?.generation, evidence: window?.evidence,
             reads: window?.reads ?? 0, suspended: false, enabled: enabled,
             paused: paused, quarantined: quarantined, reason: reason, invalidation: lastInvalidationReason.rawValue,
             windowID: window == nil ? nil : forwardWindowID, transitionID: metrics.diagnostics.forwardTransitionID,
-            transition: metrics.diagnostics.forwardTransition.rawValue)
+            transition: metrics.diagnostics.forwardTransition.rawValue,
+            contiguousAheadBytes: window.map { Int(contiguousEnd(from: $0.cursor) - $0.cursor) },
+            lowWatermarkBytes: configuration.lowWatermarkBytes,
+            highWatermarkBytes: configuration.lowWatermarkBytes == nil ? nil : configuration.capacityBytes,
+            refilling: configuration.lowWatermarkBytes == nil ? nil : window?.refilling)
+    }
+    /// Wait-boundary only: existing full map is unchanged.
+    public func rangeDiagnosticSnapshot() -> PlaybackRangeDiagnostics.Snapshot {
+        let forward = forwardDiagnosticSnapshot()
         let cache = storage.entries.map { entry in
             PlaybackRangeDiagnostics.CacheEntry(range: entry.range, producer: entry.diagnostic?.id,
                 generation: entry.diagnostic?.generation, epoch: entry.diagnostic?.epoch)
         }
         return rangeDiagnostics.snapshot(session: metrics.diagnostics.sessionID, generation: generation, epoch: epoch,
             now: ProcessInfo.processInfo.systemUptime, queued: requests.map(\.rangeDiagnostic), cache: cache, forward: forward)
+    }
+    /// Seek-boundary only: scalar frontier and bounded latest work, never the arena map.
+    public func seekDiagnosticSnapshot() -> PlaybackSeekSourceSnapshot {
+        .init(session: metrics.diagnostics.sessionID,generation: generation,epoch: epoch,
+            at: ProcessInfo.processInfo.systemUptime,current: rangeDiagnostics.current,
+            queued: requests.prefix(2).map(\.rangeDiagnostic),queuedCount: requests.count,recent: rangeDiagnostics.recent,
+            historyOverwritten: rangeDiagnostics.overwritten,forward: forwardDiagnosticSnapshot(),
+            sourceCalls: metrics.diagnostics.demandSourceCallCount,
+            sourceWaitMS: metrics.diagnostics.demandSourceWaitSeconds*1000,missBytes: metrics.missBytes,
+            historyHitBytes: metrics.historyHitBytes,prefetchBytes: metrics.speculativeBytes,
+            prefetchWaitMS: metrics.speculativeWaitSeconds*1000)
     }
     /// Lightweight read-only snapshot. Current source availability/recovery is
     /// separate from the last validated wrapper epoch. No transport call is made.
@@ -286,6 +364,9 @@ import Foundation
     }
     private func observedSourceCall<T>(kind: PlaybackSupplyDiagnostics.CallKind,
                                       bytes: (T) -> Int, operation: () async throws -> T) async throws -> T {
+        let flowCall=PlaybackFlowTrace.begin(.sourceCall,parent:activeRequest?.flow ?? PlaybackFlowToken.none,a:Int64(kind.rawValue),b:Int64(generation),c:Int64(epoch ?? 0))
+        var flowOutcome:Int64=0,flowBytes:Int64=0
+        defer{PlaybackFlowTrace.end(flowCall,.sourceCall,a:flowOutcome,b:flowBytes)}
         let callStart = ProcessInfo.processInfo.systemUptime
         let demand = rangeDiagnostics.current?.kind == .demand ? activeRequest : nil
         defer {
@@ -296,6 +377,7 @@ import Foundation
         rangeDiagnostics.current?.callKind = kind; rangeDiagnostics.current?.callStarted = callStart
         do {
             let value = try await operation()
+            flowBytes=Int64(bytes(value))
             let finished = ProcessInfo.processInfo.systemUptime
             supplyDiagnostics.endCall(result: .returned, bytes: bytes(value), now: finished)
             rangeDiagnostics.current?.callFinished = finished; rangeDiagnostics.current?.callResult = .returned
@@ -303,6 +385,7 @@ import Foundation
             return value
         } catch {
             let finished = ProcessInfo.processInfo.systemUptime
+            flowOutcome=error is CancellationError ? 2:3
             supplyDiagnostics.endCall(result: error is CancellationError ? .cancelled : .failed, bytes: 0, now: finished)
             rangeDiagnostics.current?.callFinished = finished
             rangeDiagnostics.current?.callResult = error is CancellationError ? .cancelled : .failed
@@ -330,6 +413,8 @@ import Foundation
     private var activeRequest: Request?
     private var activeDemand: Task<Response, any Error>?
     private var pump: Task<Void, Never>?
+    private var sourceWindowSuspended = false
+    private var sourceWindowWantsPrefetch = false
     private var idleGrace: Task<Void, any Error>?
     public init(file: MediaFile, source: any PlaybackCacheSource, configuration: Configuration = .init(),
                 diagnosticSink: (@MainActor @Sendable (PrefetchDiagnosticRecord) -> Void)? = nil) {
@@ -343,6 +428,10 @@ import Foundation
     public var recoveryActiveStartedAt: TimeInterval? { source.recoveryActiveStartedAt }
     public var recoveryActiveElapsed: TimeInterval { source.recoveryActiveElapsed }
     public func setPrefetchEnabled(_ enabled: Bool, reason: PrefetchInvalidationReason = .disabled) {
+        if sourceWindowSuspended {
+            sourceWindowWantsPrefetch = enabled
+            if enabled { return }
+        }
         let wasEnabled = self.enabled
         self.enabled = enabled && !stopped && !disabledForMemoryPressure
         retainsSeekDemand = !self.enabled && reason == .seek && !stopped && !disabledForMemoryPressure
@@ -365,6 +454,7 @@ import Foundation
         idleGrace?.cancel()
         if reason != .seek { retainsSeekDemand = false }
         generation &+= 1; admission &+= 1; retireForward(.lifecycleRetired)
+        cacheCompletions.removeAll(); updateCacheCompletionCount()
         lastInvalidationReason = reason
         if hasSpeculativeContext { record(.flush, reason: .flush) }
         if reason == .seek {
@@ -388,6 +478,7 @@ import Foundation
         if !active { setPrefetchEnabled(false, reason: .sceneInactive) }
     }
     public func cancelPlayback() {
+        let flow=PlaybackFlowTrace.begin(.controlActor,a:8,b:Int64(generation),c:Int64(epoch ?? 0));defer{PlaybackFlowTrace.end(flow,.controlActor)}
         guard !stopped else { return }
         stopped = true; setPrefetchEnabled(false, reason: .stop); source.cancelPlayback()
         if let id = supplyDiagnostics.work?.id { supplyDiagnostics.cancelWork(id: id) }
@@ -403,7 +494,50 @@ import Foundation
         }
         requests.removeAll()
     }
+    public func freshPlaybackIdentity() async throws -> PlaybackSourceIdentity {
+        guard case .identity(let identity) = try await enqueue(.identity) else {
+            throw PlaybackSourceRecoveryError.invalidResponse
+        }
+        return identity
+    }
+    public func validatePlaybackRevision(_ baseline: PlaybackSourceIdentity) throws {
+        guard let owner = source as? any PlaybackSourceRevisionProviding else {
+            throw PlaybackSourceRecoveryError.unavailable
+        }
+        try owner.validatePlaybackRevision(baseline)
+    }
+    public func awaitSourceOperationsDrained() async throws {
+        let flow=PlaybackFlowTrace.begin(.controlActor,a:9,b:Int64(generation),c:Int64(epoch ?? 0));defer{PlaybackFlowTrace.end(flow,.controlActor)}
+        guard sourceWindowSuspended, pump == nil,
+              let owner = source as? any PlaybackSourceRevisionProviding else {
+            throw PlaybackSourceRecoveryError.unavailable
+        }
+        try await owner.awaitSourceOperationsDrained()
+    }
+
+    /// Parser owner has closed its own admission. Keep the same-file raw ring,
+    /// stop forward admission and join the actual pump (including speculative IO).
+    /// This alone is not a transport callback-drain witness.
+    public func suspendAndDrainForSourceWindow() async {
+        let flow=PlaybackFlowTrace.begin(.controlActor,a:6,b:Int64(generation),c:Int64(epoch ?? 0));defer{PlaybackFlowTrace.end(flow,.controlActor)}
+        if !sourceWindowSuspended {
+            let wanted = enabled
+            setPrefetchEnabled(false, reason: .seek)
+            sourceWindowSuspended = true; sourceWindowWantsPrefetch = wanted
+        }
+        if let pump { await pump.value }
+    }
+
+    public func resumeAfterSourceWindowDrain() {
+        let flow=PlaybackFlowTrace.begin(.controlActor,a:7,b:Int64(generation),c:Int64(epoch ?? 0));defer{PlaybackFlowTrace.end(flow,.controlActor)}
+        guard sourceWindowSuspended else { return }
+        let wanted = sourceWindowWantsPrefetch
+        sourceWindowSuspended = false
+        if wanted { setPrefetchEnabled(true) }
+    }
+
     public func awaitPlaybackCleanup() async throws {
+        let flow=PlaybackFlowTrace.begin(.controlActor,a:10,b:Int64(generation),c:Int64(epoch ?? 0));defer{PlaybackFlowTrace.end(flow,.controlActor)}
         cancelPlayback()
         if let pump { await pump.value }
         do {
@@ -431,7 +565,53 @@ import Foundation
         guard case .bytes(let data) = try await enqueue(.read(range)) else { throw PlaybackSourceRecoveryError.invalidResponse }
         return data
     }
-    private func enqueue(_ operation: Operation) async throws -> Response {
+    // 158: optional non-recovering tail request. The original demand alone owns fallback/recovery.
+    public func readVLCInput(_ file: MediaFile, range: Range<UInt64>, readAheadEnd: UInt64) async throws -> Data {
+        guard file == self.file, !range.isEmpty, range.count <= 524_288,
+              readAheadEnd >= range.upperBound, readAheadEnd - range.lowerBound <= 1_048_576 else { throw PlaybackSourceRecoveryError.invalidRange }
+        guard case .bytes(let data) = try await enqueue(.read(range), readAheadEnd: readAheadEnd) else { throw PlaybackSourceRecoveryError.invalidResponse }
+        return data
+    }
+    public private(set) var readAheadAttempts = 0, readAheadFailures = 0, readAheadBytes = 0
+    private func optionalReadAhead(_ request: Request, range: Range<UInt64>, token: UInt64?) async throws -> Data? {
+        guard let end = request.readAheadEnd, end > range.upperBound, let token,
+              let size, end <= size, request.generation == generation,
+              !stopped, !quarantined, !disabledForMemoryPressure, !sourceWindowSuspended,
+              enabled || paused || retainsSeekDemand, requests.isEmpty,
+              !request.cancellation.cancelled, try source.playbackCacheEpoch() == token else { return nil }
+        let expanded = range.lowerBound..<end
+        readAheadAttempts += 1
+        let flow = PlaybackFlowTrace.begin(.sourceReadAhead, parent: request.flow, a: Int64(range.count), b: Int64(expanded.count), c: Int64(clamping: token))
+        var outcome: Int64 = 3 // cancelled or an error escaping to the original caller
+        defer { PlaybackFlowTrace.end(flow, .sourceReadAhead, a: outcome, b: Int64(range.count), c: Int64(expanded.count - range.count)) }
+        let priorReservation = demandReadReservedBytes
+        demandReadReservedBytes = expanded.count; updateResident()
+        defer { demandReadReservedBytes = priorReservation; updateResident() }
+        let bytes: Data
+        do {
+            bytes = try await PlaybackFlowTrace.$parent.withValue(flow) {
+                try await observedSourceCall(kind: .read, bytes: { $0.count }) { try await source.readForPrefetch(file, range: expanded) }
+            }
+        } catch {
+            readAheadFailures += 1
+            try Task.checkCancellation()
+            guard !request.cancellation.cancelled, !stopped else { throw CancellationError() }
+            outcome = 2; return nil
+        }
+        try Task.checkCancellation()
+        guard !request.cancellation.cancelled, !stopped else { throw CancellationError() }
+        guard bytes.count == expanded.count else { readAheadFailures += 1; outcome = 4; return nil }
+        guard request.generation == generation, !quarantined, try refreshEpoch() == token else { outcome = 5; return nil }
+        // Real ring owns validated extra bytes. No extra cache and no speculative successor.
+        retainHistory(range: expanded, data: bytes, request: request, reusedCache: false)
+        readAheadBytes += bytes.count
+        outcome = 1
+        return Data(bytes.prefix(range.count))
+    }
+    private func enqueue(_ operation: Operation, readAheadEnd: UInt64? = nil) async throws -> Response {
+        let operationKind:Int64
+        switch operation {case .size:operationKind=1;case .identity:operationKind=2;case .read:operationKind=3}
+        let flow=PlaybackFlowTrace.begin(.sourceRequest,a:operationKind);defer{PlaybackFlowTrace.end(flow,.sourceRequest)}
         try Task.checkCancellation()
         guard !stopped else { _ = try source.playbackCacheEpoch(); throw CancellationError() }
         nextID &+= 1
@@ -443,9 +623,21 @@ import Foundation
         // the forward cursor. Keeping this state does not bypass grace or the queue.
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                requests.append(Request(id: id, generation: generation, operation: operation,
+                let request = Request(id: id, generation: generation, operation: operation,
                     cancellation: cancellation, submitted: ProcessInfo.processInfo.systemUptime,
-                    continuation: continuation, waitedForPrefetch: inFlight != nil))
+                    continuation: continuation, waitedForPrefetch: false)
+                request.readAheadEnd=readAheadEnd
+                request.flow=flow
+                if case .read(let range)=operation {PlaybackFlowTrace.point(flow,.sourceRequest,a:Int64(bitPattern:range.lowerBound),b:Int64(range.count),c:2)}
+                PlaybackFlowTrace.point(flow,.sourceQueued,a:Int64(requests.count),b:Int64(generation),c:Int64(epoch ?? 0))
+                if replyFromCompleteCache(request) {
+                    PlaybackFlowTrace.point(flow,.sourceAccept,a:1)
+                    if pump == nil { pump = Task(priority: .low) { await self.run() } }
+                    return
+                }
+                request.waitedForPrefetch = inFlight != nil
+                request.waitStarted = request.waitedForPrefetch ? request.submitted : nil
+                requests.append(request)
                 if inFlight != nil {
                     metrics.speculativeWaitCount &+= 1; metrics.diagnostics.waitingDemandCount &+= 1
                 }
@@ -457,15 +649,74 @@ import Foundation
             Task { @MainActor in self.cancelRequest(id) }
         }
     }
+    /// A non-suspending transaction, separate from perform's single-owner state.
+    /// Failure to qualify only falls back to the unchanged serial source path.
+    private func replyFromCompleteCache(_ request: Request) -> Bool {
+        guard case .read(let range) = request.operation, !range.isEmpty,
+              enabled, !paused, !sourceWindowSuspended, !stopped, !quarantined,
+              !request.cancellation.cancelled, request.generation == generation,
+              cacheCompletions.count < Self.cacheCompletionLimit,
+              rangeDiagnostics.current?.kind != .size,
+              !requests.contains(where: { if case .read = $0.operation { return false }; return true }),
+              let token = epoch,
+              (try? source.playbackCacheEpoch()) == token else { return false }
+        // Recheck after the source getter, which is a synchronous protocol call.
+        guard enabled, !paused, !sourceWindowSuspended, !stopped, !quarantined,
+              request.generation == generation, epoch == token,
+              !request.cancellation.cancelled,
+              PrefetchRangeObservation.measure(range, spans: readySpans + historySpans).overlapBytes == range.count else { return false }
+        let pieces = prefixPieces(in: range)
+        // A live serial snapshot owns its speculative credit. Even disjoint pieces
+        // may share an entry whose markHistory metadata fallback retires extra
+        // credit, so defer all speculative hits while such a snapshot is held.
+        guard pieces.isEmpty || demandOwnedPrefix.isEmpty else { return false }
+        // Metadata-cap fallback can retire an entire speculative entry. Legacy
+        // fixed-history callers must use perform's existing post-read trimming.
+        guard pieces.isEmpty || configuration.historyCapacityBytes == configuration.totalCapacityBytes else { return false }
+        let history = PrefetchRangeObservation.measure(range, spans: historySpans).overlapBytes
+        // Keep explicit small-history configurations on their original trimming path.
+        guard metrics.historyBytes + range.count - history <= configuration.historyCapacityBytes else { return false }
+        let data = storage.copy(range)
+        metrics.directCacheSnapshotBytes = data.count
+        metrics.maxDirectCacheSnapshotBytes = max(metrics.maxDirectCacheSnapshotBytes, data.count)
+        defer { metrics.directCacheSnapshotBytes = 0 }
+        // A truthful prepared-snapshot observation only, never a consumed-credit
+        // event. This callback can cancel, seek or invalidate; acceptance is later.
+        record(.prefixDetached, reason: .none, request: request)
+        let current = try? source.playbackCacheEpoch()
+        guard current == token, epoch == token, request.generation == generation,
+              enabled, !paused, !sourceWindowSuspended, !stopped, !quarantined,
+              request.cancellation.accept() else { return false }
+        // No await, source getter or external callback from acceptance to resume.
+        // Union/classification cannot change during this actor-isolated interval.
+        metrics.historyHitBytes += UInt64(history)
+        metrics.hitBytes += UInt64(data.count - history)
+        metrics.retiredSpeculativeBytes += UInt64(storage.markHistory(range))
+        updateResident()
+        metrics.directCacheReplyCount &+= 1
+        metrics.directCacheReplyBytes += UInt64(data.count)
+        metrics.diagnostics.demandFullCacheCount &+= 1
+        let now = ProcessInfo.processInfo.systemUptime
+        metrics.demandSeconds += max(0, now - request.submitted)
+        var diagnostic = request.rangeDiagnostic
+        diagnostic.started = request.submitted; diagnostic.finished = now
+        diagnostic.select(available: [range], selected: [range], epoch: token, fragmented: false, validation: false)
+        diagnostic.completionEpoch = token; diagnostic.result = .returned
+        diagnostic.bytes = data.count; diagnostic.usedCachedBytes = data.count
+        rangeDiagnostics.append(diagnostic)
+        cacheCompletions.append(.init(id: request.id, generation: request.generation, epoch: token, range: range))
+        updateCacheCompletionCount()
+        request.continuation.resume(returning: .bytes(data))
+        return true
+    }
     private func cancelRequest(_ id: UInt64) {
+        // A late cancel must not touch a completed cache reply's FIFO marker or
+        // another live work item (prefetch IDs use their own numbering).
+        guard let request = requests.first(where: { $0.id == id })
+            ?? (activeRequest?.id == id ? activeRequest : nil) else { return }
         supplyDiagnostics.cancelWork(id: id)
-        let request = requests.first { $0.id == id } ?? (activeRequest?.id == id ? activeRequest : nil)
-        if let request {
-            // A cancellation callback that arrives after its request completed must
-            // not alter another request's subsequently established window.
-            cancelForwardDemand(request)
-            settleWait(request)
-        }
+        cancelForwardDemand(request)
+        settleWait(request)
         if hasSpeculativeContext { record(.demandCancelled, reason: .requestCancelled, request: request, requestID: id) }
         if handoff?.requestID == id {
             handoff = nil
@@ -486,8 +737,23 @@ import Foundation
     }
     private func run() async {
         while true {
+            // The previous active source/demand has actually drained. A later
+            // ordinary request must not overtake an accepted cache completion.
+            if let completion = cacheCompletions.first,
+               requests.first.map({ completion.id < $0.id }) ?? true {
+                cacheCompletions.removeFirst(); updateCacheCompletionCount()
+                let current = try? source.playbackCacheEpoch()
+                if !stopped, !sourceWindowSuspended, !quarantined,
+                   completion.generation == generation, completion.epoch == epoch,
+                   current == completion.epoch {
+                    completeForwardDemand(completion.range, token: completion.epoch, version: completion.generation)
+                }
+                continue
+            }
             if !requests.isEmpty {
                 let request = requests.removeFirst()
+                let flowWork=PlaybackFlowTrace.begin(.sourceWork,parent:request.flow,a:Int64(requests.count),b:Int64(generation),c:Int64(epoch ?? 0))
+                defer{PlaybackFlowTrace.end(flowWork,.sourceWork)}
                 if request.cancellation.cancelled || stopped {
                     cancelForwardDemand(request)
                     if hasSpeculativeContext { record(.demandCancelled, reason: stopped ? .stopped : .requestCancelled, request: request) }
@@ -505,13 +771,13 @@ import Foundation
                 rangeDiagnostics.current?.started = ProcessInfo.processInfo.systemUptime
                 activeRequest = request
                 let diagnosticKind: PlaybackSupplyDiagnostics.Kind
-                switch request.operation { case .size: diagnosticKind = .size; case .read: diagnosticKind = .demand }
+                switch request.operation { case .size, .identity: diagnosticKind = .size; case .read: diagnosticKind = .demand }
                 supplyDiagnostics.beginWork(kind: diagnosticKind, id: request.id, generation: request.generation,
                     epoch: epoch, now: ProcessInfo.processInfo.systemUptime)
                 if request.waitedForPrefetch { record(.demandDequeued, reason: .none, request: request) }
                 metrics.demandWaitSeconds += max(0, ProcessInfo.processInfo.systemUptime - request.submitted)
                 let task = Task(priority: .userInitiated) {
-                    try await PlaybackReadDiagnosticContext.$correlation.withValue(request.rangeDiagnostic.correlation) { try await self.perform(request) }
+                    try await PlaybackFlowTrace.$parent.withValue(flowWork) {try await PlaybackReadDiagnosticContext.$correlation.withValue(request.rangeDiagnostic.correlation) { try await self.perform(request) }}
                 }
                 activeDemand = task
                 let result = await task.result
@@ -546,6 +812,7 @@ import Foundation
                     }
                 }
                 rangeDiagnostics.finish(result: outcome, bytes: returnedBytes, epoch: epoch, now: ProcessInfo.processInfo.systemUptime)
+                PlaybackFlowTrace.point(request.flow,.sourceAccept,a:outcome == .returned ? 0:outcome == .cancelled ? 2:3,b:Int64(returnedBytes),c:Int64(request.usedCachedBytes))
                 supplyDiagnostics.endWork()
                 activeDemand = nil
                 if activeRequest?.id == request.id {
@@ -557,7 +824,7 @@ import Foundation
                 }
             } else if await prefetchOne() {
                 continue
-            } else if requests.isEmpty { break }
+            } else if requests.isEmpty && cacheCompletions.isEmpty { break }
         }
         pump = nil
     }
@@ -587,6 +854,13 @@ import Foundation
         defer { metrics.demandSeconds += max(0, ProcessInfo.processInfo.systemUptime - started) }
         try Task.checkCancellation()
         switch request.operation {
+        case .identity:
+            guard let owner = source as? any PlaybackSourceRevisionProviding else {
+                throw PlaybackSourceRecoveryError.unavailable
+            }
+            let observed = try await owner.freshPlaybackIdentity()
+            size = observed.size; _ = try refreshEpoch()
+            return .identity(observed)
         case .size:
             let value = try await observedSourceCall(kind: .size, bytes: { _ in 0 }) { try await source.fileSize(for: file) }
             try Task.checkCancellation()
@@ -643,6 +917,8 @@ import Foundation
                         try await source.readCompletingCachedSegments(file, range: range, segments: segments, epoch: token)
                     }
                     data = completed.data; usedCached = completed.usedCachedBytes
+                } else if request.readAheadEnd != nil, let prefetched = try await optionalReadAhead(request, range: range, token: token) {
+                    data = prefetched; usedCached = 0
                 } else {
                     data = try await observedSourceCall(kind: .read, bytes: { $0.count }) { try await source.read(file, range: range) }; usedCached = 0
                 }
@@ -736,9 +1012,18 @@ import Foundation
     }
     private func accountEviction(_ entries: [CircularStorage.Entry], reason: PrefetchDiagnosticReason,
                                  request: Request? = nil) {
-        if let evidence = forwardWindow?.evidence, entries.contains(where: {
+        if let window = forwardWindow, let evidence = window.evidence, entries.contains(where: {
             $0.range.overlaps(evidence)
-        }) { retireForward(.evidenceRetired) }
+        }) {
+            let end = contiguousEnd(from: window.cursor)
+            if configuration.lowWatermarkBytes != nil, window.epoch == epoch,
+               window.generation == generation, end > window.cursor {
+                // An older backread can overwrite the last delivered demand while
+                // the useful forward region remains. Transfer only the retention
+                // witness; do not move the demand frontier, target or read allowance.
+                forwardWindow?.evidence = window.cursor..<min(end, window.cursor + UInt64(configuration.chunkBytes))
+            } else { retireForward(.evidenceRetired) }
+        }
         for entry in entries {
             if let context = entry.diagnostic {
                 discard(entry.range.count, reason: reason, context: context, request: request)
@@ -957,7 +1242,7 @@ import Foundation
     private func prefetchOne() async -> Bool {
         // One terminal reason per pump admission attempt, not per request or elapsed time.
         guard enabled, !stopped else { metrics.diagnostics.noAdmissionDisabledOrEpoch &+= 1; return false }
-        guard requests.isEmpty else { metrics.diagnostics.noAdmissionDemandOrGrace &+= 1; return false }
+        guard requests.isEmpty, cacheCompletions.isEmpty, activeRequest == nil, activeDemand == nil else { metrics.diagnostics.noAdmissionDemandOrGrace &+= 1; return false }
         guard canResumeForward else { metrics.diagnostics.noAdmissionWindow &+= 1; return false }
         let token: UInt64
         do { guard let value = try refreshEpoch() else {
@@ -972,17 +1257,20 @@ import Foundation
         let start = contiguousEnd(from: lastEnd)
         // Retained spans can advance start beyond the target. Validate before
         // constructing a Range (or subtracting its bounds), not afterwards.
-        guard start < target else {
+        if start >= target { forwardWindow?.refilling = false }
+        guard needsForwardRefill(window, start: start) else {
             metrics.diagnostics.noAdmissionFilledOrBudget &+= 1; return false
         }
         let ahead = lastEnd..<target
-        let room = configuration.capacityBytes - PrefetchRangeObservation.measure(ahead, spans: readySpans).overlapBytes
-        guard room > 0, window.reads < 2 else {
+        let room = configuration.lowWatermarkBytes == nil
+            ? configuration.capacityBytes - PrefetchRangeObservation.measure(ahead, spans: readySpans).overlapBytes
+            : Int(target - start)
+        guard room > 0, window.reads < forwardReadLimit else {
             metrics.diagnostics.noAdmissionFilledOrBudget &+= 1; return false
         }
         let length = min(configuration.chunkBytes, room, Int(target - start))
         // Do not repeatedly top up tiny holes at every short demand boundary. The
-        // second full read needs a real idle window and enough budget; EOF may be short.
+        // next full read needs a real idle window and enough budget; EOF may be short.
         guard length == configuration.chunkBytes || start + UInt64(length) == size else {
             metrics.diagnostics.noAdmissionFilledOrBudget &+= 1; return false
         }
@@ -998,7 +1286,7 @@ import Foundation
         guard version == generation, enabled, !stopped else {
             metrics.diagnostics.noAdmissionDisabledOrEpoch &+= 1; return false
         }
-        guard case .success = graceResult, requests.isEmpty, admitted == admission else {
+        guard case .success = graceResult, requests.isEmpty, cacheCompletions.isEmpty, admitted == admission else {
             metrics.diagnostics.noAdmissionDemandOrGrace &+= 1
             // The sole queued demand can be cancelled while this grace is asleep.
             // Keep the pump alive to retry a NEW full grace for still-valid credit,
@@ -1010,6 +1298,7 @@ import Foundation
             metrics.diagnostics.noAdmissionDisabledOrEpoch &+= 1; return false
         } }
         catch { metrics.diagnostics.noAdmissionDisabledOrEpoch &+= 1; return false }
+        if configuration.lowWatermarkBytes != nil { forwardWindow?.refilling = true }
         forwardWindow?.reads += 1
         nextPrefetchID &+= 1
         let context = PrefetchContext(id: nextPrefetchID, range: range, generation: version, epoch: token,
@@ -1057,6 +1346,11 @@ import Foundation
                 return false
             }
             retainForward(range, data: data, context: context)
+            // Close hysteresis on commit, before the next queued formal demand
+            // can advance the cursor and accidentally inherit a finished cycle.
+            if let window = forwardWindow, contiguousEnd(from: window.cursor) >= window.target {
+                forwardWindow?.refilling = false
+            }
             if admitted != admission, let request = requests.first,
                !request.cancellation.cancelled, case .read(let needed) = request.operation,
                PrefetchRangeObservation.measure(needed, spans: [range]).overlapBytes > 0 {

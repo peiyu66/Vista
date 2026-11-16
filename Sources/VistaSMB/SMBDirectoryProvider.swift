@@ -306,7 +306,7 @@ public actor SMBDirectoryProvider: DirectoryProvider, MediaByteSource {
             kind = ["mp4", "mkv", "mov", "m4v"].contains(ext) ? .video : .other
         }
         let entry = FileEntry(name, kind, hiddenAttribute: item[.isHiddenKey] as? Bool, modifiedAt:item[.contentModificationDateKey] as? Date,byteSize:(item[.fileSizeKey] as? NSNumber)?.int64Value,createdAt:item[.creationDateKey] as? Date)
-        return entry.isHidden ? nil : entry
+        return entry.isBrowserVisible ? entry : nil
     }
 
     public func tags(at path:DirectoryPath) async throws ->FinderTagState {

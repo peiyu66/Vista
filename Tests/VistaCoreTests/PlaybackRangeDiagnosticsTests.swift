@@ -292,7 +292,7 @@ import Testing
   w.callKind = .cachedSegments;w.callStarted=Double.greatestFiniteMagnitude;w.callFinished=Double.greatestFiniteMagnitude;w.callResult = .returned;w.callBytes=Int.max
   var d=D();for _ in 0..<128 {d.append(w)};d.current=w
   let map=(0..<1024).map{_ in D.CacheEntry(range:range,producer:maximum,generation:maximum,epoch:maximum)}
-  let forward=D.Forward(cursor:maximum-8,target:maximum,epoch:maximum,generation:maximum,evidence:range,reads:2,suspended:true,enabled:true,paused:true,quarantined:true,reason:7,windowID:maximum,transitionID:maximum,transition:PrefetchForwardTransition.cancelPreserved.rawValue)
+  let forward=D.Forward(cursor:maximum-8,target:maximum,epoch:maximum,generation:maximum,evidence:range,reads:2,suspended:true,enabled:true,paused:true,quarantined:true,reason:7,windowID:maximum,transitionID:maximum,transition:PrefetchForwardTransition.cancelPreserved.rawValue,contiguousAheadBytes:16*1_048_576,lowWatermarkBytes:8*1_048_576,highWatermarkBytes:16*1_048_576,refilling:true)
   let source=d.snapshot(session:maximum,generation:maximum,epoch:maximum,now:Double.greatestFiniteMagnitude,queued:Array(repeating:w,count:8),cache:map,forward:forward)
   var bridge=PlaybackBridgeDiagnostics()
   for i in UInt64(1)...128 {
@@ -328,5 +328,12 @@ import Testing
   #expect(decoded.waitEpisode?.start.ranges?.recent.first?.range?.upper==UInt64.max)
   #expect(decoded.waitEpisode?.start.ranges?.cacheOmitted==0 && decoded.waitEpisode?.start.ranges?.recent.first?.omittedIntersections==1016)
   #expect(decoded.waitEpisode?.start.bridge?.recent.count==64)
+  // All four boundaries carry the production 129 watermark fields within the archive bound.
+  for boundary in [decoded.waitEpisode?.start, decoded.waitEpisode?.resume, decoded.waitEpisode?.exit, decoded.waitEpisode?.frame] {
+   #expect(boundary?.ranges?.forward.contiguousAheadBytes == 16*1_048_576)
+   #expect(boundary?.ranges?.forward.lowWatermarkBytes == 8*1_048_576)
+   #expect(boundary?.ranges?.forward.highWatermarkBytes == 16*1_048_576)
+   #expect(boundary?.ranges?.forward.refilling == true)
+  }
  }
 }

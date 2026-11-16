@@ -21,7 +21,19 @@ public struct FileEntry: Identifiable, Hashable, Sendable {
     public let byteSize: Int64?
     public var finderTags:FinderTagState = .notLoaded
     public var isHidden: Bool { name.hasPrefix(".") || hiddenAttribute == true }
+    /// Browser visibility only; playback/container support remains separate.
+    public var isBrowserVisible: Bool {
+        !isHidden && (kind == .directory || (kind == .video && ["mp4", "mkv", "mov", "m4v"].contains((name as NSString).pathExtension.lowercased())))
+    }
     public var id: String { name }
+    /// Container-only browser distinction; does not infer codec support.
+    public var browserSymbolName: String {
+        switch kind {
+        case .directory: "folder.fill"
+        case .video: (name as NSString).pathExtension.lowercased() == "mkv" ? "film.fill" : "film"
+        case .other: "doc"
+        }
+    }
     public init(_ name: String, _ kind: Kind, hiddenAttribute: Bool? = nil, modifiedAt: Date? = nil, byteSize: Int64? = nil, createdAt: Date? = nil) {
         self.name = name; self.kind = kind; self.hiddenAttribute = hiddenAttribute
         self.modifiedAt = modifiedAt.flatMap { $0.timeIntervalSince1970.isFinite ? $0:nil }
