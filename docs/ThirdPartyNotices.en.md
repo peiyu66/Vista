@@ -1,7 +1,3 @@
----
-lang: en
----
-
 # Third-party copyrights and licenses
 
 [中文](../THIRD_PARTY_NOTICES.md)

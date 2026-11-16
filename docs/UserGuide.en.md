@@ -1,7 +1,3 @@
----
-lang: en
----
-
 # User guide and compatibility
 
 [中文](使用說明.md)

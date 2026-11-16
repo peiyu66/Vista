@@ -1,7 +1,3 @@
----
-lang: en
----
-
 # Demo video
 
 [中文](示範影片.md) · [Back to Home](../README.en.md)

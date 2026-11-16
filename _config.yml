@@ -18,8 +18,25 @@ defaults:
       path: ""
     values:
       layout: default
+      lang: zh-Hant
   - scope:
       path: "README.en.md"
+    values:
+      lang: en
+  - scope:
+      path: "docs/DemoVideo.en.md"
+    values:
+      lang: en
+  - scope:
+      path: "docs/PrivacyPolicy.en.md"
+    values:
+      lang: en
+  - scope:
+      path: "docs/ThirdPartyNotices.en.md"
+    values:
+      lang: en
+  - scope:
+      path: "docs/UserGuide.en.md"
     values:
       lang: en
 exclude:
