@@ -1700,6 +1700,7 @@ private struct VistaAboutView:View {
                     NavigationLink("Apple Material") { VistaBundledNotice(title:"Apple Material",resource:"Apple-Stereo-LICENSE") }
                 }
                 Section {
+                    Link(VistaL10n.text("Vista 首頁"),destination:URL(string:VistaL10n.isEnglish ? "https://peiyu66.github.io/Vista/README.en.html":"https://peiyu66.github.io/Vista/")!)
                     Link(VistaL10n.text("使用說明"),destination:URL(string:VistaL10n.isEnglish ? "https://peiyu66.github.io/Vista/docs/UserGuide.en.html":"https://peiyu66.github.io/Vista/docs/%E4%BD%BF%E7%94%A8%E8%AA%AA%E6%98%8E.html")!)
                     Link(VistaL10n.text("原始碼與開發文件"),destination:URL(string:"https://peiyu66.github.io/Vista/docs/development/開發文件入口.html")!)
                 }
@@ -1713,20 +1714,38 @@ private struct VistaAboutView:View {
 private struct VistaBundledNotice:View {
     let title:String
     let resource:String
-    @State private var content:AttributedString?
+    @State private var content:[VistaNoticeBlock]?
     var body:some View {
         ScrollView {
-            Text(content ?? AttributedString(VistaL10n.text("正在讀取…"))).font(.callout).textSelection(.enabled)
-                .frame(maxWidth:.infinity,alignment:.leading).padding(24)
+            VStack(alignment:.leading,spacing:16) {
+                if let content {
+                    ForEach(content) { block in
+                        if let level=block.headingLevel {
+                            Text(block.text).font(headingFont(level)).accessibilityAddTraits(.isHeader)
+                        } else {
+                            Text(block.text).font(.callout)
+                        }
+                    }
+                } else {
+                    Text(VistaL10n.text("正在讀取…")).font(.callout)
+                }
+            }.textSelection(.enabled).frame(maxWidth:.infinity,alignment:.leading).padding(24)
         }.navigationTitle(title)
         .environment(\.openURL,OpenURLAction {url in VistaNoticeLinks.allows(url) ? .systemAction : .discarded})
         .task(id:resource) {
             let localizedResource = VistaL10n.isEnglish && resource != "Apple-Stereo-LICENSE" ? resource+"-en" : resource
             guard let url=Bundle.main.url(forResource:localizedResource,withExtension:"txt"),
                   let text=try? String(contentsOf:url,encoding:.utf8) else {
-                content=VistaNoticeLinks.render(VistaL10n.text("無法讀取聲明。可至 github.com/peiyu66/Vista 查閱。"),markdown:false);return
+                content=VistaNoticeLinks.blocks(VistaL10n.text("無法讀取聲明。可至 github.com/peiyu66/Vista 查閱。"),markdown:false);return
             }
-            content=VistaNoticeLinks.render(text,markdown:resource == "VistaPrivacy")
+            content=VistaNoticeLinks.blocks(text,markdown:resource == "VistaPrivacy")
+        }
+    }
+    private func headingFont(_ level:Int)->Font {
+        switch level {
+        case 1: .title2.bold()
+        case 2: .title3.bold()
+        default: .headline
         }
     }
 }

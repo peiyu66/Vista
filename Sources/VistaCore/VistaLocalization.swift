@@ -10,12 +10,50 @@ public enum VistaL10n {
 }
 
 
+struct VistaNoticeBlock: Identifiable {
+    let id: Int
+    let headingLevel: Int?
+    let text: AttributedString
+}
+
 /// Keeps notices offline; only explicit HTTP(S) destinations become interactive.
 enum VistaNoticeLinks {
     static func allows(_ url: URL) -> Bool {
         guard let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
               let host = url.host, !host.isEmpty else { return false }
         return true
+    }
+
+    /// The bundled privacy policies use ATX headings and ordinary paragraphs.
+    /// License notices bypass block parsing so their original whitespace survives.
+    static func blocks(_ source: String, markdown: Bool) -> [VistaNoticeBlock] {
+        guard markdown else {
+            return [VistaNoticeBlock(id: 0, headingLevel: nil, text: render(source, markdown: false))]
+        }
+        var result: [VistaNoticeBlock] = []
+        var paragraph: [String] = []
+        func finishParagraph() {
+            guard !paragraph.isEmpty else { return }
+            result.append(VistaNoticeBlock(id: result.count, headingLevel: nil,
+                                           text: render(paragraph.joined(separator: "\n"), markdown: true)))
+            paragraph.removeAll(keepingCapacity: true)
+        }
+        for line in source.components(separatedBy: .newlines) {
+            let level = line.prefix { $0 == "#" }.count
+            let remainder = line.dropFirst(level)
+            if (1...6).contains(level), remainder.first == " " || remainder.first == "\t" {
+                finishParagraph()
+                let heading = String(remainder).trimmingCharacters(in: .whitespaces)
+                result.append(VistaNoticeBlock(id: result.count, headingLevel: level,
+                                               text: render(heading, markdown: true)))
+            } else if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                finishParagraph()
+            } else {
+                paragraph.append(line)
+            }
+        }
+        finishParagraph()
+        return result
     }
 
     static func render(_ source: String, markdown: Bool) -> AttributedString {
