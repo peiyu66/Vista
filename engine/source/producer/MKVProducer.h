@@ -106,6 +106,7 @@ typedef struct SAPSourceCallbacks {
     All consumers must rebuild for this isolated struct extension. */
  uint32_t readExactChecksRevision;
 } SAPSourceCallbacks;
+// An empty receipt string disables diagnostic ledger output; playback remains unchanged.
 SAP* sap_create(SAPSourceCallbacks source,const char* output,const char* receipt,
  uint64_t generation,int64_t requestedGlobalNS,unsigned maxUnackedSegments);
 int sap_start(SAP*);

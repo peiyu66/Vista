@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "baseCommit": "7a95c2453899f356ebdeda82f8aae56289a7e804",
+  "scope": "Compile-time output split; unchanged playback recovery strategy",
+  "productHashes": {
+    "Sources/VistaCore/LifecycleDiagnostics.swift": "ce5ff3ca5e073f52576fcda55482f7b5e4fd21f7b9fe3619c2207de270d365e8",
+    "Sources/VistaCore/PlaybackFlowTrace.swift": "c98493c34ab240489c61d0e684d651dcb0ed10f62e8e3635d045551bbb0f0209",
+    "Sources/VistaMedia/PlaybackController.swift": "78e5793da8a61f9b1145f95282acab11b1ca83b6e18f8a623fc3b0e5fe6b4f1c",
+    "Sources/VistaMedia/PlaybackMetrics.swift": "536fc63ca5ef3aaa7591f6c3f0cf0628b2c2c19c7cc8ff314230760a6a8e31e6",
+    "Vista.xcodeproj/project.pbxproj": "2b1324067b7e7d4a4fefbbcc18ed35d0a2fa5de7fe72cb0bf32415f651802844",
+    "VistaBrowser.xcodeproj/project.pbxproj": "ca78cbee59a7ffbb976e51230b809813a399829ae91adbc54d22af569c54abe8",
+    "engine/source/producer/MKVProducer.cpp": "82d3af0f1f440fc3c6d776da0f1e986c4ff94bc8a7f32d8751bd4a5f9d395a69",
+    "engine/source/producer/MKVProducer.h": "461ffedab6792b6db93b15b00e259fae0031e02c2617bf4ee150b821860760d5",
+    "engine/source/source-adapter/SourceAdapterSession.swift": "b7268472c0a79d4629d44ed98b7440dc91089d3ddea373707b2587daaa342ce4",
+    "engine/vlc/Sources/VistaVLCBridge.c": "ac3d4663f5b758fa269c31dce2e5c5ccfb04ec347cdbbfb8c0bcc78359ea56c3"
+  },
+  "nativeArtifacts": {
+    "engine/libs/xros/MKVProducer.o": "e96467a281c7be7f0e616369de9e012445f5ac956bd0b256a395a6729df1036b",
+    "engine/vlc/Vendor/libvlc-vista-cache-xros.a": "bc3a4b03e430a5ad3c979600b4c2770eaa6cc7a0d4eab7e41e51f76c9d5d63a5"
+  },
+  "verification": {
+    "unsignedXrosRelease": true,
+    "unsignedXrosDiagnostic": true,
+    "optimizedHostStoresBothModes": true,
+    "nativeEventASanUBSan": true,
+    "rendererIdentityFallback": true,
+    "directRecoveryPolicyChecks": 255,
+    "debugLifecycleTests": 30
+  },
+  "limitations": [
+    "No device playback test",
+    "No promise of suppressing Apple system or arbitrary third-party direct output",
+    "Historical diagnostic files preserved",
+    "Some in-memory diagnostic computation remains"
+  ]
+}

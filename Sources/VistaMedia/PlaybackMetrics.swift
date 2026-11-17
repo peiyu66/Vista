@@ -544,6 +544,7 @@ public final class PlaybackLogStore:@unchecked Sendable {
  public init(directory:URL,limit:Int=196608,retention:TimeInterval=7*86400){self.directory=directory;self.limit=max(4096,limit);self.recoveryLimit=max(4096,limit/3);self.retention=max(0,retention)}
  public var status:(failures:Int,dropped:Int){lock.lock();defer{lock.unlock()};return(failures,dropped)}
  public func enqueue(_ record:PlaybackLogRecord){
+  guard VistaDiagnostics.enabled else{return}
   lock.lock()
   if record.event == .waitEpisode {
    // Four fixed-shape records, separate from the original eight pending entries.
@@ -843,6 +844,7 @@ public final class ControllerCheckpointStore:@unchecked Sendable {
  private static func add(_ value:inout UInt64){if value<UInt64.max {value+=1}}
  public var status:Snapshot {lock.lock();defer{lock.unlock()};return Snapshot(rejected:rejected,writeFailures:writeFailures,statusWriteFailures:statusWriteFailures,accepting:accepting)}
  public func enqueue(records:[PlaybackLogRecord],controllerInstance:UUID,playerGeneration:UUID?,referenceRevision:UInt64) {
+  guard VistaDiagnostics.enabled else{return}
   lock.lock();Self.add(&attempts);let sequence=attempts;lock.unlock()
   let valid=Self.validRecords(records) && records.allSatisfy{$0.build==producerBuild}
   let packet=Packet(schema:1,producerBuild:producerBuild,run:run,sequence:sequence,controllerInstance:controllerInstance.uuidString,playerGeneration:playerGeneration?.uuidString,referenceRevision:referenceRevision,recordedUptime:ProcessInfo.processInfo.systemUptime,records:records)

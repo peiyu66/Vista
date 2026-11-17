@@ -97,6 +97,7 @@ static unsigned bounded_increment(atomic_uint *value, unsigned limit) {
 }
 /* Passive, bounded log evidence only. Never installs audio callbacks or changes volume. */
 static void audio_log(void *opaque, int level, const libvlc_log_t *ctx, const char *fmt, va_list args) {
+#if VISTA_DIAGNOSTICS
     VLCProbeEngine *e=opaque; const char *module=NULL, *object=NULL;
     libvlc_log_get_context(ctx,&module,NULL,NULL);
     libvlc_log_get_object(ctx,&object,NULL,NULL);
@@ -112,6 +113,10 @@ static void audio_log(void *opaque, int level, const libvlc_log_t *ctx, const ch
     bool timing=strstr(message,"drift") || strstr(message,"late") || strstr(message,"underrun") || strstr(message,"timing") || strstr(message,"latency") || strstr(message,"outputLatency") || strstr(message,"IOBufferDuration");
     if(error)bounded_increment(&e->audio_error_logs,1024);
     if(timing)bounded_increment(&e->audio_timing_logs,1024);
+#else
+    /* Keep a consuming callback: do not restore LibVLC's default stderr logger. */
+    (void)opaque;(void)level;(void)ctx;(void)fmt;(void)args;
+#endif
 
 }
 static void time_update(void *opaque,const libvlc_media_player_time_point_t *point) {
@@ -158,7 +163,12 @@ VLCProbeEngine *VLCVistaCreate(void *context,uint64_t size,VLCVistaReadAt read_a
  e->context=context;e->size=size;e->read_at=read_at;e->validate=validate;e->verify_eof=verify_eof;
  e->bridge=vista_cvpx_create(NULL,NULL);
  e->vsc_engine=vsc_register(e->bridge);
+#if VISTA_DIAGNOSTICS
  const char *options[]={"--aout=audiounit_ios","--no-spu","--no-osd","--verbose=2"};
+#else
+ /* Suppress logging during libvlc_new too, before our callback is installed. */
+ const char *options[]={"--aout=audiounit_ios","--no-spu","--no-osd","--quiet"};
+#endif
  e->vlc=libvlc_new(sizeof(options)/sizeof(options[0]),options);
  if(!e->bridge||!e->vlc)goto fail;
  /* Consume raw VLC messages only in this bounded matcher. Never persist paths/URLs. */

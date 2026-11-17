@@ -4,7 +4,7 @@
 
 [Back to Home](../README.en.md)
 
-Updated: November 16, 2026. This policy describes how Vista currently handles data.
+Updated: November 17, 2026. This policy describes how Vista currently handles data.
 
 ## Videos and connections
 
@@ -22,13 +22,15 @@ SMB passwords are stored in Vista-specific system Keychain items, configured for
 
 ## Head pose and interaction
 
-Vista uses system-provided head position, orientation, and interaction information to place the video and controls, sampling pose during operations such as loading, resetting, or dragging. Diagnostics also save some headset/controller positions, orientations, gravity measurements, and sampling times to investigate placement and interaction issues. This information may reflect spatial position and usage patterns; the absence of a name does not make it entirely non-sensitive.
+Vista uses system-provided head position, orientation, and interaction information to place the video and controls, sampling pose during operations such as loading, resetting, or dragging. Self-built diagnostic versions also save some headset/controller positions, orientations, gravity measurements, and sampling times to investigate placement and interaction issues. This information may reflect spatial position and usage patterns; the absence of a name does not make it entirely non-sensitive.
 
 Vista uses system gestures and head tracking. It does not include camera-image or microphone-recording capture features and does not obtain raw eye-gaze points. The system’s handling of sensor data is governed by Apple’s information and settings.
 
 ## On-device diagnostics and support
 
-Vista records playback, source reads, errors, performance, interaction events, and some pose diagnostics on the device. Different records have different size and retention rules: some rotate by size or date, while others stop recording when a capacity limit is reached. There is no promise that every record is automatically deleted after a fixed number of days.
+The App Store Release configuration disables Vista’s own persistent diagnostic logs. Necessary playback state and error messages remain available. Operating-system diagnostics are controlled by the operating system. Previously created diagnostic files are not automatically removed by this change.
+
+Self-built Debug and Diagnostic versions record playback, source reads, errors, performance, interaction events, and some pose diagnostics on the device. Different records have different size and retention rules: some rotate by size or date, while others stop recording when a capacity limit is reached. There is no promise that every record is automatically deleted after a fixed number of days.
 
 Vista does not provide a feature that automatically uploads videos or diagnostics to a developer server, and it does not integrate advertising or third-party analytics services. The servers, file services, and operating system you use still handle data under their own policies.
 

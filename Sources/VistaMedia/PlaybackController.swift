@@ -187,6 +187,7 @@ import VistaCore
     }
 
     public func persistDiagnostics(event:PlaybackLogEvent = .sample,projection:Int=0,layout:Int=0,route:Int = -1,rendererValues:[PlaybackLogField:Double]=[:]) {
+        guard VistaDiagnostics.enabled else{return}
         var v=nativeSession?.anonymousLogValues() ?? [:]
         v[.position]=position;v[.playing]=isPlaying ? 1:0;v[.paused]=isPaused ? 1:0;v[.preparing]=isPreparing ? 1:0;v[.buffering]=isBuffering ? 1:0
         if let info=trackInfo {v[.width]=Double(info.width);v[.height]=Double(info.height)}

@@ -94,7 +94,7 @@ private final class ProducerHandle: @unchecked Sendable {
         let window = try await owner.beginWindow(generation: generation)
         let context = SourceCallbackContext(window: window)
         let callbacks = SAPSourceCallbacks(context: Unmanaged.passUnretained(context).toOpaque(), knownSize: owner.knownSize, readExact: adapterReadCallback, validate: adapterValidateCallback, verifyEOF: adapterEOFCallback, readExactChecksRevision: 1)
-        guard let handle = sap_create(callbacks, output.path, receipt.path, generation, requestedGlobalNS, maxUnackedSegments) else {
+        guard let handle = sap_create(callbacks, output.path, VistaDiagnostics.enabled ? receipt.path : "", generation, requestedGlobalNS, maxUnackedSegments) else {
             _ = try await owner.retireAndDrain(stamp: window.stamp); throw AdapterFailure.rejected("producer create")
         }
         return SourceAdapterSession(owner: owner, context: context, handle: handle, performanceBaseline: performanceBaseline)

@@ -287,7 +287,7 @@ public enum PlaybackFlowTrace {
   return try $parent.withValue(token){try operation()}
  }
  public static func start(session:UInt64)->Bool {
-  #if VISTA_VLC_CANDIDATE
+  #if VISTA_VLC_CANDIDATE && (DEBUG || VISTA_DIAGNOSTICS)
   guard VFStart(session) != 0 else{return false}
   Task.detached(priority:.utility){await PlaybackFlowWriter.shared.begin(session:session)}
   return true
@@ -296,68 +296,68 @@ public enum PlaybackFlowTrace {
   #endif
  }
  public static var session:UInt64 {
-  #if VISTA_VLC_CANDIDATE
+  #if VISTA_VLC_CANDIDATE && (DEBUG || VISTA_DIAGNOSTICS)
   return VFSession()
   #else
   return 0
   #endif
  }
  public static var nativeParent:PlaybackFlowToken {
-  #if VISTA_VLC_CANDIDATE
+  #if VISTA_VLC_CANDIDATE && (DEBUG || VISTA_DIAGNOSTICS)
   return .init(VFParent())
   #else
   return .none
   #endif
  }
  public static func begin(_ stage:PlaybackFlowStage,parent:PlaybackFlowToken?=nil,a:Int64=0,b:Int64=0,c:Int64=0)->PlaybackFlowToken {
-  #if VISTA_VLC_CANDIDATE
+  #if VISTA_VLC_CANDIDATE && (DEBUG || VISTA_DIAGNOSTICS)
   return .init(VFNew(stage.rawValue,1,parent?.id ?? self.parent.id,a,b,c))
   #else
   return .none
   #endif
  }
  @discardableResult public static func mark(_ stage:PlaybackFlowStage,parent:PlaybackFlowToken?=nil,a:Int64=0,b:Int64=0,c:Int64=0)->PlaybackFlowToken {
-  #if VISTA_VLC_CANDIDATE
+  #if VISTA_VLC_CANDIDATE && (DEBUG || VISTA_DIAGNOSTICS)
   return .init(VFNew(stage.rawValue,3,parent?.id ?? self.parent.id,a,b,c))
   #else
   return .none
   #endif
  }
  public static func point(_ token:PlaybackFlowToken,_ stage:PlaybackFlowStage,a:Int64=0,b:Int64=0,c:Int64=0) {
-  #if VISTA_VLC_CANDIDATE
+  #if VISTA_VLC_CANDIDATE && (DEBUG || VISTA_DIAGNOSTICS)
   VFEmit(token.id,stage.rawValue,3,0,a,b,c)
   #endif
  }
  public static func end(_ token:PlaybackFlowToken,_ stage:PlaybackFlowStage,a:Int64=0,b:Int64=0,c:Int64=0) {
-  #if VISTA_VLC_CANDIDATE
+  #if VISTA_VLC_CANDIDATE && (DEBUG || VISTA_DIAGNOSTICS)
   VFEmit(token.id,stage.rawValue,2,0,a,b,c)
   #endif
  }
  public static func trigger(_ reason:UInt32) {
-  #if VISTA_VLC_CANDIDATE
+  #if VISTA_VLC_CANDIDATE && (DEBUG || VISTA_DIAGNOSTICS)
   _=VFTrigger(reason)
   #endif
  }
  public static func anchor() {
-  #if VISTA_VLC_CANDIDATE
+  #if VISTA_VLC_CANDIDATE && (DEBUG || VISTA_DIAGNOSTICS)
   let before=VFClock(),uptime=ProcessInfo.processInfo.systemUptime
   mark(.anchor,a:Int64(uptime*1e6),b:before)
   #endif
  }
  /// Called after player/source/renderer drain. Finalizes the already streaming spool.
  public static func finish(session:UInt64) async ->[String:UInt64] {
-  #if VISTA_VLC_CANDIDATE
+  #if VISTA_VLC_CANDIDATE && (DEBUG || VISTA_DIAGNOSTICS)
   return await PlaybackFlowWriter.shared.finish(session:session)
   #else
   return ["status":2]
   #endif
  }
- #if VISTA_FLOW_TEST && VISTA_VLC_CANDIDATE
+ #if VISTA_FLOW_TEST && VISTA_VLC_CANDIDATE && (DEBUG || VISTA_DIAGNOSTICS)
  public static func testDestination(_ url:URL,recordLimit:Int=4_194_304,secondsLimit:Double=600,diskLimit:UInt64=805_306_368,sessionLimit:Int=8,chunkLimit:Int=2048) async {await PlaybackFlowWriter.shared.destination(url,recordLimit:recordLimit,secondsLimit:secondsLimit,diskLimit:diskLimit,sessionLimit:sessionLimit,chunkLimit:chunkLimit)}
  public static func testFlush(session:UInt64) async {await PlaybackFlowWriter.shared.begin(session:session);await PlaybackFlowWriter.shared.drain(session:session)}
  #endif
 }
-#if VISTA_VLC_CANDIDATE
+#if VISTA_VLC_CANDIDATE && (DEBUG || VISTA_DIAGNOSTICS)
 /// Utility-only, bounded spool. Playback/renderer threads only write scalar RAM
 /// records. Continuous chunks retain later stalls and their recovery, independent
 /// of triggers. File failures/limits stop diagnostics, never playback.

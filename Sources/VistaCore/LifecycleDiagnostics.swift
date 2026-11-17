@@ -78,6 +78,15 @@ public enum LifecycleContext {
     public static var navigation:UInt64 {request.navigation}
 }
 
+/// Compile-time only: shipping builds have no app-owned diagnostic output.
+public enum VistaDiagnostics {
+    #if DEBUG || VISTA_DIAGNOSTICS
+    public static let enabled = true
+    #else
+    public static let enabled = false
+    #endif
+}
+
 /// Full timeline is asynchronous. Selected low-frequency boundaries also wait for a separate durable journal.
 public final class LifecycleDiagnostics:@unchecked Sendable {
     public static let shared=LifecycleDiagnostics(directory:FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent("VistaLifecycleDiagnostics",isDirectory:true))
@@ -97,8 +106,8 @@ public final class LifecycleDiagnostics:@unchecked Sendable {
     private var timelineWriterForTesting:(@Sendable (FileHandle,Data)throws->Void)?
     #endif
     public init(directory:URL,build:String=Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "0",fileLimit:Int=262144,pendingLimit:Int=128,mirror:Bool=true,criticalDurability:Bool=true,criticalFileLimit:Int=65536) {
-        self.directory=directory;self.fileLimit=max(4096,fileLimit);self.pendingLimit=max(2,pendingLimit);self.mirror=mirror
-        self.criticalJournal=criticalDurability ? LifecycleCriticalJournal(directory:directory,fileLimit:criticalFileLimit):nil
+        self.directory=directory;self.fileLimit=max(4096,fileLimit);self.pendingLimit=max(2,pendingLimit);self.mirror=mirror && VistaDiagnostics.enabled
+        self.criticalJournal=criticalDurability && VistaDiagnostics.enabled ? LifecycleCriticalJournal(directory:directory,fileLimit:criticalFileLimit):nil
         self.build=build.count<=12 && !build.isEmpty && build.allSatisfy{$0.isASCII && ($0.isNumber || $0==".")} ? build:"0"
         run=UInt64.random(in:1...9_007_199_254_740_991)
         record(.processStart)
@@ -112,6 +121,7 @@ public final class LifecycleDiagnostics:@unchecked Sendable {
         return identifier
     }
     public func record(_ event:LifecycleEvent,_ values:[LifecycleField:Double]=[:],priority:Bool=true) {
+        guard VistaDiagnostics.enabled else{return}
         let wall=Date().timeIntervalSince1970,up=ProcessInfo.processInfo.systemUptime
         let fields=Dictionary(uniqueKeysWithValues:values.filter{$0.value.isFinite && abs($0.value)<=9_007_199_254_740_991}.map{($0.key.rawValue,$0.value)})
         let durable=criticalJournal != nil && Self.requiresDurableCopy(event,fields:fields)
@@ -164,7 +174,7 @@ public final class LifecycleDiagnostics:@unchecked Sendable {
         let now=ProcessInfo.processInfo.systemUptime
         lock.lock();identifier += 1;let id=identifier
         let sampled=operation == .rangeRead || operation == .tagRead || operation == .finderInfo
-        let emit = !sampled || now-(lastSample[operation] ?? -Double.infinity)>=1
+        let emit = VistaDiagnostics.enabled && (!sampled || now-(lastSample[operation] ?? -Double.infinity)>=1)
         if sampled,emit {lastSample[operation]=now}
         if !emit {omitted += 1};lock.unlock()
         let token=LifecycleOperationToken(request:id,session:session,operation:operation,navigation:navigation,parentRequest:LifecycleContext.request.request,started:now,recorded:emit)
@@ -172,6 +182,7 @@ public final class LifecycleDiagnostics:@unchecked Sendable {
         return token
     }
     public func finish(_ token:LifecycleOperationToken,failure:LifecycleFailure?=nil) {
+        guard VistaDiagnostics.enabled else{return}
         let expectedMetadataFailure=(token.operation == .tagRead || token.operation == .finderInfo) && failure?.domain==1 && [ENOENT,ENODATA,ENOTSUP,EACCES,EPERM].contains(Int32(failure?.code ?? 0))
         if !token.recorded,(failure==nil || expectedMetadataFailure) {lock.lock();omitted += 1;lock.unlock();return}
         var values=fields(token);values[.durationMS]=max(0,(ProcessInfo.processInfo.systemUptime-token.started)*1000)
