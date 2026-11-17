@@ -13,9 +13,9 @@ public final class SystemVideoSamples {
     public init() {}
     public func reset() {base=nil;format=nil;settings=nil}
     public static func fallbackReason(_ frame:DecodedVideoFrame,settings:VRSettings)->String? {
-        if frame.transform != .identity {return "影片旋轉"}
-        if settings.projection == .equidistantFisheye180 {return "魚眼投影"}
-        if settings.crop(width:CVPixelBufferGetWidth(frame.pixel),height:CVPixelBufferGetHeight(frame.pixel),rightEye:false) == nil {return "影格尺寸"}
+        if frame.transform != .identity {return VistaL10n.text("影片旋轉")}
+        if settings.projection == .equidistantFisheye180 {return VistaL10n.text("魚眼投影")}
+        if settings.crop(width:CVPixelBufferGetWidth(frame.pixel),height:CVPixelBufferGetHeight(frame.pixel),rightEye:false) == nil {return VistaL10n.text("影格尺寸")}
         return nil
     }
     public static func supports(_ frame:DecodedVideoFrame,settings:VRSettings)->Bool {fallbackReason(frame,settings:settings)==nil}

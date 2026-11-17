@@ -9,19 +9,19 @@ enum VLCPlaybackError: Int, Error, LocalizedError {
     var errorDescription:String? {
         let reason:String
         switch self {
-        case .source:reason="來源讀取失敗或檔案已變更，請重新開啟影片。"
-        case .engine:reason="VLC 播放器無法啟動這個檔案。"
-        case .video:reason="這個視訊軌道無法以本候選的硬體解碼路徑播放。"
-        case .audio:reason="本候選僅包含 AAC 音訊解碼，這個音軌無法播放。"
-        case .geometry:reason="這個影片的裁切、旋轉或像素比例尚未接入 VLC 呈現路徑。"
-        case .time:reason="影片時間資訊無效，已停止播放。"
-        case .seek:reason="跳轉未能確認新的畫面與時間位置，已停止播放。請重新開啟影片。"
-        case .renderer:reason="影片呈現尚未準備好，請重新開啟 VR 播放。"
-        case .drain:reason="播放資源尚未完成清理，請關閉後重試。"
-        case .timeout:reason="等候可呈現的影片畫面逾時，已停止播放。"
-        case .rate:reason="這個影片無法套用選定倍率，已停止播放。"
+        case .source:reason=VistaL10n.text("來源讀取失敗或檔案已變更，請重新開啟影片。")
+        case .engine:reason=VistaL10n.text("VLC 播放器無法啟動這個檔案。")
+        case .video:reason=VistaL10n.text("這個視訊軌道無法以目前的硬體解碼路徑播放。")
+        case .audio:reason=VistaL10n.text("目前的 MKV 播放路徑只支援 AAC 音訊，這個音軌無法播放。")
+        case .geometry:reason=VistaL10n.text("這個影片的裁切、旋轉或像素比例尚未接入 VLC 呈現路徑。")
+        case .time:reason=VistaL10n.text("影片時間資訊無效，已停止播放。")
+        case .seek:reason=VistaL10n.text("跳轉未能確認新的畫面與時間位置，已停止播放。請重新開啟影片。")
+        case .renderer:reason=VistaL10n.text("影片呈現尚未準備好，請重新開啟 VR 播放。")
+        case .drain:reason=VistaL10n.text("播放資源尚未完成清理，請關閉後重試。")
+        case .timeout:reason=VistaL10n.text("等候可呈現的影片畫面逾時，已停止播放。")
+        case .rate:reason=VistaL10n.text("這個影片無法套用選定倍率，已停止播放。")
         }
-        return "MKV 無法播放："+reason
+        return VistaL10n.text("MKV 無法播放：")+reason
     }
 }
 private let vlcReadAt:@convention(c) (UnsafeMutableRawPointer?,UInt64,UnsafeMutablePointer<UInt8>?,Int)->Int = { opaque,offset,output,count in
@@ -874,7 +874,7 @@ struct VLCControlDiagnostics {
     var clearPresentation:(()->Void)?
     var drainPresentation:((Bool)async throws->Void)?
     private(set) var failureMessage:String?
-    private(set) var diagnosticsText="VLC 候選／等待硬體解碼確認"
+    private(set) var diagnosticsText=VistaL10n.text("VLC／等待硬體解碼確認")
     private var controlDiagnostics=VLCControlDiagnostics()
     private var displayPolicy=VLCDisplayRecoveryPolicy()
     private var catchupWatch189=VLCCatchupRecovery189()
@@ -1954,7 +1954,7 @@ struct VLCControlDiagnostics {
                 if state != lastState{lastState=state;onState(state)}
                 let speed=speedStatus;if speed != lastSpeed{lastSpeed=speed;onSpeed(speed)}
                 let d=poll.diagnostics
-                diagnosticsText="VLC 候選／硬解確認 \(d.vt_hardware)/\(d.vt_checks)／影格 \(d.frames_taken)／音訊開啟訊息觀測 \(d.audio_native_opened ? 1:0)"
+                diagnosticsText=VistaL10n.text("VLC／硬解確認 %@/%@／影格 %@／音訊開啟訊息觀測 %@" , String(describing: d.vt_hardware), String(describing: d.vt_checks), String(describing: d.frames_taken), String(describing: d.audio_native_opened ? 1:0))
 
                 if d.ended {
                     guard ready else{throw VLCPlaybackError.video};onState(.ended);break

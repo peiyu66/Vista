@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "baseCommit": "238e23da6a812785021a1e37dae974e0e5f7fb38",
+  "acceptedRepairBuild": 209,
+  "version": "1.0",
+  "build": 210,
+  "configuration": "Release",
+  "productHashes": {
+    "Resources/MKVThirdPartyNotices-en.txt": "2831e3ad489dda07583dff23550224998981623aa76c5bc6f7ea2e297dd2f37b",
+    "Resources/MKVThirdPartyNotices.txt": "0cb7e9712e5244a96dc09d53d5e99537fd697fadca99fe7afc90faa7dc180ded",
+    "Resources/PrivacyInfo.xcprivacy": "7209f1463b7df6f4a799ff5fd43f7f2f50999bd208372558f7154b2970de6eef",
+    "Resources/VLCThirdPartyNotices-en.txt": "38cf2f8ac7e8806f472f7c799cca38f708dbc80d1ad05cf730f225274ec29d47",
+    "Resources/VLCThirdPartyNotices.txt": "0ed1bcc1e28ff68f42e98d7109c9155df7ef4ef5b461db4e083926998c125a4e",
+    "Resources/VistaPrivacy-en.txt": "1103cead8b5e911c8acfc23683d77aa330603162a2f9f50de35012168626958b",
+    "Resources/VistaPrivacy.txt": "d7f83dc47c3e96fb00df337f511adc4a5a22f0e4b8f9dd673540d1522cfcf448",
+    "Resources/en.lproj/InfoPlist.strings": "0011ef7af45424bfbaf45f5977a3d375f9acae10d5c1111394a1fc228254bf46",
+    "Resources/en.lproj/Localizable.strings": "401180376c6a88e3e6246f92cac873df5bb34dc83a5a004dca9231f02b71162e",
+    "Resources/zh-Hant.lproj/InfoPlist.strings": "cf9cf18eab50f4eda0608407d6b83d3aa233e0630539c974a0aa68d4cbdbdcee",
+    "Resources/zh-Hant.lproj/Localizable.strings": "0a75be47e2f0b5125debf9a69941b773f70c11079e9bb3dc8ff543c88fcd1468",
+    "Sources/VistaCore/Browser.swift": "bce796391f37a6f28095f20ea7d6302e0dd7a579949c1cc2263ce0ab34542c97",
+    "Sources/VistaCore/LocalDirectoryProvider.swift": "f5da3edc3b862081c0ee2ef5daaeb231411b621e93f447bb3c455e8be118ddb7",
+    "Sources/VistaCore/PlaybackSpeed.swift": "a623d3ecd4e733b0f1511e907ff7d1d4f7de41ed6bbf3d3d11b76324df8a90b3",
+    "Sources/VistaCore/VRMetadata.swift": "f82e0aad46a6c828f819b6a16912a908fc0ff2d69acc45e6f14b37caf861c703",
+    "Sources/VistaCore/VRProjection.swift": "db90b02862dbc0da837bd61ee42371c199b1d5567d7485de9b7f468e623e10b2",
+    "Sources/VistaCore/VistaLocalization.swift": "ff0f2d40a4d5f9606d769d2d225ac4179cb195762c2f8cd369b2a8af07898ac2",
+    "Sources/VistaMedia/HardwarePlayback.swift": "b5555f16d3d512b6365d0d4e51d394dacb9ae997ea3480f2283a645965d9c0bc",
+    "Sources/VistaMedia/LocalMKV/MKVDiagnostics.swift": "b8a53b82f540578af3c1c864f41d6a974ca61f558e79da9715c5dccd4ce883fe",
+    "Sources/VistaMedia/LocalMKV/MKVEngineBinding.swift": "485987a7db7c843db99d077afab51ff49838869164191e3d37dd0dfb8678521d",
+    "Sources/VistaMedia/LocalMKV/MKVFileImport.swift": "229771d6b52d00ed88ad4b69c9240f75895c98d3272183eaad7b2f674d3d5d54",
+    "Sources/VistaMedia/LocalMKV/MKVPlaybackDriver.swift": "89bb0da0511ad4d60b71a00cc6bdae16725856fac9e83bf4450137135c8aeca7",
+    "Sources/VistaMedia/NativePlaybackSession.swift": "060e3db590da88bd722543299685b250caed365cf0a703d35e6ae19f17171fda",
+    "Sources/VistaMedia/PlaybackController.swift": "1b653402bc9048d7f028e21f2db9b7c34774b74ae7d705014e169caa3643b7e0",
+    "Sources/VistaMedia/PlaybackMetrics.swift": "6b443dc3ce7972c095bc0b8d949b24256beacee6ea7e2969014b4b1478d98b6f",
+    "Sources/VistaMedia/SystemVideoPresenter.swift": "04a54b82881a4420f63aaad0877abe4dc21020d3ead65ef0e4b97a1f0fc895ba",
+    "Sources/VistaMedia/SystemVideoSamples.swift": "bfe1bdb92a83a34a55a4bc82c35676a526cb5d2545ae112ea248631610542a01",
+    "Vista.xcodeproj/project.pbxproj": "5ba859023f7733950c7c9c84f4eca3ce1a024b155e6b1334c5da4049653ef812",
+    "VistaApp/PlaybackView.swift": "6bb9142a44c10e61284fb001075dd2e99a8c6ffcd60d0766149da9409bf46c41",
+    "VistaApp/SMBDiscovery.swift": "19e97cf742984584c87196958ca5f40a9d16a26ad67c11571b1f3b33aa17e40a",
+    "VistaApp/ShortcutBrowser.swift": "43c846db3eb44778a8beffe231cef9a44d5c1db42378256e0b0eb2e97ff24538",
+    "VistaApp/VRPresentation.swift": "4431859f45b1d97742bbe36644b0c7ef92b1186cd4ff1a2ecd35036ff60856c9",
+    "VistaApp/VRRenderer.swift": "5a567c5ad77d88901e96ef07717c3a34d28fee358b0ad8615800268b0863db80",
+    "VistaBrowser.xcodeproj/project.pbxproj": "cc294413f40985ffeb861fbb0d163f5c8b13e970de876846d772f31d4e1f2565",
+    "engine/vlc/Sources/VLCPlaybackDriver.swift": "d01a38c53c577da4673035a05ce6ecdb7228da3e8846cba6e2327fe672eeb344"
+  },
+  "unchangedNativeSourceHashes": {
+    "NativeBuild/overlay/build.py": "5865341184f4c6cd1effc23d8f09edd6efb981acc6aa45d40126cda780de7f0d",
+    "NativeBuild/overlay/inputs-manifest.json": "e0ae917adfa67c225394041c6e08ad76d667f7a2e48c935b285b2892ae569e11",
+    "NativeBuild/overlay/inputs/current/vista-recovery-145/native/source/src/input/input.c": "06e485bb62b5f9bbc41d7b2a5649e3c7a8c52cf3f43851cfce8e367a1a709436",
+    "NativeBuild/overlay/inputs/current/vista-recovery-153/native/source/src/input/es_out.c": "e23086a3bd17816c0144f6b8e6ddd92d04731946cb375e98630ccc81e7a7391d",
+    "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/src/input/decoder.c": "fa9f41fcc167c0561095722504e83b4200413a15dc954ece9c3201266d9ac21f",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/include/vlc_demux.h": "dfdf8194ae02044d474dc6cd7ff4febcfb5ed77a53f95820c4a47607c994463e",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/include/vlc_es_out.h": "67ec526d05cf82eedb17c2d6262a0a1037007ecb4c7faa070e6e6d626028f494",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/include/vlc_interrupt.h": "ff1dfdaba8b495d5e12cd0cf67e403bcbf9f0f802351f35acfc2af41d03a276c",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/include/vlc_media_library.h": "16e9b00deb251621f9883437fe3d40eb139f6d3528f0731835b72bd28f40619e",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/include/vlc_stream.h": "3ef1ceec15072ad87890f8297529543f5be3ba95585ee8b4b84115272776ca59",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/include/vlc_vout_osd.h": "831da65a7a379374dec548599d8668ac1ffe67966abe9c174892f7c4422e4868",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/src/player/player.h": "459d3397181443f5947b4354acf664770fa011a168d127d8ab05f5900ff64d14",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/vista_hold187.h": "36adf4ba89731c5be5b61fdb47ac808e42b4148bb6a4486903e1773144b5bf90",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/vista_hold187_internal.h": "7cb2fb2ca85143c7e4aba0ca8e7397c96fcb04921dc1805805b6beee0322a430",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/vista_hold187_player.c": "166ab450c9ae41bb784ebd43fe5b3d0ff4826b96b9e6e781154099fef10b4dbd",
+    "NativeBuild/overlay/recipes.json": "d8b0c84cc4555a86d6a7f6ae16322823a4ae4d47a599cfaeff082b53e3cc9fb7",
+    "engine/vlc/Sources/VistaVLCBridge.c": "2b2e0730bac54ddd561ea9087fdf547461c9864f84f43ea6acbd32a59a21d8f7",
+    "engine/vlc/Sources/VistaVLCBridge.h": "ff9b35611855650d71cb06179fc924f9eb44be4050431f13e1d30aa5e6c6b4ac"
+  },
+  "nativeArtifactHashes": {
+    "engine/vlc/Vendor/libvlc-vista-cache-xros.a": "458fb37458b90b6b0cfd5cbf3f584e27417876e99d4533cc50991edd26a162eb",
+    "engine/libs/xros/MKVProducer.o": "e96467a281c7be7f0e616369de9e012445f5ac956bd0b256a395a6729df1036b"
+  },
+  "unsignedArchiveBinarySHA256": "e7120cba490decbea73fa1603490fee2f2189bef5520dd719a741c7fac9243a0",
+  "tests": {
+    "localizedLookupsPerLanguage": 449,
+    "literalLookupKeys": 432,
+    "languages": [
+      "en",
+      "zh-Hant"
+    ],
+    "noticeResourcesParsed": 6,
+    "pagesDestinationsHTTP200": 11,
+    "directRecoveryAssertionsPerMode": 255,
+    "postHoldAssertionsPerMode": 41,
+    "recoveryModes": [
+      "Onone",
+      "O"
+    ],
+    "loggingReleaseAndDiagnosticPassed": true,
+    "fullWriterRuntimeInheritedFromIdentical209Sources": {
+      "ReleaseFiles": 0,
+      "DiagnosticFiles": 6
+    },
+    "releaseFlowWriterSymbolAbsent": true,
+    "inAppPrivacyWebsiteNavigationAbsent": true
+  },
+  "artifactChecks": {
+    "bilingualResourcesMatchSource": true,
+    "privacyManifestMatchesSource": true,
+    "appleMaterialBytesPreserved": true,
+    "noticeBytesMatchSource": true,
+    "ffmpegAarch64CRCObjectNotLoaded": true
+  },
+  "limits": [
+    "Release archive and development-signed installation are distinct from App Store distribution signing and review.",
+    "Full device playback controls and physical audiovisual synchronization were not rerun for210.",
+    "Connect current metadata, distribution export, upload processing and review status require separate live verification.",
+    "Apple system and unmediated third-party diagnostics are outside Vista custom-log checks."
+  ]
+}

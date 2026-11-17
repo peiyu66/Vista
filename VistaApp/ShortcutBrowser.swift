@@ -157,12 +157,12 @@ import Observation
     func cancelTagSort() {
         tagRevision += 1;tagTask?.cancel();request?.cancel();parentRequest?.cancel();generation += 1
         parentLoading=false;loading=false;tagsLoading=false;tagsPaused=true
-        tagSortMessage="已暫停標籤讀取";tagUnresolved=0
+        tagSortMessage=VistaL10n.text("已暫停標籤讀取");tagUnresolved=0
     }
     func resumeTags() {tagsPaused=false;loadTags()}
     func sortAvailableTags() {
         entries=sort.sorted(entries)
-        tagSortMessage="已排序已取得的標籤；\(tagUnresolved) 項未確認"
+        tagSortMessage=VistaL10n.text("已排序已取得的標籤；%@ 項未確認" , String(describing: tagUnresolved))
     }
 
     var showSize=true {didSet {saveDisplayPreferences()}}
@@ -224,18 +224,18 @@ import Observation
     func mediaPath(_ path:[String],source:SavedSource)->[String] {source.isFolderSource ? path:Array(path.dropFirst())}
     func openManualShare() {
         let name=manualShare.trimmingCharacters(in:.whitespacesAndNewlines)
-        guard isHostRoot,SavedLocations.validComponent(name),let sourceID else{error="請輸入有效分享名稱。";return}
+        guard isHostRoot,SavedLocations.validComponent(name),let sourceID else{error=VistaL10n.text("請輸入有效分享名稱。");return}
         browse(source:sourceID,path:[name])
     }
     private var localFolderTitle:String?
-    var currentTitle: String { (source?.kind == .local ? localFolderTitle:nil) ?? components.last ?? source?.share.nonempty ?? source?.name ?? "資料夾" }
+    var currentTitle: String { (source?.kind == .local ? localFolderTitle:nil) ?? components.last ?? source?.share.nonempty ?? source?.name ?? VistaL10n.text("資料夾") }
     var activeShortcut: FolderShortcut? { saved.shortcuts.first {$0.id==shortcutID && $0.sourceID==sourceID} }
     var belowShortcutRoot: Bool {
         guard !editing,let root=activeShortcut?.components else {return false}
         return components.count>root.count && components.starts(with:root)
     }
     var canGoBack: Bool { editing ? !components.isEmpty : belowShortcutRoot }
-    var parentTitle: String { components.dropLast().last ?? source?.share.nonempty ?? source?.name ?? "資料夾" }
+    var parentTitle: String { components.dropLast().last ?? source?.share.nonempty ?? source?.name ?? VistaL10n.text("資料夾") }
     func home() {guard let item=activeShortcut,!editing else{return};selectShortcut(item)}
     var alreadySaved: Bool { saved.shortcuts.contains {$0.sourceID==sourceID && $0.components==components} }
     init(testFixture: Bool=false, resetFixture: Bool=false) {
@@ -272,7 +272,7 @@ import Observation
             }
             #endif
         } catch {
-            saved = testFixture ? .emptyPrototype : .empty; storageHealthy=false; notice="無法讀取已保存的設定；原資料保留，本次不會覆寫。"
+            saved = testFixture ? .emptyPrototype : .empty; storageHealthy=false; notice=VistaL10n.text("無法讀取已保存的設定；原資料保留，本次不會覆寫。")
         }
         restoreDisplayPreferences(testing:testFixture,reset:resetFixture || (testFixture && !ProcessInfo.processInfo.arguments.contains("--persist-display-test")))
     }
@@ -291,7 +291,7 @@ import Observation
                 var stale=false
                 let previous=try URL(resolvingBookmarkData:old,options:[.withoutUI],relativeTo:nil,bookmarkDataIsStale:&stale)
                 guard previous.standardizedFileURL == url.standardizedFileURL else {
-                    notice="請選取原資料夾；其他資料夾請使用加入資料夾。";return
+                    notice=VistaL10n.text("請選取原資料夾；其他資料夾請使用加入資料夾。");return
                 }
                 candidate.sources[index].localBookmark=bookmark
                 try store.save(candidate);saved=candidate;localProviders[id]=nil;localTagEvidence.remove(id)
@@ -302,7 +302,7 @@ import Observation
                 try store.save(candidate);saved=candidate;browse(source:source.id,path:[])
             }
             notice=nil
-        } catch {notice="無法取得資料夾存取權，請重新選取；原捷徑保留。"}
+        } catch {notice=VistaL10n.text("無法取得資料夾存取權，請重新選取；原捷徑保留。")}
     }
     func start() {
         guard sourceID==nil, !editing else { return }
@@ -353,14 +353,14 @@ import Observation
         if entry.kind == .directory {browse(source:sourceID,path:components+[entry.name])}
         else {
             selection=entry.id
-            guard entry.kind == .video,let source else {notice="此檔案不是可播放的影片。";return}
+            guard entry.kind == .video,let source else {notice=VistaL10n.text("此檔案不是可播放的影片。");return}
             let directory=DirectoryPath(mediaPath(components,source:source))
             let mediaSource:any MediaByteSource
             if source.kind == .local {
-                do {mediaSource=try localProvider(source)} catch {notice="請在編輯模式重新授權本機資料夾。";return}
+                do {mediaSource=try localProvider(source)} catch {notice=VistaL10n.text("請在編輯模式重新授權本機資料夾。");return}
             } else if source.isDemo {mediaSource=DemoMediaSource()}
             else if let session=sessions.existingSession(for:sessionKey(source.id,components)) {mediaSource=session}
-            else {notice="連線已失效，請重新開啟資料夾。";return}
+            else {notice=VistaL10n.text("連線已失效，請重新開啟資料夾。");return}
             let playbackID=UUID()
             let sourceFactory:(@MainActor (MediaFile) throws -> any MediaByteSource)?
             if let borrowed=mediaSource as? SMBDirectoryProvider {
@@ -537,7 +537,7 @@ import Observation
                 LifecycleDiagnostics.shared.record(.resultApplied,traceValues.merging([.entryCount:Double(entries.count),.pageEntryCount:Double(page.entries.count),.listingRevision:Double(listingRevision)]){_,new in new})
                 detectTagSupport()
                 if tagsNeeded,!editing,!tagsPaused {
-                    tagSortMessage="正在列出資料夾：\(entries.count) 項"
+                    tagSortMessage=VistaL10n.text("正在列出資料夾：%@ 項" , String(describing: entries.count))
                     if nextOffset != nil {
                         loadMore()
                     } else {loadTags()}
@@ -547,12 +547,12 @@ import Observation
                 LifecycleDiagnostics.shared.record(.requestError,traceValues.merging(SMBDirectoryProvider.diagnosticFailure(for:error).fields){_,new in new})
                 guard !Task.isCancelled,token==generation else {LifecycleDiagnostics.shared.record(.resultDiscarded,traceValues.merging([.outcome:Task.isCancelled ? 1:3]){_,new in new});return}
                 if error is CancellationError {loading=false;return}
-                loading=false;self.error=source.kind == .local ? "無法讀取本機資料夾；請在編輯模式重新授權，或確認檔案已下載。":path.isEmpty && !source.isFolderSource ? "無法列出分享；可手動指定已知分享，或確認帳號權限。":source.isDemo ? "無法讀取此示範資料夾。" : "無法開啟資料夾。請確認伺服器、網路及登入資訊。"
+                loading=false;self.error=source.kind == .local ? VistaL10n.text("無法讀取本機資料夾；請在編輯模式重新授權，或確認檔案已下載。"):path.isEmpty && !source.isFolderSource ? VistaL10n.text("無法列出分享；可手動指定已知分享，或確認帳號權限。"):source.isDemo ? VistaL10n.text("無法讀取此示範資料夾。") : VistaL10n.text("無法開啟資料夾。請確認伺服器、網路及登入資訊。")
                 if source.kind == .smb {
                     switch SMBDirectoryProvider.recoveryDisposition(for:error) {
-                    case .permissionDenied:self.error="沒有讀取此資料夾的權限。"
-                    case .authenticationRequired:self.error="登入資訊已失效，請重新登入。"
-                    case .notFound:self.error="此資料夾已不存在，請返回上層。"
+                    case .permissionDenied:self.error=VistaL10n.text("沒有讀取此資料夾的權限。")
+                    case .authenticationRequired:self.error=VistaL10n.text("登入資訊已失效，請重新登入。")
+                    case .notFound:self.error=VistaL10n.text("此資料夾已不存在，請返回上層。")
                     default:break
                     }
                 }
@@ -570,7 +570,7 @@ import Observation
         let pending=entries.filter {if case .notLoaded=$0.finderTags{return true};if case .loading=$0.finderTags{return true};return false}
         guard !pending.isEmpty else {finishTagSort();return}
         tagProgress=entries.count-pending.count
-        tagSortMessage="正在讀取標籤"
+        tagSortMessage=VistaL10n.text("正在讀取標籤")
         tagsLoading=true
         tagTask=Task {
             var working=entries
@@ -646,14 +646,14 @@ import Observation
         }
         tagUnresolved=entries.filter{!$0.finderTags.isResolvedForSorting}.count
         let unavailable=entries.filter{$0.finderTags == .unavailable}.count
-        let suffix=unavailable>0 ? "；\(unavailable) 項未提供標籤":""
+        let suffix=unavailable>0 ? VistaL10n.text("；%@ 項未提供標籤" , String(describing: unavailable)):""
         if tagUnresolved==0 {
             if sort.field == .tags {entries=sort.sorted(entries)}
             tagSortMessage=nil
         } else {
             let groups=Dictionary(grouping:entries.filter{!$0.finderTags.isResolvedForSorting},by:{$0.finderTags.label})
-            let detail=groups.keys.sorted().map{"\($0) \(groups[$0]!.count)"}.joined(separator:"、")
-            tagSortMessage="\(tagUnresolved) 項未完成（\(detail)）"+suffix
+            let detail=groups.keys.sorted().map{"\($0) \(groups[$0]!.count)"}.joined(separator:VistaL10n.text("、"))
+            tagSortMessage=VistaL10n.text("%@ 項未完成（%@）" , String(describing: tagUnresolved), String(describing: detail))+suffix
         }
     }
     func refreshTags() {refreshTags(retryOnly:false)}
@@ -711,7 +711,7 @@ import Observation
             } catch {
                 LifecycleDiagnostics.shared.record(.requestError,traceValues.merging(SMBDirectoryProvider.diagnosticFailure(for:error).fields){_,new in new})
                 guard !Task.isCancelled,token==generation,!editing else{LifecycleDiagnostics.shared.record(.resultDiscarded,traceValues.merging([.outcome:Task.isCancelled ? 1:token != generation ? 3:4]){_,new in new});return}
-                parentLoading=false;parentError="無法讀取上層資料夾。"
+                parentLoading=false;parentError=VistaL10n.text("無法讀取上層資料夾。")
             }
           }
         }
@@ -725,7 +725,7 @@ import Observation
         guard editing,storageHealthy else{return}
         var candidate=saved;candidate.insertShortcut(id,at:index)
         do {try store.save(candidate);saved=candidate}
-        catch {notice="無法保存捷徑順序；原順序保留。"}
+        catch {notice=VistaL10n.text("無法保存捷徑順序；原順序保留。")}
     }
     func reorder(_ id:UUID,to target:UUID) {guard editing else{return};saved.reorderShortcut(id,to:target);persist()}
     func addShortcut() {
@@ -734,16 +734,16 @@ import Observation
         saved.shortcuts.append(FolderShortcut(sourceID:source.id,components:components,name:name));persist()
     }
     func renameLocalSource(_ id:UUID,to name:String) {
-        guard editing,storageHealthy else {notice="無法保存設定；原名稱保留。";return}
+        guard editing,storageHealthy else {notice=VistaL10n.text("無法保存設定；原名稱保留。");return}
         do {
             let candidate=try saved.renamingLocalSource(id,to:name)
             try store.save(candidate);saved=candidate;notice=nil
-        } catch {notice="無法保存顯示名稱，原名稱保留。"}
+        } catch {notice=VistaL10n.text("無法保存顯示名稱，原名稱保留。")}
     }
     func rename(_ id:UUID,to name:String) {
         guard editing,SavedLocations.validName(name),let index=saved.shortcuts.firstIndex(where:{$0.id==id}) else {return}
         var candidate=saved;candidate.shortcuts[index].name=name.trimmingCharacters(in:.whitespacesAndNewlines)
-        do {try store.save(candidate);saved=candidate} catch {notice="無法保存捷徑名稱；原名稱保留。"}
+        do {try store.save(candidate);saved=candidate} catch {notice=VistaL10n.text("無法保存捷徑名稱；原名稱保留。")}
     }
     func remove(_ id:UUID) {
         guard editing else {return}
@@ -761,11 +761,11 @@ import Observation
     }
     func connect() {
         let input=ConnectionInput(server:server,share:fallbackAuthentication ? manualShare:"IPC$",username:username)
-        guard input.isValid,!connecting else {error="請填寫主機名稱或 IPv4 與使用者名稱；使用替代驗證時需填寫已知分享。";return}
+        guard input.isValid,!connecting else {error=VistaL10n.text("請填寫主機名稱或 IPv4 與使用者名稱；使用替代驗證時需填寫已知分享。");return}
         let id=connectionSourceID ?? UUID(),secret=password
         let name=connectionName.trimmingCharacters(in:.whitespacesAndNewlines).nonempty ?? input.server
-        guard SavedLocations.validName(name) else {error="連線名稱太長或含無效字元。";return}
-        guard storageHealthy else {error="無法保存設定；請先處理設定讀取問題。";return}
+        guard SavedLocations.validName(name) else {error=VistaL10n.text("連線名稱太長或含無效字元。");return}
+        guard storageHealthy else {error=VistaL10n.text("無法保存設定；請先處理設定讀取問題。");return}
         if let existing=saved.sources.first(where:{$0.id==connectionSourceID}),input.username==existing.username,secret.isEmpty,!reauthenticating {
             var candidate=saved
             if let index=candidate.sources.firstIndex(where:{$0.id==id}) {candidate.sources[index].name=name;candidate.sources[index].tagPolicy=nil
@@ -775,10 +775,10 @@ import Observation
                 sampledFolders.removeAll();bonjourAttempted.remove(id)
                 if sourceID==id {tagsVisibilityChanged();detectTagSupport()}
             }
-            catch {self.error="無法保存名稱，原設定保留。"}
+            catch {self.error=VistaL10n.text("無法保存名稱，原設定保留。")}
             return
         }
-        if testing && !syntheticAuthentication {error="測試連線未通過，原設定保留。";offerFallbackAuthentication=true;return}
+        if testing && !syntheticAuthentication {error=VistaL10n.text("測試連線未通過，原設定保留。");offerFallbackAuthentication=true;return}
         password="";connecting=true;error=nil
         connectionTask=Task {
             do {
@@ -805,7 +805,7 @@ import Observation
                 } catch {
                     try? credentials.remove(for:credentialID)
                     connecting=false
-                    self.error="無法安全保存連線設定與密碼；原設定保留，請重試。"
+                    self.error=VistaL10n.text("無法安全保存連線設定與密碼；原設定保留，請重試。")
                     return
                 }
                 saved=candidate
@@ -814,7 +814,7 @@ import Observation
                 var cleanupNotice:String?
                 if let oldSource {
                     do {try credentials.remove(for:oldSource.credentialID ?? oldSource.id)}
-                    catch {cleanupNotice="新登入已保存；舊登入資訊未能清理。"}
+                    catch {cleanupNotice=VistaL10n.text("新登入已保存；舊登入資訊未能清理。")}
                 }
                 connecting=false;showingConnection=false
                 if returnAfterAuthentication,let previous=normalContext,previous.0==id {
@@ -823,7 +823,7 @@ import Observation
                 reauthenticating=false;notice=cleanupNotice
             } catch {
                 guard !Task.isCancelled else {return}
-                connecting=false;offerFallbackAuthentication=true;self.error="無法驗證主機登入。請確認帳密與網路；若伺服器限制 IPC$，可改用已知分享驗證。"
+                connecting=false;offerFallbackAuthentication=true;self.error=VistaL10n.text("無法驗證主機登入。請確認帳密與網路；若伺服器限制 IPC$，可改用已知分享驗證。")
             }
         }
     }
@@ -844,12 +844,12 @@ import Observation
             #if DEBUG
             if syntheticAuthentication {notice=(try credentials.load(for:source.credentialID ?? source.id)) == nil ? "合成憑證已清除":"合成憑證清除失敗"}
             #endif
-        } catch {notice="無法完整移除連線與登入資訊，請重試。"}
+        } catch {notice=VistaL10n.text("無法完整移除連線與登入資訊，請重試。")}
     }
     func cancelConnection() {connectionTask?.cancel();connecting=false;password="";showingConnection=false;error=nil}
     private func persist() {
-        guard storageHealthy else {notice="設定無法保存；原資料保留。";return}
-        do {try store.save(saved)}catch{notice="無法保存變更；重新開啟可能恢復先前設定。"}
+        guard storageHealthy else {notice=VistaL10n.text("設定無法保存；原資料保留。");return}
+        do {try store.save(saved)}catch{notice=VistaL10n.text("無法保存變更；重新開啟可能恢復先前設定。")}
     }
 }
 private extension String {var nonempty:String? {isEmpty ? nil:self}}
@@ -872,6 +872,7 @@ struct ShortcutBrowserView: View {
     @State private var browsingNetwork=false
     @State private var removingSource:SavedSource?
     @State private var selectingLocalFolder=false
+    @State private var showingAbout=false
     @State private var localReauthorizationID:UUID?
     @FocusState private var connectionFocus:ConnectionField?
     private enum ConnectionField {case username}
@@ -891,7 +892,7 @@ struct ShortcutBrowserView: View {
         if args.contains("--shortcut-ui-tests") && args.contains("--review-edit-sources") {initial.editing=true}
         if args.contains("--shortcut-ui-tests") && args.contains("--long-shortcuts") {
             initial.saved = .emptyPrototype
-            initial.saved.shortcuts=(1...40).map{FolderShortcut(sourceID:initial.saved.sources[0].id,components:["影片"],name:String(format:"Folder %02d",$0))}
+            initial.saved.shortcuts=(1...40).map{FolderShortcut(sourceID:initial.saved.sources[0].id,components:[VistaL10n.text("影片")],name:String(format:"Folder %02d",$0))}
             initial.editing=true
         }
         if args.contains("--shortcut-ui-tests") && args.contains("--columns-preview") {
@@ -942,13 +943,14 @@ struct ShortcutBrowserView: View {
                     .id(playback.id)
             }
         }
+        .sheet(isPresented:$showingAbout) { VistaAboutView(version:appVersionText) }
         .sheet(item:$removingSource) { source in
             removalConfirmation(source)
                 .presentationSizing(.fitted)
         }
         .fileImporter(isPresented:$selectingLocalFolder,allowedContentTypes:[.folder],allowsMultipleSelection:false) { result in
             if case .success(let urls)=result,let url=urls.first {model.importLocalFolder(url,replacing:localReauthorizationID)}
-            else if case .failure(let error)=result,(error as NSError).code != NSUserCancelledError {model.notice="無法開啟資料夾選擇器，請重試。"}
+            else if case .failure(let error)=result,(error as NSError).code != NSUserCancelledError {model.notice=VistaL10n.text("無法開啟資料夾選擇器，請重試。")}
             localReauthorizationID=nil
         }
         .onGeometryChange(for:CGSize.self) {$0.size} action:{BrowserWindowPreferences.save($0)}
@@ -979,12 +981,12 @@ struct ShortcutBrowserView: View {
     private func removalConfirmation(_ source:SavedSource)->some View {
         let affected=model.saved.shortcuts.filter{$0.sourceID==source.id}
         return VStack(alignment:.leading,spacing:18) {
-            Text("移除 \(source.name)？").font(.title2.bold())
-            Text(source.kind == .local ? "只移除 Vista 保存的資料夾授權及下列捷徑，不會刪除檔案。":"只移除 Vista 保存的連線、登入資訊及下列捷徑，不會刪除伺服器檔案。").foregroundStyle(.secondary)
+            Text(VistaL10n.text("移除 %@？" , String(describing: source.name))).font(.title2.bold())
+            Text(source.kind == .local ? VistaL10n.text("只移除 Vista 保存的資料夾授權及下列捷徑，不會刪除檔案。"):VistaL10n.text("只移除 Vista 保存的連線、登入資訊及下列捷徑，不會刪除伺服器檔案。")).foregroundStyle(.secondary)
             if affected.isEmpty {
-                Text("沒有捷徑指向此來源。").foregroundStyle(.secondary)
+                Text(VistaL10n.text("沒有捷徑指向此來源。")).foregroundStyle(.secondary)
             } else {
-                Text("受影響的捷徑（\(affected.count)）").font(.headline)
+                Text(VistaL10n.text("受影響的捷徑（%@）" , String(describing: affected.count))).font(.headline)
                 ScrollView {
                     LazyVStack(alignment:.leading,spacing:14) {
                         ForEach(affected) {item in
@@ -1000,10 +1002,10 @@ struct ShortcutBrowserView: View {
             }
             HStack(spacing:16) {
                 Spacer(minLength:0)
-                Button("取消"){removingSource=nil}
+                Button(VistaL10n.text("取消")){removingSource=nil}
                     .keyboardShortcut(.cancelAction)
                     .accessibilityIdentifier("cancelSourceRemoval")
-                Button(affected.isEmpty ? "移除":"一併移除",role:.destructive) {
+                Button(affected.isEmpty ? VistaL10n.text("移除"):VistaL10n.text("一併移除"),role:.destructive) {
                     model.removeSource(source,including:Set(affected.map(\.id)));removingSource=nil
                 }.buttonStyle(.borderedProminent).accessibilityIdentifier("confirmSourceRemoval")
             }
@@ -1027,17 +1029,17 @@ struct ShortcutBrowserView: View {
                 if model.belowShortcutRoot {
                     Button("Home",systemImage:"house",action:model.home).labelStyle(.iconOnly).accessibilityIdentifier("shortcutHome")
                 } else if model.editing {
-                    Button("完成",action:model.toggleEditing)
+                    Button(VistaL10n.text("完成"),action:model.toggleEditing)
                         .accessibilityIdentifier("editShortcuts")
                 } else {
-                    Button("編輯",systemImage:"gearshape",action:model.toggleEditing)
+                    Button(VistaL10n.text("編輯"),systemImage:"gearshape",action:model.toggleEditing)
                         .labelStyle(.iconOnly).accessibilityIdentifier("editShortcuts")
                 }
             }.padding(22)
             ScrollView {
                 VStack(alignment:.leading,spacing:12) {
                     if model.editing {
-                        Text("來源").font(.caption).foregroundStyle(.secondary)
+                        Text(VistaL10n.text("來源")).font(.caption).foregroundStyle(.secondary)
                         ForEach(model.saved.sources.sorted { ($0.isFolderSource ? 0:1) < ($1.isFolderSource ? 0:1) }) {source in
                             HStack(spacing:4) {
                             if source.kind == .local {
@@ -1054,32 +1056,32 @@ struct ShortcutBrowserView: View {
                             }
                             if source.kind == .local {
                                 Menu {
-                                    Button("重新授權資料夾") {localReauthorizationID=source.id;selectingLocalFolder=true}
-                                    Button("移除",role:.destructive) {removingSource=source}
+                                    Button(VistaL10n.text("重新授權資料夾")) {localReauthorizationID=source.id;selectingLocalFolder=true}
+                                    Button(VistaL10n.text("移除"),role:.destructive) {removingSource=source}
                                 } label:{Image(systemName:"ellipsis")}
-                                .accessibilityLabel("設定 \(source.name)").accessibilityIdentifier("localSourceSettings")
+                                .accessibilityLabel(VistaL10n.text("設定 %@" , String(describing: source.name))).accessibilityIdentifier("localSourceSettings")
                             }
                             if source.kind == .smb {
                                 Button {model.beginConnection(source)} label:{Image(systemName:"slider.horizontal.3")}
-                                    .buttonStyle(.plain).padding(8).accessibilityLabel("設定 \(source.name)").accessibilityIdentifier("sourceSettings-\(source.name)")
+                                    .buttonStyle(.plain).padding(8).accessibilityLabel(VistaL10n.text("設定 %@" , String(describing: source.name))).accessibilityIdentifier("sourceSettings-\(source.name)")
 
                             }
                             }
                         }
-                        Button("授權本機資料夾",systemImage:"folder.badge.plus") {localReauthorizationID=nil;selectingLocalFolder=true}
+                        Button(VistaL10n.text("授權本機資料夾"),systemImage:"folder.badge.plus") {localReauthorizationID=nil;selectingLocalFolder=true}
                             .accessibilityIdentifier("chooseLocalFolder").padding(.vertical,6)
                         if !model.saved.sources.contains(where:{$0.kind == .local}) {
-                            Text("首次選取並授權後，即可在 Vista 內瀏覽及加入捷徑。").font(.caption).foregroundStyle(.secondary)
+                            Text(VistaL10n.text("首次選取並授權後，即可在 Vista 內瀏覽及加入捷徑。")).font(.caption).foregroundStyle(.secondary)
                         }
-                        Button("連接 SMB",systemImage:"plus.circle") {model.beginConnection()}
+                        Button(VistaL10n.text("連接 SMB"),systemImage:"plus.circle") {model.beginConnection()}
                             .accessibilityIdentifier("connectSMB").padding(.vertical,6)
                         Divider().padding(.vertical,8)
-                        Text("已保存的捷徑").font(.caption).foregroundStyle(.secondary)
+                        Text(VistaL10n.text("已保存的捷徑")).font(.caption).foregroundStyle(.secondary)
                     }
                     if model.belowShortcutRoot { parentListing }
                     else {
                     if model.saved.shortcuts.isEmpty {
-                        Text(model.editing ? "尚未加入資料夾":"尚無捷徑").foregroundStyle(.secondary).padding(.vertical,12)
+                        Text(model.editing ? VistaL10n.text("尚未加入資料夾"):VistaL10n.text("尚無捷徑")).foregroundStyle(.secondary).padding(.vertical,12)
                     }
                     ForEach(Array(model.saved.shortcuts.enumerated()),id:\.element.id) {index,item in
                         if model.editing {
@@ -1098,13 +1100,13 @@ struct ShortcutBrowserView: View {
                             }
                             .overlay(alignment:.topLeading) {
                                 if ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests") {
-                                    Text("前落點").font(.system(size:1)).frame(width:40,height:4).opacity(0.01)
+                                    Text(VistaL10n.text("前落點")).font(.system(size:1)).frame(width:40,height:4).opacity(0.01)
                                         .accessibilityIdentifier("drop-before-\(item.name)")
                                 }
                             }
                             .overlay(alignment:.bottomLeading) {
                                 if ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests") {
-                                    Text("落點").font(.system(size:1)).frame(width:40,height:4).opacity(0.01)
+                                    Text(VistaL10n.text("落點")).font(.system(size:1)).frame(width:40,height:4).opacity(0.01)
                                         .accessibilityIdentifier("drop-after-\(item.name)").offset(y:8)
                                 }
                             }
@@ -1131,12 +1133,12 @@ struct ShortcutBrowserView: View {
             .accessibilityIdentifier("shortcutSidebarScroll")
             .overlay(alignment:.bottomLeading) {
                 if ProcessInfo.processInfo.arguments.contains("--long-shortcuts") {
-                    Text("下緣").font(.system(size:1)).frame(width:40,height:8).opacity(0.01).padding(.bottom,3).accessibilityIdentifier("shortcutBottomEdge")
+                    Text(VistaL10n.text("下緣")).font(.system(size:1)).frame(width:40,height:8).opacity(0.01).padding(.bottom,3).accessibilityIdentifier("shortcutBottomEdge")
                 }
             }
             .overlay(alignment:.topLeading) {
                 if ProcessInfo.processInfo.arguments.contains("--long-shortcuts") {
-                    Text("上緣").font(.system(size:1)).frame(width:40,height:8).opacity(0.01).padding(.top,3).accessibilityIdentifier("shortcutTopEdge")
+                    Text(VistaL10n.text("上緣")).font(.system(size:1)).frame(width:40,height:8).opacity(0.01).padding(.top,3).accessibilityIdentifier("shortcutTopEdge")
                 }
             }
             .task(id:shortcutDrag?.id) {
@@ -1153,11 +1155,9 @@ struct ShortcutBrowserView: View {
                 Text("ticks=\(autoTicks);drop=\(lastDrop);active=\(shortcutDrag != nil);order="+model.saved.shortcuts.map(\.name).joined(separator:","))
                     .font(.system(size:1)).frame(height:1).accessibilityIdentifier("shortcutDragTestState")
             }
-            Text(appVersionText).font(.caption2).foregroundStyle(.secondary)
-                .frame(maxWidth:.infinity,alignment:.leading)
-                .padding(.leading,model.belowShortcutRoot ? 30 : model.editing ? 28 : 31).padding(.trailing,22).padding(.top,8).padding(.bottom,14)
-                .accessibilityLabel("Vista 版本").accessibilityValue(appVersionText)
-                .accessibilityIdentifier("browserAppVersion")
+            Button(VistaL10n.text("關於 Vista"),systemImage:"info.circle") {showingAbout=true}
+                .buttonStyle(.plain).padding(.horizontal,30).padding(.top,10).padding(.bottom,24)
+                .accessibilityIdentifier("vistaAbout")
         }.background(.black.opacity(0.08))
     }
     private func clearShortcutDrag() {shortcutDrag=nil;shortcutInsertion=nil}
@@ -1174,7 +1174,7 @@ struct ShortcutBrowserView: View {
     private var insertionAtEnd:Bool {shortcutInsertion != nil && insertionBefore == nil}
     private var insertionLine:some View {
         Capsule().fill(BrowserBluePalette.emphasis).frame(height:3)
-            .allowsHitTesting(false).accessibilityLabel("捷徑插入位置")
+            .allowsHitTesting(false).accessibilityLabel(VistaL10n.text("捷徑插入位置"))
             .accessibilityIdentifier("shortcutInsertionIndicator")
     }
     private var parentListing:some View {
@@ -1187,10 +1187,10 @@ struct ShortcutBrowserView: View {
                     .background(entry.name==model.components.last ? BrowserBluePalette.selection.opacity(BrowserBluePalette.enabled ? 0.28:0.2):.clear,in:Capsule().inset(by:2)).buttonStyle(ColumnHeaderButtonStyle())
                     .accessibilityIdentifier("parent-\(entry.name)")
             }
-            if model.parentLoading {ProgressView("載入中…")}
-            if let error=model.parentError {Text(error);Button("重試上層",action:model.loadParent)}
+            if model.parentLoading {ProgressView(VistaL10n.text("載入中…"))}
+            if let error=model.parentError {Text(error);Button(VistaL10n.text("重試上層"),action:model.loadParent)}
             if model.parentOffset != nil && !model.parentLoading && model.parentError == nil {
-                Button("載入更多上層項目",action:model.loadParent).onAppear{model.loadParent()}
+                Button(VistaL10n.text("載入更多上層項目"),action:model.loadParent).onAppear{model.loadParent()}
             }
         }
     }
@@ -1234,7 +1234,7 @@ struct ShortcutBrowserView: View {
         }
         let measured=texts.reduce(CGFloat(0)) {max($0,($1 as NSString).size(withAttributes:[.font:font]).width)}
         let title:String
-        switch field {case .name:title="名稱";case .modified:title="修改日期";case .created:title="製作日期";case .size:title="檔案大小";case .tags:title="標籤"}
+        switch field {case .name:title=VistaL10n.text("名稱");case .modified:title=VistaL10n.text("修改日期");case .created:title=VistaL10n.text("製作日期");case .size:title=VistaL10n.text("檔案大小");case .tags:title=VistaL10n.text("標籤")}
         let header=(title as NSString).size(withAttributes:[.font:UIFont.preferredFont(forTextStyle:.subheadline)]).width+(field == .size ? 37:field == .tags ? 93:85)
         resize(field,to:max(ceil(measured)+(field == .name ? 38:12),ceil(header)))
     }
@@ -1247,7 +1247,7 @@ struct ShortcutBrowserView: View {
                     if model.visibleSort.field == field {Image(systemName:model.visibleSort.ascending ? "arrow.up":"arrow.down").accessibilityIdentifier("column-arrow-"+field.rawValue)}
                 }.accessibilityElement(children:.contain).accessibilityIdentifier("column-heading-"+field.rawValue).font(.subheadline.bold()).padding(.leading,field == .name ? 40:0).frame(maxWidth:.infinity,alignment:field == .name ? .leading:.center).frame(height:60).contentShape(.interaction,Capsule()).contentShape(.hoverEffect,Capsule())
             }.buttonStyle(ColumnHeaderButtonStyle()).padding(.leading,field == .name ? -10:0).accessibilityIdentifier("sort-"+field.rawValue)
-                .accessibilityValue(model.visibleSort.field == field ? (model.visibleSort.ascending ? "升冪":"降冪"):"未排序")
+                .accessibilityValue(model.visibleSort.field == field ? (model.visibleSort.ascending ? VistaL10n.text("升冪"):VistaL10n.text("降冪")):VistaL10n.text("未排序"))
             if field != .size {
                 ColumnResizeHandle(title:title,width:currentWidth,onResize:{resize(field,to:$0)},onFit:{fit(field)})
                     .accessibilityIdentifier("resize-"+field.rawValue)
@@ -1272,36 +1272,36 @@ struct ShortcutBrowserView: View {
             if let source=model.source {
                 HStack(spacing:14) {
                     Button(action:model.back){Image(systemName:"chevron.left")}.disabled(!model.canGoBack)
-                        .accessibilityLabel("回上層").accessibilityIdentifier("folderBack")
+                        .accessibilityLabel(VistaL10n.text("回上層")).accessibilityIdentifier("folderBack")
                     VStack(alignment:.leading,spacing:4) {
                         Text(model.currentTitle).font(.title2.bold()).lineLimit(1).accessibilityIdentifier("folderTitle")
-                        Text(source.isDemo ? "\(source.name) · 示範來源" : source.name.trimmingCharacters(in:.whitespacesAndNewlines).nonempty ?? source.server)
+                        Text(source.isDemo ? VistaL10n.text("%@ · 示範來源" , String(describing: source.name)) : source.name.trimmingCharacters(in:.whitespacesAndNewlines).nonempty ?? source.server)
                             .font(.body).foregroundStyle(.secondary).lineLimit(1).accessibilityIdentifier("browserSourceName")
                     }
                     Spacer()
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("--window-resize-test") && ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests") {
-                        Button("窄窗"){testWindowWidth(880)}.accessibilityIdentifier("testNarrowWindow")
-                        Button("寬窗"){testWindowWidth(1400)}.accessibilityIdentifier("testWideWindow")
+                        Button(VistaL10n.text("窄窗")){testWindowWidth(880)}.accessibilityIdentifier("testNarrowWindow")
+                        Button(VistaL10n.text("寬窗")){testWindowWidth(1400)}.accessibilityIdentifier("testWideWindow")
                         if ProcessInfo.processInfo.arguments.contains("--sidebar-inset-test") {
-                            Button("低窗"){testWindowWidth(1100,height:620)}.accessibilityIdentifier("testShortWindow")
-                            Button("高窗"){testWindowWidth(1100,height:900)}.accessibilityIdentifier("testTallWindow")
+                            Button(VistaL10n.text("低窗")){testWindowWidth(1100,height:620)}.accessibilityIdentifier("testShortWindow")
+                            Button(VistaL10n.text("高窗")){testWindowWidth(1100,height:900)}.accessibilityIdentifier("testTallWindow")
                         }
                     }
                     #endif
                     if !model.editing {
                         Menu {
-                            Toggle("修改日期",isOn:$model.showModified).menuActionDismissBehavior(.enabled).accessibilityIdentifier("toggleModified")
-                            Toggle("製作日期",isOn:$model.showCreated).menuActionDismissBehavior(.enabled).accessibilityIdentifier("toggleCreated")
-                            Toggle("檔案大小",isOn:$model.showSize).menuActionDismissBehavior(.enabled).accessibilityIdentifier("toggleSize")
-                            if model.tagsAvailable {Toggle("標籤",isOn:$model.showTags).menuActionDismissBehavior(.enabled).accessibilityIdentifier("toggleTags")}
-                            Button("重新整理資料夾",action:model.refreshDirectory).accessibilityIdentifier("refreshDirectory")
+                            Toggle(VistaL10n.text("修改日期"),isOn:$model.showModified).menuActionDismissBehavior(.enabled).accessibilityIdentifier("toggleModified")
+                            Toggle(VistaL10n.text("製作日期"),isOn:$model.showCreated).menuActionDismissBehavior(.enabled).accessibilityIdentifier("toggleCreated")
+                            Toggle(VistaL10n.text("檔案大小"),isOn:$model.showSize).menuActionDismissBehavior(.enabled).accessibilityIdentifier("toggleSize")
+                            if model.tagsAvailable {Toggle(VistaL10n.text("標籤"),isOn:$model.showTags).menuActionDismissBehavior(.enabled).accessibilityIdentifier("toggleTags")}
+                            Button(VistaL10n.text("重新整理資料夾"),action:model.refreshDirectory).accessibilityIdentifier("refreshDirectory")
                             Divider()
-                            Button("符合內容"){for field in visibleColumns {fit(field)}}.accessibilityIdentifier("fitColumns")
-                                .help("依目前已載入的項目調整欄寬")
-                            Button("重設欄寬"){customWidths=[:]}.accessibilityIdentifier("resetColumns")
+                            Button(VistaL10n.text("符合內容")){for field in visibleColumns {fit(field)}}.accessibilityIdentifier("fitColumns")
+                                .help(VistaL10n.text("依目前已載入的項目調整欄寬"))
+                            Button(VistaL10n.text("重設欄寬")){customWidths=[:]}.accessibilityIdentifier("resetColumns")
                         } label:{Image(systemName:"line.3.horizontal.decrease")}
-                        .accessibilityLabel("顯示欄位").accessibilityIdentifier("columnOptions")
+                        .accessibilityLabel(VistaL10n.text("顯示欄位")).accessibilityIdentifier("columnOptions")
                         .onChange(of:model.showModified) {if !model.showModified && model.sort.field == .modified {model.sortBy(.name)}}
                         .onChange(of:model.showTags) {model.tagsVisibilityChanged()}
                         .onChange(of:model.editing) {model.tagsVisibilityChanged()}
@@ -1309,7 +1309,7 @@ struct ShortcutBrowserView: View {
                         .onChange(of:model.showSize) {if !model.showSize && model.sort.field == .size {model.sortBy(.name)}}
                     }
                     if model.editing && !model.isHostRoot {
-                        Button(model.alreadySaved ? "已加入":"加入捷徑",systemImage:model.alreadySaved ? "checkmark":"plus") {model.addShortcut()}
+                        Button(model.alreadySaved ? VistaL10n.text("已加入"):VistaL10n.text("加入捷徑"),systemImage:model.alreadySaved ? "checkmark":"plus") {model.addShortcut()}
                             .disabled(model.alreadySaved || model.loading || model.error != nil).accessibilityIdentifier("addShortcut")
                     }
                 }.padding(24)
@@ -1320,21 +1320,21 @@ struct ShortcutBrowserView: View {
                 if model.tagReportVisible {
                     HStack(alignment:.bottom,spacing:8) {
                         if model.tagsLoading {ProgressView().controlSize(.small)}
-                        Text(model.tagSortMessage ?? "準備讀取當層標籤").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("tagSortStatus")
+                        Text(model.tagSortMessage ?? VistaL10n.text("準備讀取當層標籤")).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("tagSortStatus")
                         if model.tagsLoading {Text("\(model.tagProgress) / \(model.entries.count)").font(.caption).accessibilityIdentifier("tagSortProgress")}
-                        if model.fullTagSortRunning {Button("取消",action:model.cancelTagSort).accessibilityIdentifier("cancelTagSort")}
-                        else if model.tagsPaused {Button("繼續讀取",action:model.resumeTags).accessibilityIdentifier("resumeTags")}
+                        if model.fullTagSortRunning {Button(VistaL10n.text("取消"),action:model.cancelTagSort).accessibilityIdentifier("cancelTagSort")}
+                        else if model.tagsPaused {Button(VistaL10n.text("繼續讀取"),action:model.resumeTags).accessibilityIdentifier("resumeTags")}
                         else if model.tagUnresolved>0 {
-                            Button("重試未完成",action:model.retryTags).accessibilityIdentifier("retryTagSort")
-                            if model.sort.field == .tags {Button("只排序已取得項目",action:model.sortAvailableTags).accessibilityIdentifier("partialTagSort")}
+                            Button(VistaL10n.text("重試未完成"),action:model.retryTags).accessibilityIdentifier("retryTagSort")
+                            if model.sort.field == .tags {Button(VistaL10n.text("只排序已取得項目"),action:model.sortAvailableTags).accessibilityIdentifier("partialTagSort")}
                         }
                     }.frame(maxWidth:480,alignment:.trailing)
                 }
                 }.padding(.horizontal,24).padding(.bottom,14)
                 if model.isHostRoot {
                     HStack {
-                        TextField("手動指定分享",text:$model.manualShare).textFieldStyle(.roundedBorder).accessibilityIdentifier("manualShare")
-                        Button("開啟",action:model.openManualShare).accessibilityIdentifier("openManualShare")
+                        TextField(VistaL10n.text("手動指定分享"),text:$model.manualShare).textFieldStyle(.roundedBorder).accessibilityIdentifier("manualShare")
+                        Button(VistaL10n.text("開啟"),action:model.openManualShare).accessibilityIdentifier("openManualShare")
                     }.padding(.horizontal,24).padding(.bottom,14)
                 }
                 Divider()
@@ -1342,11 +1342,11 @@ struct ShortcutBrowserView: View {
                 VStack(spacing:0) {
                         if !model.editing {
                             HStack(spacing:8) {
-                                columnHeader("名稱",.name,available:geometry.size.width-16)
-                                if model.showModified {columnHeader("修改日期",.modified,available:geometry.size.width-16)}
-                                if model.showCreated {columnHeader("製作日期",.created,available:geometry.size.width-16)}
-                                if model.showSize {columnHeader("檔案大小",.size,available:geometry.size.width-16)}
-                                if model.tagsVisible {columnHeader("標籤",.tags,available:geometry.size.width-16)}
+                                columnHeader(VistaL10n.text("名稱"),.name,available:geometry.size.width-16)
+                                if model.showModified {columnHeader(VistaL10n.text("修改日期"),.modified,available:geometry.size.width-16)}
+                                if model.showCreated {columnHeader(VistaL10n.text("製作日期"),.created,available:geometry.size.width-16)}
+                                if model.showSize {columnHeader(VistaL10n.text("檔案大小"),.size,available:geometry.size.width-16)}
+                                if model.tagsVisible {columnHeader(VistaL10n.text("標籤"),.tags,available:geometry.size.width-16)}
                                 Color.clear.frame(width:12,height:1)
                             }.padding(.horizontal,10).padding(.vertical,8)
                             .frame(width:max(geometry.size.width-16,40+visibleColumns.reduce(CGFloat(0)){$0+width($1,available:geometry.size.width-16)}+CGFloat(visibleColumns.count-1)*8),alignment:.leading)
@@ -1379,26 +1379,26 @@ struct ShortcutBrowserView: View {
                                 }.padding(.horizontal,10).padding(.vertical,12).frame(maxWidth:.infinity,alignment:.leading)
                             }.buttonStyle(.plain)
                                 .background(model.selection==entry.id ? BrowserBluePalette.selection.opacity(BrowserBluePalette.enabled ? 0.24:0.15):.clear,in:Capsule().inset(by:2)).buttonStyle(ColumnHeaderButtonStyle())
-                                .accessibilityValue(model.selection==entry.id ? "已選取":"")
+                                .accessibilityValue(model.selection==entry.id ? VistaL10n.text("已選取"):"")
                                 .accessibilityIdentifier("entry-\(entry.name)")
                         }
-                        if model.loading {ProgressView("載入中…").padding()}
+                        if model.loading {ProgressView(VistaL10n.text("載入中…")).padding()}
                         if let error=model.error {
                             VStack(spacing:12) {
                                 Text(error).multilineTextAlignment(.center).accessibilityIdentifier("listingError")
                                 HStack {
-                                    Button("重試",action:model.loadMore)
-                                    if !source.isDemo {Button("重新登入"){model.beginConnection(source,reauthenticate:true)}.accessibilityIdentifier("reconnectSMB")}
+                                    Button(VistaL10n.text("重試"),action:model.loadMore)
+                                    if !source.isDemo {Button(VistaL10n.text("重新登入")){model.beginConnection(source,reauthenticate:true)}.accessibilityIdentifier("reconnectSMB")}
                                 }
                             }.padding(24)
                         } else if !model.loading && model.nextOffset == nil && (model.isHostRoot ? model.entries.isEmpty : !model.entries.contains(where: { $0.kind == .video })) {
                             VStack(spacing:12) {
                                 Image(systemName:"folder").font(.largeTitle).foregroundStyle(.secondary)
-                                Text(model.isHostRoot ? "沒有可列出的分享":"沒有可瀏覽的影片").font(.headline).accessibilityIdentifier("emptyDirectoryLabel")
+                                Text(model.isHostRoot ? VistaL10n.text("沒有可列出的分享"):VistaL10n.text("沒有可瀏覽的影片")).font(.headline).accessibilityIdentifier("emptyDirectoryLabel")
                             }.frame(maxWidth:.infinity,alignment:.top).padding(.top,24)
                         }
                         if model.nextOffset != nil && !model.loading && model.error == nil {
-                            Button("載入更多",action:model.loadMore).padding().onAppear{model.loadMore()}
+                            Button(VistaL10n.text("載入更多"),action:model.loadMore).padding().onAppear{model.loadMore()}
                         }
                     }.frame(width:max(geometry.size.width-16,model.editing ? 240:40+visibleColumns.reduce(CGFloat(0)){$0+width($1,available:geometry.size.width-16)}+CGFloat(visibleColumns.count-1)*8)).frame(minHeight:max(0,geometry.size.height-16-(model.editing ? 0:76)),alignment:.topLeading)
                         .frame(width:max(0,geometry.size.width-16),alignment:.leading).padding(8)
@@ -1409,9 +1409,9 @@ struct ShortcutBrowserView: View {
                 Spacer()
                 VStack(spacing:16) {
                     Image(systemName:model.editing ? "folder.badge.plus":"star.square.on.square").font(.system(size:42)).foregroundStyle(.secondary)
-                    Text(model.editing ? "選擇要加入的資料夾":"把常用資料夾放在這裡").font(.title2.bold())
-                    Text(model.editing ? "從左側來源開始瀏覽。":"建立捷徑，下次直接開啟。").foregroundStyle(.secondary)
-                    if !model.editing {Button("編輯捷徑"){model.toggleEditing()}.buttonStyle(.borderedProminent).accessibilityIdentifier("emptyEdit")}
+                    Text(model.editing ? VistaL10n.text("選擇要加入的資料夾"):VistaL10n.text("把常用資料夾放在這裡")).font(.title2.bold())
+                    Text(model.editing ? VistaL10n.text("從左側來源開始瀏覽。"):VistaL10n.text("建立捷徑，下次直接開啟。")).foregroundStyle(.secondary)
+                    if !model.editing {Button(VistaL10n.text("編輯捷徑")){model.toggleEditing()}.buttonStyle(.borderedProminent).accessibilityIdentifier("emptyEdit")}
                 }.frame(maxWidth:.infinity)
                 Spacer()
             }
@@ -1427,19 +1427,19 @@ struct ShortcutBrowserView: View {
     private var connectionForm:some View {
         ScrollView {
         VStack(alignment:.leading,spacing:18) {
-            HStack {Text(model.connectionSourceID == nil ? "登入 SMB 主機":"主機設定").font(.title2.bold());Spacer();Button("取消",action:model.cancelConnection)}
+            HStack {Text(model.connectionSourceID == nil ? VistaL10n.text("登入 SMB 主機"):VistaL10n.text("主機設定")).font(.title2.bold());Spacer();Button(VistaL10n.text("取消"),action:model.cancelConnection)}
             HStack {
-            TextField("伺服器，例如 nas.example.test",text:$model.server).keyboardType(.asciiCapable).textInputAutocapitalization(.never).autocorrectionDisabled().disabled(model.connectionSourceID != nil).accessibilityIdentifier("prototypeServer")
+            TextField(VistaL10n.text("伺服器，例如 nas.example.test"),text:$model.server).keyboardType(.asciiCapable).textInputAutocapitalization(.never).autocorrectionDisabled().disabled(model.connectionSourceID != nil).accessibilityIdentifier("prototypeServer")
             if model.connectionSourceID == nil {
-                Button("瀏覽網路",systemImage:"network") {browsingNetwork.toggle();if browsingNetwork {discovery.start()}else{discovery.stop()}}
+                Button(VistaL10n.text("瀏覽網路"),systemImage:"network") {browsingNetwork.toggle();if browsingNetwork {discovery.start()}else{discovery.stop()}}
                     .labelStyle(.iconOnly).accessibilityIdentifier("browseNetwork")
             }
             }
             if browsingNetwork {
                 if discovery.devices.isEmpty && (discovery.running || discovery.resolving) {
-                    Text("正在尋找 SMB 主機…").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("discoveryStatus")
+                    Text(VistaL10n.text("正在尋找 SMB 主機…")).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("discoveryStatus")
                 }
-                if discovery.hasStaleResults {Text("上次結果尚未確認。").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("staleDiscovery")}
+                if discovery.hasStaleResults {Text(VistaL10n.text("上次結果尚未確認。")).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("staleDiscovery")}
                 BubbleLayout {
                     ForEach(discovery.devices) {device in
                         Button(device.name){discovery.select(device)}.buttonStyle(.bordered).buttonBorderShape(.capsule)
@@ -1448,26 +1448,26 @@ struct ShortcutBrowserView: View {
                 }
                 if let message=discovery.message {Text(message).font(.caption).foregroundStyle(.secondary)}
             }
-            TextField("顯示名稱（選填）",text:$model.connectionName).keyboardType(.asciiCapable).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("connectionName")
-            TextField("使用者名稱",text:$model.username).keyboardType(.asciiCapable).focused($connectionFocus,equals:.username).textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("prototypeUsername")
-            SecureField("密碼",text:$model.password).keyboardType(.asciiCapable).textInputAutocapitalization(.never).autocorrectionDisabled().textContentType(.password).accessibilityIdentifier("prototypePassword")
+            TextField(VistaL10n.text("顯示名稱（選填）"),text:$model.connectionName).keyboardType(.asciiCapable).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("connectionName")
+            TextField(VistaL10n.text("使用者名稱"),text:$model.username).keyboardType(.asciiCapable).focused($connectionFocus,equals:.username).textContentType(.username).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("prototypeUsername")
+            SecureField(VistaL10n.text("密碼"),text:$model.password).keyboardType(.asciiCapable).textInputAutocapitalization(.never).autocorrectionDisabled().textContentType(.password).accessibilityIdentifier("prototypePassword")
             if model.fallbackAuthentication {
-                TextField("已知分享（用來驗證登入）",text:$model.manualShare).keyboardType(.asciiCapable).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("fallbackShare")
+                TextField(VistaL10n.text("已知分享（用來驗證登入）"),text:$model.manualShare).keyboardType(.asciiCapable).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("fallbackShare")
             }
             if model.offerFallbackAuthentication && !model.fallbackAuthentication {
-                Button("改用已知分享驗證"){model.fallbackAuthentication=true}.accessibilityIdentifier("fallbackAuthentication")
+                Button(VistaL10n.text("改用已知分享驗證")){model.fallbackAuthentication=true}.accessibilityIdentifier("fallbackAuthentication")
             }
-            Text(model.reauthenticating ? "重新輸入帳密，或使用系統提供的密碼自動填入。":"連線設定會保存，密碼存於 Vista 的 Keychain。")
+            Text(model.reauthenticating ? VistaL10n.text("重新輸入帳密，或使用系統提供的密碼自動填入。"):VistaL10n.text("連線設定會保存，密碼存於 Vista 的 Keychain。"))
                 .font(.caption).foregroundStyle(.secondary)
             if model.connectionSourceID != nil && !model.reauthenticating {
-                Text("只改顯示名稱不需輸入密碼；更換帳號需重新驗證。").font(.caption).foregroundStyle(.secondary)
+                Text(VistaL10n.text("只改顯示名稱不需輸入密碼；更換帳號需重新驗證。")).font(.caption).foregroundStyle(.secondary)
             }
             if let error=model.error {Text(error).foregroundStyle(.orange).accessibilityIdentifier("connectionError")}
-            if model.connecting {ProgressView("正在連線…")}
+            if model.connecting {ProgressView(VistaL10n.text("正在連線…"))}
             HStack(spacing:16) {
-            Button(model.connectionSourceID == nil ? "連線並保存":"儲存變更",action:model.connect).buttonStyle(.borderedProminent).disabled(model.connecting).accessibilityIdentifier("prototypeConnect")
+            Button(model.connectionSourceID == nil ? VistaL10n.text("連線並保存"):VistaL10n.text("儲存變更"),action:model.connect).buttonStyle(.borderedProminent).disabled(model.connecting).accessibilityIdentifier("prototypeConnect")
                 if let source=model.saved.sources.first(where:{$0.id==model.connectionSourceID}) {
-                    Button("移除主機",role:.destructive){removingSource=source}
+                    Button(VistaL10n.text("移除主機"),role:.destructive){removingSource=source}
                         .buttonStyle(.bordered).disabled(model.connecting).accessibilityIdentifier("sourceRemove-\(source.name)")
                 }
             }
@@ -1506,7 +1506,7 @@ private struct InlineSavedNameField:View {
             }
             if focused {
                 Button {let restore=original;focused=false;draft=restore;rename(restore)} label:{Image(systemName:"xmark").font(.system(size:14,weight:.regular)).frame(width:18,height:18).padding(8).contentShape(Rectangle())}
-                    .buttonStyle(.plain).accessibilityLabel("取消改名").accessibilityIdentifier(cancelIdentifier)
+                    .buttonStyle(.plain).accessibilityLabel(VistaL10n.text("取消改名")).accessibilityIdentifier(cancelIdentifier)
             }
         }
         .onAppear{draft=name;original=name}
@@ -1525,8 +1525,8 @@ private struct LocalSourceNameRow:View {
     var body:some View {
         HStack(spacing:8) {
             Button(action:browse){Image(systemName:"internaldrive").padding(10)}
-                .buttonStyle(ColumnHeaderButtonStyle()).accessibilityLabel("瀏覽 \(source.name)").accessibilityIdentifier("savedLocalSource")
-            InlineSavedNameField(name:source.name,title:"來源名稱",identifier:"localSourceName",cancelIdentifier:"cancelLocalSourceName",rename:rename)
+                .buttonStyle(ColumnHeaderButtonStyle()).accessibilityLabel(VistaL10n.text("瀏覽 %@" , String(describing: source.name))).accessibilityIdentifier("savedLocalSource")
+            InlineSavedNameField(name:source.name,title:VistaL10n.text("來源名稱"),identifier:"localSourceName",cancelIdentifier:"cancelLocalSourceName",rename:rename)
         }.background(selected ? BrowserBluePalette.selection.opacity(BrowserBluePalette.enabled ? 0.28:0.16):.clear,in:Capsule()).padding(2)
     }
 }
@@ -1552,11 +1552,11 @@ private struct ShortcutEditRow:View {
                     .updating($dragging){_,state,_ in state=true}
                     .onChanged{receivedPress=true;preview($0.location)}
                     .onEnded{move($0.location)})
-                .accessibilityLabel("拖拉排序 \(item.name)").accessibilityIdentifier("drag-\(item.name)")
-                .accessibilityValue((dragging ? "已按住":"未按住") + (ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests") && receivedPress ? "；已收到按住":""))
-            InlineSavedNameField(name:item.name,title:"捷徑名稱",identifier:"rename-\(item.name)",cancelIdentifier:"cancelShortcutName",rename:rename)
+                .accessibilityLabel(VistaL10n.text("拖拉排序 %@" , String(describing: item.name))).accessibilityIdentifier("drag-\(item.name)")
+                .accessibilityValue((dragging ? VistaL10n.text("已按住"):VistaL10n.text("未按住")) + (ProcessInfo.processInfo.arguments.contains("--shortcut-ui-tests") && receivedPress ? VistaL10n.text("；已收到按住"):""))
+            InlineSavedNameField(name:item.name,title:VistaL10n.text("捷徑名稱"),identifier:"rename-\(item.name)",cancelIdentifier:"cancelShortcutName",rename:rename)
             Button(action:remove){Image(systemName:"minus.circle").foregroundStyle(.secondary).frame(width:18,height:18).padding(8).contentShape(Rectangle())}
-                .buttonStyle(.plain).accessibilityLabel("移除 \(item.name)")
+                .buttonStyle(.plain).accessibilityLabel(VistaL10n.text("移除 %@" , String(describing: item.name)))
                 .accessibilityIdentifier("remove-\(item.name)")
         }.padding(.vertical,5)
             .onChange(of:dragging){_,active in if !active {cancel()}}
@@ -1595,7 +1595,7 @@ private struct ColumnResizeHandle:UIViewRepresentable {
     func makeUIView(context:Context) -> ResizeGripView {ResizeGripView()}
     func updateUIView(_ view:ResizeGripView,context:Context) {
         view.currentWidth=width;view.onResize=onResize;view.onFit=onFit
-        view.accessibilityLabel="調整\(title)欄寬";view.accessibilityValue="\(Int(width))"
+        view.accessibilityLabel=VistaL10n.text("調整%@欄寬" , String(describing: title));view.accessibilityValue="\(Int(width))"
     }
     func sizeThatFits(_ proposal:ProposedViewSize,uiView:ResizeGripView,context:Context) -> CGSize? {CGSize(width:60,height:60)}
 }
@@ -1614,7 +1614,7 @@ private final class ResizeGripView:UIView,UIGestureRecognizerDelegate {
         pan.delegate=self;addGestureRecognizer(pan)
         let doubleTap=UITapGestureRecognizer(target:self,action:#selector(fitContent))
         doubleTap.numberOfTapsRequired=2;addGestureRecognizer(doubleTap)
-        accessibilityCustomActions=[UIAccessibilityCustomAction(name:"符合內容",target:self,selector:#selector(accessibleFit))]
+        accessibilityCustomActions=[UIAccessibilityCustomAction(name:VistaL10n.text("符合內容"),target:self,selector:#selector(accessibleFit))]
         // Keep the 60×60 gesture target; only the visible hover outline is a slim vertical capsule.
         hoverStyle=UIHoverStyle(effect:UIHoverHighlightEffect(),
             shape:.capsule.inset(by:UIEdgeInsets(top:6,left:16,bottom:6,right:16)))
@@ -1659,12 +1659,12 @@ private struct FinderTagInitials:View {
             else if case .loading=state {ProgressView().controlSize(.small)}
             else {Text(state.label).font(.body).foregroundStyle(.secondary).lineLimit(1)}
         }.accessibilityElement(children:.ignore).accessibilityLabel(state.label)
-            .help(state == .unavailable ? "本次未取得可顯示的標籤；未查詢項目是否仍存在。":state.label)
+            .help(state == .unavailable ? VistaL10n.text("本次未取得可顯示的標籤；未查詢項目是否仍存在。"):state.label)
             .contentShape(Rectangle())
             .highPriorityGesture(LongPressGesture(minimumDuration:0.6).onEnded { _ in
                 if !state.displayTags.isEmpty {showingNames=true}
             })
-            .accessibilityAction(named:"顯示完整標籤") {if !state.displayTags.isEmpty {showingNames=true}}
+            .accessibilityAction(named:VistaL10n.text("顯示完整標籤")) {if !state.displayTags.isEmpty {showingNames=true}}
             .popover(isPresented:$showingNames) {
                 ScrollView {
                     VStack(alignment:.leading,spacing:10) {
@@ -1678,5 +1678,55 @@ private struct FinderTagInitials:View {
 private struct ColumnHeaderButtonStyle:ButtonStyle {
     func makeBody(configuration:Configuration)->some View {
         configuration.label.opacity(configuration.isPressed ? 0.65:1).contentShape(.interaction,Capsule()).contentShape(.hoverEffect,Capsule()).hoverEffect(.highlight)
+    }
+}
+
+
+private struct VistaAboutView:View {
+    let version:String
+    @Environment(\.dismiss) private var dismiss
+    var body:some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("Vista").font(.title.bold())
+                    Text(VistaL10n.text("Apple Vision Pro 的 VR 影片播放器。從 SMB 或本機資料夾選片，調整投影、左右眼排列與沉浸式播放控制。"))
+                    Text(version).foregroundStyle(.secondary)
+                }
+                Section(VistaL10n.text("隱私權與授權")) {
+                    NavigationLink(VistaL10n.text("隱私權聲明")) { VistaBundledNotice(title:VistaL10n.text("隱私權聲明"),resource:"VistaPrivacy") }
+                    NavigationLink(VistaL10n.text("播放元件授權")) { VistaBundledNotice(title:VistaL10n.text("播放元件授權"),resource:"VLCThirdPartyNotices") }
+                    NavigationLink(VistaL10n.text("MKV 元件授權")) { VistaBundledNotice(title:VistaL10n.text("MKV 元件授權"),resource:"MKVThirdPartyNotices") }
+                    NavigationLink("Apple Material") { VistaBundledNotice(title:"Apple Material",resource:"Apple-Stereo-LICENSE") }
+                }
+                Section {
+                    Link(VistaL10n.text("使用說明"),destination:URL(string:VistaL10n.isEnglish ? "https://peiyu66.github.io/Vista/docs/UserGuide.en.html":"https://peiyu66.github.io/Vista/docs/%E4%BD%BF%E7%94%A8%E8%AA%AA%E6%98%8E.html")!)
+                    Link(VistaL10n.text("原始碼與開發文件"),destination:URL(string:"https://peiyu66.github.io/Vista/docs/development/開發文件入口.html")!)
+                }
+            }
+            .navigationTitle(VistaL10n.text("關於 Vista"))
+            .toolbar {ToolbarItem(placement:.confirmationAction) {Button(VistaL10n.text("完成")) {dismiss()}}}
+        }.safeAreaPadding(.bottom,24).frame(width:640,height:620)
+    }
+}
+
+private struct VistaBundledNotice:View {
+    let title:String
+    let resource:String
+    @State private var content:AttributedString?
+    var body:some View {
+        ScrollView {
+            Text(content ?? AttributedString(VistaL10n.text("正在讀取…"))).font(.callout).textSelection(.enabled)
+                .frame(maxWidth:.infinity,alignment:.leading).padding(24)
+        }.navigationTitle(title)
+        .environment(\.openURL,OpenURLAction {url in VistaNoticeLinks.allows(url) ? .systemAction : .discarded})
+        .task(id:resource) {
+            let localizedResource = VistaL10n.isEnglish && resource != "Apple-Stereo-LICENSE" ? resource+"-en" : resource
+            guard let url=Bundle.main.url(forResource:localizedResource,withExtension:"txt"),
+                  let text=try? String(contentsOf:url,encoding:.utf8) else {
+                content=VistaNoticeLinks.render(VistaL10n.text("無法讀取聲明。可至 github.com/peiyu66/Vista 查閱。"),markdown:false);return
+            }
+            content=VistaNoticeLinks.render(text,markdown:resource == "VistaPrivacy")
+        }
     }
 }

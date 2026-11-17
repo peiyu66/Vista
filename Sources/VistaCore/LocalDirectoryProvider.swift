@@ -194,6 +194,6 @@ public enum LocalDirectoryName {
         for value in [localized,resourceName,pathComponent].compactMap({$0}) {
             if SavedLocations.validName(value) {return value.trimmingCharacters(in:.whitespacesAndNewlines)}
         }
-        return "資料夾"
+        return VistaL10n.text("資料夾")
     }
 }

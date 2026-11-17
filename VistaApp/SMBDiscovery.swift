@@ -45,7 +45,7 @@ struct DiscoveredSMB:Identifiable,Equatable {
         }
         let serviceBrowser=NetServiceBrowser();browser=serviceBrowser;serviceBrowser.delegate=self
         serviceBrowser.searchForServices(ofType:"_smb._tcp.",inDomain:"local.")
-        deadline=Task {try? await Task.sleep(for:.seconds(15));guard !Task.isCancelled else{return};browser?.stop();running=false;if currentIDs.isEmpty {message="未找到可確認的 SMB 主機。可手動輸入，或檢查網路權限。"}}
+        deadline=Task {try? await Task.sleep(for:.seconds(15));guard !Task.isCancelled else{return};browser?.stop();running=false;if currentIDs.isEmpty {message=VistaL10n.text("未找到可確認的 SMB 主機。可手動輸入，或檢查網路權限。")}}
     }
     func stop() {deadline?.cancel();deadline=nil;browser?.stop();browser?.delegate=nil;browser=nil;resolver?.stop();resolver?.delegate=nil;resolver=nil;services.removeAll();running=false;resolving=false}
     private func key(_ service:NetService)->String {service.name+"\u{0}"+service.type+"\u{0}"+service.domain}
@@ -55,7 +55,7 @@ struct DiscoveredSMB:Identifiable,Equatable {
         if !devices.contains(where:{$0.id==id}) {devices.append(DiscoveredSMB(id:id,name:service.name,host:nil));devices.sort{$0.name.localizedStandardCompare($1.name) == .orderedAscending}}
     }
     func netServiceBrowser(_ browser:NetServiceBrowser,didRemove service:NetService,moreComing:Bool) {guard browser===self.browser else{return};let id=key(service);devices.removeAll{$0.id==id};services[id]=nil;currentIDs.remove(id)}
-    func netServiceBrowser(_ browser:NetServiceBrowser,didNotSearch errorDict:[String:NSNumber]) {guard browser===self.browser else{return};running=false;message="無法瀏覽區域網路。請確認權限與網路，或手動輸入主機。"}
+    func netServiceBrowser(_ browser:NetServiceBrowser,didNotSearch errorDict:[String:NSNumber]) {guard browser===self.browser else{return};running=false;message=VistaL10n.text("無法瀏覽區域網路。請確認權限與網路，或手動輸入主機。")}
     func select(_ device:DiscoveredSMB) {
         guard devices.contains(device),isCurrent(device) else{return}
         if fixture,let host=device.host {selected=(device.name,host);return}
@@ -65,12 +65,12 @@ struct DiscoveredSMB:Identifiable,Equatable {
     }
     func netServiceDidResolveAddress(_ sender:NetService) {
         guard sender===resolver else{return};resolving=false
-        guard sender.port==445,var host=sender.hostName else {message="此設備未提供可用的標準 SMB 位址，請手動輸入。";return}
+        guard sender.port==445,var host=sender.hostName else {message=VistaL10n.text("此設備未提供可用的標準 SMB 位址，請手動輸入。");return}
         if host.hasSuffix("."){host.removeLast()}
-        guard ConnectionInput(server:host,share:"placeholder",username:"placeholder").isValid else {message="無法使用此設備的主機位址，請手動輸入。";return}
+        guard ConnectionInput(server:host,share:"placeholder",username:"placeholder").isValid else {message=VistaL10n.text("無法使用此設備的主機位址，請手動輸入。");return}
         selected=(sender.name,host)
     }
-    func netService(_ sender:NetService,didNotResolve errorDict:[String:NSNumber]) {guard sender===resolver else{return};resolving=false;message="無法解析此設備的位址，請重試或手動輸入。"}
+    func netService(_ sender:NetService,didNotResolve errorDict:[String:NSNumber]) {guard sender===resolver else{return};resolving=false;message=VistaL10n.text("無法解析此設備的位址，請重試或手動輸入。")}
 }
 
 

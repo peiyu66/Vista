@@ -4,7 +4,7 @@ import Foundation
     let owner: any SourceOperationOwner
     init(owner: any SourceOperationOwner) { self.owner=owner }
     func create(staging:URL,receipt:URL,generation:UInt64,target:Double) async throws -> any MKVEngineWindow {
-        try mkvRequire(target.isFinite && target>=0 && target<Double(Int64.max)/1e9,"跳轉時間超出範圍")
+        try mkvRequire(target.isFinite && target>=0 && target<Double(Int64.max)/1e9,VistaL10n.text("跳轉時間超出範圍"))
         return MKVBoundEngineWindow(try await SourceAdapterSession.create(owner:owner,output:staging,receipt:receipt,generation:generation,requestedGlobalNS:Int64(target*1e9),maxUnackedSegments:1))
     }
     func close() async throws { try await owner.closeAfterDrain() }
@@ -13,7 +13,7 @@ import Foundation
     let engine: SourceAdapterSession
     init(_ engine: SourceAdapterSession) { self.engine=engine }
     var stamp:BridgeStamp {engine.stamp}
-    func start() throws { try mkvRequire(engine.start(),"來源工作無法啟動") }
+    func start() throws { try mkvRequire(engine.start(),VistaL10n.text("來源工作無法啟動")) }
     func info() throws -> MKVEngineInfo {
         let s=try engine.snapshot()
         if s.state==3 {throw MKVPlaybackError.engine(try engine.diagnosticSnapshot().reasonCode)}

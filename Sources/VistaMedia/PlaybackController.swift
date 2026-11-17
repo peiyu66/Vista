@@ -45,7 +45,7 @@ import VistaCore
     private func invalidateSeekSource(epoch:UInt64?) {
         guard pendingSeekID != nil,let before=pendingSeekSourceEpoch,let epoch,epoch != before else{return}
         clearSeekPresentation();isPreparing=false;isSeeking=false
-        message="來源已更新，請重新跳轉。"
+        message=VistaL10n.text("來源已更新，請重新跳轉。")
     }
     public var playbackGeneration:UUID {generation}
     public var canIncreaseSpeed:Bool {isPlaying && !isPreparing && speedStatus.canIncrease}
@@ -57,7 +57,7 @@ import VistaCore
         #if VISTA_NATIVE_PLAYER_EXPERIMENT
         guard let nativeSession else{return}
         guard nativeSession.setSpeed(rate) else {
-            if rate<=Double(PlaybackSpeedStatus.upperLimit) {speedMessage="此影片不支援 \(PlaybackSpeedStatus.label(rate))× 播放。"};return
+            if rate<=Double(PlaybackSpeedStatus.upperLimit) {speedMessage=VistaL10n.text("此影片不支援 %@× 播放。" , String(describing: PlaybackSpeedStatus.label(rate)))};return
         }
         speedStatus=nativeSession.speedStatus;speedMessage=nil
         #endif
@@ -69,7 +69,7 @@ import VistaCore
         if let enqueuedAt,enqueuedAt>=preparationStart {
             preparationMarks.append(String(format:"renderer enqueue %.0f ms",(enqueuedAt-preparationStart)*1000))
         }
-        markPreparation("呈現通知")
+        markPreparation(VistaL10n.text("呈現通知"))
         #if VISTA_NATIVE_PLAYER_EXPERIMENT
         nativeSession?.recordPresentation(session:session)
         #if VISTA_ANON_IO_EXPERIMENT
@@ -82,7 +82,7 @@ import VistaCore
     private func markPreparation(_ label:String) {
         let ms=(ProcessInfo.processInfo.systemUptime-preparationStart)*1000
         preparationMarks.append(String(format:"%@ %.0f ms",label,ms))
-        preparationText="準備時間（自請求起累計）："+preparationMarks.joined(separator:"／")
+        preparationText=VistaL10n.text("準備時間（自請求起累計）：")+preparationMarks.joined(separator:"／")
     }
     @ObservationIgnored public private(set) var metrics:PlaybackMetrics?
     @ObservationIgnored private var metricsTask:Task<Void,Never>?
@@ -223,7 +223,7 @@ import VistaCore
         recordBoundary(.submitEntered,fields:[.cause:Double(BoundaryCause.seek.rawValue)])
         if target == trackInfo.duration {
             stop()
-            position = target; message = "播放結束"
+            position = target; message = VistaL10n.text("播放結束")
             recordBoundary(.submitReturned,fields:[.outcome:7],context:seekBoundary)
             return
         }
@@ -252,10 +252,10 @@ import VistaCore
                     // Keep the last confirmed frame position; never claim the requested target.
                     if error is CancellationError {
                         self.recordBoundary(.submitReturned,fields:[.outcome:1],context:seekBoundary)
-                        self.message="跳轉已取消，可重新拖曳。"
+                        self.message=VistaL10n.text("跳轉已取消，可重新拖曳。")
                     } else {
                         self.recordBoundary(.failure,fields:LifecycleFailure(error).fields,context:seekBoundary)
-                        self.message="跳轉失敗，可停止後重試。"
+                        self.message=VistaL10n.text("跳轉失敗，可停止後重試。")
                     }
                 }
             }
@@ -282,7 +282,7 @@ import VistaCore
         recordBoundary(.upstreamPauseEntered,fields:[.cause:Double(BoundaryCause.togglePause.rawValue)])
         if isPaused { timeline.resume() } else { timeline.pause() }
         isPaused = timeline.isPaused
-        message = isPaused ? "已暫停" : "繼續播放中"
+        message = isPaused ? VistaL10n.text("已暫停") : VistaL10n.text("繼續播放中")
         recordBoundary(.upstreamPauseReturned,fields:[.outcome:isPaused ? 5:6])
     }
     /// Never automatically resume after leaving the immersive foreground.
@@ -319,7 +319,7 @@ import VistaCore
         // Keep the cancelled task until a replacement can join its cleanup.
         timeline = nil
         isPlaying = false; isPaused = false; isPreparing = false; isSeeking=false; isBuffering=false
-        frame = nil; pixelFrame=nil; position = 0; message = "已停止"
+        frame = nil; pixelFrame=nil; position = 0; message = VistaL10n.text("已停止")
         recordBoundary(.stopReturned,fields:[.outcome:0])
     }
     private func launch(at target: Double, paused: Bool, preservingFrame:Bool = false,tolerance:SeekTargetTolerance = .exact) {
@@ -342,14 +342,14 @@ import VistaCore
         isBuffering=false
         control.onBufferingChange={ [weak self] buffering in
             guard let self,self.generation==id else{return};self.isBuffering=buffering
-            if !self.isPreparing {self.message=buffering ? "緩衝中…":self.isPaused ? "已暫停":"繼續播放中"}
+            if !self.isPreparing {self.message=buffering ? VistaL10n.text("緩衝中…"):self.isPaused ? VistaL10n.text("已暫停"):VistaL10n.text("繼續播放中")}
         }
         isPlaying = true; isPaused = paused; isPreparing = true
         if !preservingFrame {frame = nil; pixelFrame=nil}
         isSeeking=preservingFrame
         submittedSession=nil
         preparationStart=requestStarted;preparationMarks=[];preparationText=""
-        position = target; message = target == 0 ? "正在準備影片…" : "正在跳轉…"
+        position = target; message = target == 0 ? VistaL10n.text("正在準備影片…") : VistaL10n.text("正在跳轉…")
         task = Task {
             await oldTask?.value
             guard !Task.isCancelled, generation == id else { return }
@@ -358,8 +358,8 @@ import VistaCore
                 if remaining>0 {do {try await Task.sleep(for:.seconds(remaining))} catch{return}}
                 guard !Task.isCancelled,generation==id else{return}
             }
-            previousCancellationText=oldMetrics.map {"前次"+$0.cancellationTrace.text} ?? ""
-            markPreparation("舊播放清理")
+            previousCancellationText=oldMetrics.map {VistaL10n.text("前次")+$0.cancellationTrace.text} ?? ""
+            markPreparation(VistaL10n.text("舊播放清理"))
             let measure=PlaybackMetrics(source:sourceKind)
             metrics=measure;control.metrics=measure;diagnosticsText=measure.snapshot().text
             metricsTask=Task { [weak self] in
@@ -377,10 +377,10 @@ import VistaCore
                 self.observePixelBoundary(next,owner:boundaryOwner,current:self.generation==id)
                 guard self.generation==id else{return}
                 measure.mark(.delivered)
-                if self.isPreparing {self.markPreparation("首幀交付")}
+                if self.isPreparing {self.markPreparation(VistaL10n.text("首幀交付"))}
                 PlaybackFlowTrace.mark(.property,parent:next.flow,a:Int64(bitPattern:PlaybackBoundaryIdentity.session(id)));self.pixelFrame=next;self.position=next.time;self.isPreparing=false
                 self.isPaused=control.isPaused
-                self.message=self.isPaused ? "已暫停":"系統影片呈現候選"
+                self.message=self.isPaused ? VistaL10n.text("已暫停"):VistaL10n.text("系統影片呈現")
                 self.appliedPixelBoundary(next)
             }
             #else
@@ -396,25 +396,25 @@ import VistaCore
                     }, onFrame: { [weak self] next in
                         guard let self, self.generation == id else { return }
                         measure.mark(.delivered)
-                        if self.isPreparing {self.markPreparation("首幀交付")}
+                        if self.isPreparing {self.markPreparation(VistaL10n.text("首幀交付"))}
                         self.frame = next; self.position = next.time; self.isPreparing = false
                         self.isPaused = control.isPaused
-                        self.message = self.isPaused ? "已暫停" : (PlaybackDecodingPolicy.simulatorSoftwareTest ? "模擬器軟體解碼測試中" : "硬體解碼播放中")
+                        self.message = self.isPaused ? VistaL10n.text("已暫停") : (PlaybackDecodingPolicy.simulatorSoftwareTest ? VistaL10n.text("模擬器軟體解碼測試中") : VistaL10n.text("硬體解碼播放中"))
                     },onPixelFrame:pixelCallback,onPreparation:{ [weak self] stage in
                     guard let self,self.generation==id else{return}
-                    self.markPreparation(stage.rawValue)
+                    self.markPreparation(VistaL10n.text(stage.rawValue))
                 },seekTolerance:tolerance,onSeekResolved:{ [weak self] requested,resolved in
                     guard let self,self.generation==id else{return}
-                    self.markPreparation(String(format:"落點 %.2f s（目標 %.2f s）",resolved,requested))
+                    self.markPreparation(String(format:VistaL10n.text("落點 %.2f s（目標 %.2f s）"),resolved,requested))
                 })
                 guard generation == id else { return }
-                position = trackInfo?.duration ?? position; message = "播放結束"
+                position = trackInfo?.duration ?? position; message = VistaL10n.text("播放結束")
             } catch {
                 guard generation == id else { return }
                 let failure=LifecycleFailure(error);terminalFailure=failure
                 beginBoundary(.termination)
                 recordBoundary(.failure,fields:failure.fields)
-                message = (error as? PlaybackFailure)?.message ?? "無法讀取影片。請確認連線及檔案後重試。"
+                message = (error as? PlaybackFailure)?.message ?? VistaL10n.text("無法讀取影片。請確認連線及檔案後重試。")
             }
             if generation == id {
                 if terminalFailure==nil {beginBoundary(.termination)}
@@ -441,9 +441,9 @@ import VistaCore
         let boundaryOwner=boundaryGeneration
         speedStatus=PlaybackSpeedStatus();speedMessage=nil
         isPlaying=true;isPreparing=true;isPaused=startPaused;isBuffering=false;frame=nil;pixelFrame=nil
-        position=0;message="正在準備影片…";preparationText="";submittedSession=nil
+        position=0;message=VistaL10n.text("正在準備影片…");preparationText="";submittedSession=nil
         preparationStart=ProcessInfo.processInfo.systemUptime;preparationMarks=[]
-        diagnosticsText="AVPlayer 候選／解碼方式：系統管理（未知）"
+        diagnosticsText=VistaL10n.text("AVPlayer／解碼方式：系統管理（未知）")
         task=Task {
             await old?.value
             guard generation==id,!Task.isCancelled else{return}
@@ -473,20 +473,20 @@ import VistaCore
                     guard let self,self.generation==id else{return}
                     self.isBuffering = state == .waiting
                     self.isPaused = session.isPlaybackPaused
-                    self.message = state == .waiting ? "緩衝中…":state == .seeking ? "正在跳轉…":state == .paused ? "已暫停":"AVPlayer 系統播放"
+                    self.message = state == .waiting ? VistaL10n.text("緩衝中…"):state == .seeking ? VistaL10n.text("正在跳轉…"):state == .paused ? VistaL10n.text("已暫停"):VistaL10n.text("AVPlayer 系統播放")
                 },onFrame:{ [weak self] next in
                     let flow=PlaybackFlowTrace.begin(.controller,parent:next.flow);defer{PlaybackFlowTrace.end(flow,.controller)}
                     guard let self else{return}
                     self.observePixelBoundary(next,owner:boundaryOwner,current:self.generation==id)
                     guard self.generation==id,self.acceptSeekFrame(from:session) else{return}
-                    if self.isPreparing {self.markPreparation("首幀交付")}
+                    if self.isPreparing {self.markPreparation(VistaL10n.text("首幀交付"))}
                     self.diagnosticsText=session.diagnosticsText
                     PlaybackFlowTrace.mark(.property,parent:next.flow,a:Int64(bitPattern:PlaybackBoundaryIdentity.session(id)));self.pixelFrame=next;self.position=next.time;self.isPreparing=false;self.isSeeking=false
                     self.appliedPixelBoundary(next)
                 },onSpeed:{ [weak self] speed in
                     guard let self,self.generation==id else{return};self.speedStatus=speed
                 })
-                if generation==id {message="播放結束"}
+                if generation==id {message=VistaL10n.text("播放結束")}
             }catch {
                 guard generation==id else{return}
                 let failure=LifecycleFailure(error);terminalFailure=failure
@@ -498,18 +498,18 @@ import VistaCore
                     persistDiagnostics(event:.failed,rendererValues:[.failureKind:kind])
                 }
                 if let failure=error as? NativePlaybackSession.Failure {
-                    message=failure == .source ? "來源讀取失敗，請確認連線後重新播放。":failure == .stalled ? "資料等待逾時，請停止後重試。":"系統播放器無法播放這個檔案。"
+                    message=failure == .source ? VistaL10n.text("來源讀取失敗，請確認連線後重新播放。"):failure == .stalled ? VistaL10n.text("資料等待逾時，請停止後重試。"):VistaL10n.text("系統播放器無法播放這個檔案。")
                 }else if !(error is CancellationError) {
                     #if VISTA_LOCAL_MKV_CANDIDATE
                     #if VISTA_VLC_CANDIDATE
                     if let vlc=error as? VLCPlaybackError {message=vlc.localizedDescription}
                     else if let mkv=error as? MKVPlaybackError {message=mkv.localizedDescription}
-                    else {message="系統播放失敗，請停止後重試。"}
+                    else {message=VistaL10n.text("系統播放失敗，請停止後重試。")}
                     #else
-                    if let mkv=error as? MKVPlaybackError {message=mkv.localizedDescription} else {message="系統播放失敗，請停止後重試。"}
+                    if let mkv=error as? MKVPlaybackError {message=mkv.localizedDescription} else {message=VistaL10n.text("系統播放失敗，請停止後重試。")}
                     #endif
                     #else
-                    message="系統播放失敗，請停止後重試。"
+                    message=VistaL10n.text("系統播放失敗，請停止後重試。")
                     #endif
                 }
             }

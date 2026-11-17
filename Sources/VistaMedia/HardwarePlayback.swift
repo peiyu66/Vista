@@ -115,14 +115,14 @@ public enum PlaybackFailure: Error, Equatable {
             base.message + "\n[" + stage.rawValue
                 + (status.map { " code=\($0)" } ?? "")
                 + (deltaMS.map { " Δ=\($0)ms" } ?? "") + "]"
-        case .unsupportedContainer: "目前僅提供 MP4／MOV 視訊播放，這個容器尚未支援。"
-        case .unsupportedCodec: "這個視訊編碼尚未支援，已停止播放。"
-        case .unsupportedTrack: "無法辨識可播放的單一視訊軌道。"
-        case .hardwareUnavailable: "無法確認硬體解碼，已停止播放。"
-        case .readFailed: "無法讀取影片。請確認連線及檔案後重試。"
-        case .seekUnavailable: "無法安全跳轉至這個位置。請換個位置或從頭播放。"
-        case .audioFailed: "音訊播放或同步失敗，已停止播放。"
-        case .decodeFailed: "影片解碼失敗，已停止播放。"
+        case .unsupportedContainer: VistaL10n.text("目前僅提供 MP4／MOV 視訊播放，這個容器尚未支援。")
+        case .unsupportedCodec: VistaL10n.text("這個視訊編碼尚未支援，已停止播放。")
+        case .unsupportedTrack: VistaL10n.text("無法辨識可播放的單一視訊軌道。")
+        case .hardwareUnavailable: VistaL10n.text("無法確認硬體解碼，已停止播放。")
+        case .readFailed: VistaL10n.text("無法讀取影片。請確認連線及檔案後重試。")
+        case .seekUnavailable: VistaL10n.text("無法安全跳轉至這個位置。請換個位置或從頭播放。")
+        case .audioFailed: VistaL10n.text("音訊播放或同步失敗，已停止播放。")
+        case .decodeFailed: VistaL10n.text("影片解碼失敗，已停止播放。")
         }
     }
 }

@@ -7,15 +7,15 @@ public enum VRProjection: String, Codable, CaseIterable, Sendable {
     case equirectangular180, equirectangular360, equidistantFisheye180
     public var title: String {
         switch self {
-        case .equirectangular180: "等距柱狀 180°"
-        case .equirectangular360: "等距柱狀 360°"
-        case .equidistantFisheye180: "等距魚眼 180°（置中圓）"
+        case .equirectangular180: VistaL10n.text("等距柱狀 180°")
+        case .equirectangular360: VistaL10n.text("等距柱狀 360°")
+        case .equidistantFisheye180: VistaL10n.text("等距魚眼 180°（置中圓）")
         }
     }
 }
 public enum VRLayout: String, Codable, CaseIterable, Sendable {
     case mono, sideBySide, overUnder
-    public var title: String { switch self { case .mono: "單眼"; case .sideBySide: "左右排列"; case .overUnder: "上下排列" } }
+    public var title: String { switch self { case .mono: VistaL10n.text("單眼"); case .sideBySide: VistaL10n.text("左右排列"); case .overUnder: VistaL10n.text("上下排列") } }
 }
 public struct VRSettings: Codable, Hashable, Sendable {
     public var projection: VRProjection = .equirectangular180

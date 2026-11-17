@@ -11,9 +11,9 @@ enum MKVPlaybackError: Error, LocalizedError {
         let reason:String
         switch self {
         case .engine(let code):reason=MKVDiagnostics.engineReason(code)
-        case .failure(let value):reason=MKVDiagnostics.knownMessages.contains(value) ? value:"候選內部檢查失敗。"
+        case .failure(let value):reason=MKVDiagnostics.knownMessages.contains(value) ? value:VistaL10n.text("播放內部檢查失敗。")
         }
-        return "MKV 無法播放：\(reason)"
+        return VistaL10n.text("MKV 無法播放：%@" , String(describing: reason))
     }
 }
 func mkvRequire(_ condition: Bool, _ reason: String) throws { if !condition { throw MKVPlaybackError.failure(reason) } }
@@ -97,7 +97,7 @@ struct MKVEngineSegment: Sendable { let index: Int; let duration: Double; let gl
     private var state: NativePlaybackSession.State = .preparing
     private var failure: Error?
     private static var retainedIncomplete: MKVPlaybackDriver?
-    var diagnosticsText: String { "MKV／VP9 P0＋AAC-LC／AVPlayer 系統解碼" }
+    var diagnosticsText: String { VistaL10n.text("MKV／VP9 P0＋AAC-LC／AVPlayer 系統解碼") }
     var speedStatus: PlaybackSpeedStatus {
         PlaybackSpeedStatus(selected:selectedSpeed,effectiveRate:item?.timebase.map { CMTimebaseGetEffectiveRate($0) } ?? 0,ready:active && item?.status == .readyToPlay,supportsFastForward:item?.canPlayFastForward ?? false,paused:paused,waiting:player?.timeControlStatus == .waitingToPlayAtSpecifiedRate)
     }
@@ -132,7 +132,7 @@ struct MKVEngineSegment: Sendable { let index: Int; let duration: Double; let gl
     func play(source: any MKVEngineSource, startAt: Double, startPaused: Bool,
               onInfo: @escaping (VideoTrackInfo)->Void, onState: @escaping (NativePlaybackSession.State)->Void,
               onFrame: @escaping (DecodedVideoFrame)->Void, onSpeed: @escaping (PlaybackSpeedStatus)->Void) async throws {
-        guard Self.retainedIncomplete == nil else {throw MKVPlaybackError.failure("先前來源尚未安全結束，請重新開啟候選 App。")}
+        guard Self.retainedIncomplete == nil else {throw MKVPlaybackError.failure(VistaL10n.text("先前來源尚未安全結束，請重新開啟 Vista。"))}
         diagnostics.enter(.workspace)
         self.source=source;paused=startPaused;self.onState=onState;onState(.preparing)
         let folder=FileManager.default.temporaryDirectory.appendingPathComponent("VistaLocalMKV-\(UUID().uuidString)",isDirectory:true)
@@ -152,7 +152,7 @@ struct MKVEngineSegment: Sendable { let index: Int; let duration: Double; let gl
                 guard let player,let item,let output,let info=sourceInfo else{throw NativePlaybackSession.Failure.player}
                 if item.status == .failed {diagnostics.enter(.playback);throw item.error ?? NativePlaybackSession.Failure.player}
                 if item.status == .readyToPlay {markStartup(.ready,current:player.currentTime().seconds)}
-                if ended {try mkvRequire(terminal,"影片在完整片尾之前結束");setState(.ended);break}
+                if ended {try mkvRequire(terminal,VistaL10n.text("影片在完整片尾之前結束"));setState(.ended);break}
                 diagnostics.poll()
                 let query=output.itemTime(forHostTime:CACurrentMediaTime())
                 if sceneActive && !seeking,output.hasNewPixelBuffer(forItemTime:query) {
@@ -192,7 +192,7 @@ struct MKVEngineSegment: Sendable { let index: Int; let duration: Double; let gl
             let readyDeadline=ProcessInfo.processInfo.systemUptime+15
             while media.status != .readyToPlay {
                 try checkInitialPlayer(native,media,generation:expected)
-                try mkvRequire(ProcessInfo.processInfo.systemUptime<readyDeadline,"MKV 系統播放器準備逾時")
+                try mkvRequire(ProcessInfo.processInfo.systemUptime<readyDeadline,VistaL10n.text("MKV 系統播放器準備逾時"))
                 try await Task.sleep(nanoseconds:5_000_000)
             }
             try checkInitialPlayer(native,media,generation:expected)
@@ -205,12 +205,12 @@ struct MKVEngineSegment: Sendable { let index: Int; let duration: Double; let gl
             }
             while result.value == nil {
                 try checkInitialPlayer(native,media,generation:expected)
-                try mkvRequire(ProcessInfo.processInfo.systemUptime<seekDeadline,"MKV 起始跳轉逾時")
+                try mkvRequire(ProcessInfo.processInfo.systemUptime<seekDeadline,VistaL10n.text("MKV 起始跳轉逾時"))
                 try await Task.sleep(nanoseconds:5_000_000)
             }
             try checkInitialPlayer(native,media,generation:expected)
             markStartup(.seekEnd,current:native.currentTime().seconds,outcome:result.value == true ? 1:0)
-            try mkvRequire(result.value == true,"MKV 起始跳轉失敗")
+            try mkvRequire(result.value == true,VistaL10n.text("MKV 起始跳轉失敗"))
         } catch {
             media.cancelPendingSeeks();markStartup(.aborted);throw error
         }
@@ -225,7 +225,7 @@ struct MKVEngineSegment: Sendable { let index: Int; let duration: Double; let gl
             let info=try session.info()
             captureEngine()
             if info.published>=count || info.terminal{return info}
-            try mkvRequire(ProcessInfo.processInfo.systemUptime<deadline,"來源準備逾時")
+            try mkvRequire(ProcessInfo.processInfo.systemUptime<deadline,VistaL10n.text("來源準備逾時"))
             try await Task.sleep(nanoseconds:5_000_000)
         };throw CancellationError()
     }
@@ -246,7 +246,7 @@ struct MKVEngineSegment: Sendable { let index: Int; let duration: Double; let gl
         let bytes=try await MKVFileImport.size(staging,name:String(format:"segment-%03d.m4s",index),limit:MKVWindowBudget.payloadCap)
         let kept=MKVWindowBudget.retained(windowEntries(adding:meta,bytes:bytes),now:globalNow(info),targetDuration:info.targetDuration,startup:startup)
         diagnostics.capacity(windowBytes:MKVWindowBudget.byteCount(kept),incomingBytes:bytes)
-        try mkvRequire(MKVWindowBudget.admits(kept,startup:startup),"MKV 播放窗口超過 128 MiB 或有界片段數")
+        try mkvRequire(MKVWindowBudget.admits(kept,startup:startup),VistaL10n.text("MKV 播放窗口超過 128 MiB 或有界片段數"))
         return (meta,bytes)
     }
     private func importSegment(_ prepared:(MKVEngineSegment,Int),startup:Bool) async throws {
@@ -257,7 +257,7 @@ struct MKVEngineSegment: Sendable { let index: Int; let duration: Double; let gl
         try await measureImport(.validation) {try await session.validate()}
         let name=String(format:"segment-%03d.m4s",index)
         let bytes=try await measureImport(.dataRead) {try await MKVFileImport.read(staging,name:name,limit:MKVWindowBudget.payloadCap)}
-        try mkvRequire(bytes.count==expectedBytes,"片段讀取不完整")
+        try mkvRequire(bytes.count==expectedBytes,VistaL10n.text("片段讀取不完整"))
         let hash=try await measureImport(.storeStageWriteFsyncHash) {try await store.stage(stamp:session.stamp,name:name,data:bytes)}
         try await measureImport(.validation) {try await session.validate()}
         try await measureImport(.storeCommit) {try await store.commit(stamp:session.stamp,expectedSHA256:hash)}
@@ -270,7 +270,7 @@ struct MKVEngineSegment: Sendable { let index: Int; let duration: Double; let gl
         diagnostics.enter(.manifest)
         let kept=MKVWindowBudget.retained(windowEntries(),now:globalNow(info),targetDuration:info.targetDuration,startup:false)
         diagnostics.capacity(windowBytes:MKVWindowBudget.byteCount(kept),incomingBytes:0)
-        try mkvRequire(MKVWindowBudget.admits(kept,startup:false),"MKV 播放窗口超過 128 MiB 或有界片段數")
+        try mkvRequire(MKVWindowBudget.admits(kept,startup:false),VistaL10n.text("MKV 播放窗口超過 128 MiB 或有界片段數"))
         let ids=Set(kept.map{$0.index});segments.removeAll{!ids.contains($0.index)};segmentBytes=segmentBytes.filter{ids.contains($0.key)}
         firstPublishedIndex=segments.first!.index
         let body=segments.map{String(format:"#EXTINF:%.9f,\nsegment-%03d.m4s",$0.duration,$0.index)}.joined(separator:"\n")
@@ -297,7 +297,7 @@ struct MKVEngineSegment: Sendable { let index: Int; let duration: Double; let gl
         diagnostics.enter(.enginePlan)
         var info=try await waitPublished(1);sourceInfo=info
         diagnostics.startupContract(targetSeconds:UInt64(clamping:info.targetDuration),requiredSegments:UInt64(info.startupSegments))
-        try mkvRequire(info.width>0 && info.height>0 && info.duration.isFinite && info.duration>0 && info.targetDuration>0 && info.targetDuration<=10,"不支援的 MKV 視訊或時間資料")
+        try mkvRequire(info.width>0 && info.height>0 && info.duration.isFinite && info.duration>0 && info.targetDuration>0 && info.targetDuration<=10,VistaL10n.text("不支援的 MKV 視訊或時間資料"))
         diagnostics.enter(.initImport)
         let store=try await MKVSegmentStore.create(parent:root,name:"store-\(generation)",stamp:window.stamp);self.store=store
         let data=try await measureImport(.dataRead) {try await MKVFileImport.read(staging,name:"init.mp4",limit:MKVWindowBudget.initCap)}
@@ -312,7 +312,7 @@ struct MKVEngineSegment: Sendable { let index: Int; let duration: Double; let gl
             }
             terminal=info.terminal && imported==info.published
             if terminal || segments.reduce(0,{$0+$1.duration})>=Double(info.targetDuration*3){break}
-            try mkvRequire(segments.count<MKVWindowBudget.segmentCountCap,"初始窗口無法在有限儲存內成立")
+            try mkvRequire(segments.count<MKVWindowBudget.segmentCountCap,VistaL10n.text("初始窗口無法在有限儲存內成立"))
             info=try await waitPublished(imported+1)
         }
         sourceInfo=info;try await publish()
@@ -340,7 +340,7 @@ struct MKVEngineSegment: Sendable { let index: Int; let duration: Double; let gl
         let local=max(0,target-info.origin)
         #if MKV_START_BASELINE
         // One-shot host comparison only: unchanged v7 initial-position behavior.
-        if local>0 { let ok=await native.seek(to:CMTime(seconds:local,preferredTimescale:1_000_000_000),toleranceBefore:.zero,toleranceAfter:.zero);try mkvRequire(ok,"MKV 起始跳轉失敗") }
+        if local>0 { let ok=await native.seek(to:CMTime(seconds:local,preferredTimescale:1_000_000_000),toleranceBefore:.zero,toleranceAfter:.zero);try mkvRequire(ok,VistaL10n.text("MKV 起始跳轉失敗")) }
         #else
         try await positionInitialPlayer(native,media,local:local,generation:windowID)
         #endif
@@ -378,15 +378,15 @@ struct MKVEngineSegment: Sendable { let index: Int; let duration: Double; let gl
         if let store{try await store.beginRetirement(stamp:session.stamp)}
         if let server {
             let status=await server.stop()
-            try mkvRequire(status["responseTasksReturned"] as? Bool == true && status["socketTerminalCallbacksObserved"] as? Bool == true,"HTTP 讀取尚未結束")
+            try mkvRequire(status["responseTasksReturned"] as? Bool == true && status["socketTerminalCallbacksObserved"] as? Bool == true,VistaL10n.text("HTTP 讀取尚未結束"))
         }
-        let ack=try await session.drain();try mkvRequire(ack.fullyAcknowledged,"來源讀取尚未結束")
-        if let store{try await store.acknowledgeDrain(ack);try mkvRequire(try await store.cleanup(stamp:session.stamp),"片段仍有讀取租約")}
+        let ack=try await session.drain();try mkvRequire(ack.fullyAcknowledged,VistaL10n.text("來源讀取尚未結束"))
+        if let store{try await store.acknowledgeDrain(ack);try mkvRequire(try await store.cleanup(stamp:session.stamp),VistaL10n.text("片段仍有讀取租約"))}
         try session.destroy()
         // The engine destroys its recorded staged files only after join; do not recursively delete unowned content.
         if let staging,FileManager.default.fileExists(atPath:staging.path) {
             let contents=try FileManager.default.contentsOfDirectory(atPath:staging.path)
-            try mkvRequire(contents.isEmpty,"來源暫存仍有未收尾檔案")
+            try mkvRequire(contents.isEmpty,VistaL10n.text("來源暫存仍有未收尾檔案"))
             try FileManager.default.removeItem(at:staging)
         }
         if let ledger,FileManager.default.fileExists(atPath:ledger.path){try FileManager.default.removeItem(at:ledger)}

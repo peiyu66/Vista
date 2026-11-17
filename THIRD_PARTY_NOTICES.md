@@ -24,6 +24,6 @@ Vista 自有程式採 [MIT License](LICENSE)。下列元件不因與 Vista 一�
 
 Apple 系統框架、libc++、系統 zlib／iconv 由平台提供；不把 SDK 或系統框架列成 Vista 自有 MIT 程式。VLCKit 的固定修補系列用於 VLC 來源準備，沒有連結 VLCKit wrapper；完整來源重現仍需保留該系列修補與原聲明。
 
-授權、可重新連結材料、App 內聲明及上架條件仍須按實際分發方式逐項完成；詳[分發核對與未完成項目](docs/development/元件與分發核對.md#分發前仍須完成)。
+授權、可重新連結材料、App 內聲明及上架條件仍須按實際分發方式逐項完成；詳[分發核對與未完成項目](docs/development/元件與分發核對.md#授權檢查界線與後續分發)。
 
 [編譯來源的其他必要聲明](docs/third-party-licenses/Native-supplemental-notices.txt) · [libsmb2 MD4 notices](docs/third-party-licenses/libsmb2-supplemental-notices.txt)

@@ -24,6 +24,6 @@ This list covers components used by Vista. See the [component and distribution r
 
 Apple system frameworks, libc++, and system zlib/iconv are provided by the platform. The SDK and system frameworks are not Vista’s own MIT-licensed code. A fixed VLCKit patch series is used to prepare the VLC source; the VLCKit wrapper is not linked. Reproducing the complete source also requires retaining that patch series and its original notices.
 
-License obligations, relinking materials, in-app notices, and store requirements must be checked for the actual distribution method. See the [distribution review and outstanding items](development/元件與分發核對.md#分發前仍須完成).
+License obligations, relinking materials, in-app notices, and store requirements must be checked for the actual distribution method. See the [distribution review and outstanding items](development/元件與分發核對.md#授權檢查界線與後續分發).
 
 [Additional notices from compiled sources](third-party-licenses/Native-supplemental-notices.txt) · [libsmb2 MD4 notices](third-party-licenses/libsmb2-supplemental-notices.txt)

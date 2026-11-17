@@ -6,11 +6,11 @@ enum MKVAppStage: UInt32 {
     case admission=1, sourceOpen, workspace, engineCreate, enginePlan, initImport, segmentImport, manifest, server, player, playback, cleanup
     var label:String {
         switch self {
-        case .admission:return "來源檢查";case .sourceOpen:return "開啟影片來源";case .workspace:return "建立暫存"
-        case .engineCreate:return "建立 MKV 讀取工作";case .enginePlan:return "檢查 MKV 結構"
-        case .initImport:return "匯入視訊初始化資料";case .segmentImport:return "匯入播放片段"
-        case .manifest:return "發佈播放清單";case .server:return "建立本機播放服務";case .player:return "建立系統播放器"
-        case .playback:return "系統播放";case .cleanup:return "結束播放資源"
+        case .admission:return VistaL10n.text("來源檢查");case .sourceOpen:return VistaL10n.text("開啟影片來源");case .workspace:return VistaL10n.text("建立暫存")
+        case .engineCreate:return VistaL10n.text("建立 MKV 讀取工作");case .enginePlan:return VistaL10n.text("檢查 MKV 結構")
+        case .initImport:return VistaL10n.text("匯入視訊初始化資料");case .segmentImport:return VistaL10n.text("匯入播放片段")
+        case .manifest:return VistaL10n.text("發佈播放清單");case .server:return VistaL10n.text("建立本機播放服務");case .player:return VistaL10n.text("建立系統播放器")
+        case .playback:return VistaL10n.text("系統播放");case .cleanup:return VistaL10n.text("結束播放資源")
         }
     }
 }
@@ -127,12 +127,12 @@ struct MKVDiagnostics {
     }
     // Immutable entries in this candidate version. Numeric IDs are 1000 + table index.
     static let knownMessages:[String] = [
-        "跳轉時間超出範圍",
-        "來源工作無法啟動",
-        "片段資料夾無法讀取",
-        "尚未完整產生的片段",
-        "片段超過有界容量",
-        "片段讀取不完整",
+        VistaL10n.text("跳轉時間超出範圍"),
+        VistaL10n.text("來源工作無法啟動"),
+        VistaL10n.text("片段資料夾無法讀取"),
+        VistaL10n.text("尚未完整產生的片段"),
+        VistaL10n.text("片段超過有界容量"),
+        VistaL10n.text("片段讀取不完整"),
         "no port",
         "listener cancelled",
         "listener deadline",
@@ -145,22 +145,22 @@ struct MKVDiagnostics {
         "range end",
         "response lifetime byte cap",
         "stopped response",
-        "先前來源尚未安全結束，請重新開啟候選 App。",
-        "影片在完整片尾之前結束",
-        "來源準備逾時",
-        "GOP 結構超過此候選的有界播放窗口",
-        "不支援的 MKV 視訊或時間資料",
-        "初始窗口無法在有限儲存內成立",
-        "MKV 起始跳轉失敗",
-        "HTTP 讀取尚未結束",
-        "來源讀取尚未結束",
-        "片段仍有讀取租約",
-        "來源暫存仍有未收尾檔案",
-        "此 MKV 路徑需要 visionOS 26.2 或更新版本。",
-        "此候選只接本機資料夾的 VP9 P0＋AAC-LC；SMB MKV 尚未支援。",
-        "MKV 播放窗口超過 128 MiB 或有界片段數",
-        "MKV 系統播放器準備逾時",
-        "MKV 起始跳轉逾時", "此 MKV 來源尚未支援。"]
+        VistaL10n.text("先前來源尚未安全結束，請重新開啟 Vista。"),
+        VistaL10n.text("影片在完整片尾之前結束"),
+        VistaL10n.text("來源準備逾時"),
+        VistaL10n.text("GOP 結構超過此播放路徑的處理範圍"),
+        VistaL10n.text("不支援的 MKV 視訊或時間資料"),
+        VistaL10n.text("初始窗口無法在有限儲存內成立"),
+        VistaL10n.text("MKV 起始跳轉失敗"),
+        VistaL10n.text("HTTP 讀取尚未結束"),
+        VistaL10n.text("來源讀取尚未結束"),
+        VistaL10n.text("片段仍有讀取租約"),
+        VistaL10n.text("來源暫存仍有未收尾檔案"),
+        VistaL10n.text("此 MKV 路徑需要 visionOS 26.2 或更新版本。"),
+        VistaL10n.text("此播放路徑只支援本機資料夾的 VP9 P0＋AAC-LC。"),
+        VistaL10n.text("MKV 播放窗口超過 128 MiB 或有界片段數"),
+        VistaL10n.text("MKV 系統播放器準備逾時"),
+        VistaL10n.text("MKV 起始跳轉逾時"), VistaL10n.text("此 MKV 來源尚未支援。")]
     static let adapterReasons:[String] = ["local file URL required", "open", "positive regular file with Int64 offsets required", "closed or revoked source revision", "fd metadata changed", "window admission closed or wrong full stamp", "previous window not drained", "read range or file", "short pread inside known source", "known end is not physical EOF", "drain wrong full stamp", "source operation still active", "close before window drain", "close", "wrong file", "producer create", "producer destroyed", "producer diagnostics", "producer snapshot", "import acknowledgement order", "destroyed", "segment unavailable", "callback invocation not drained", "destroy before actual drain", "complete positive SMB identity required", "SMB generation retired", "SMB source revision changed", "SMB previous generation not drained", "SMB read range or file", "short SMB source read", "SMB drain wrong generation", "SMB source invocation still active", "SMB source drain changed", "SMB close before generation drain"]
     static let storeReasons:[String] = ["stamp/cleaned", "retiring", "directory name", "parent open", "mkdir owned", "owned open", "name/overwrite/pending/file cap", "size cap", "pending open", "write", "fsync", "fstat", "closed payload size/type", "immutable mode", "close payload", "no stage", "hash/overwrite", "stage identity", "publish no-replace", "remove stage name", "playlist references", "unpublished", "rolling manifest contract", "unpublished rolling references", "manifest version cap", "retired stat", "retention-safe unlink", "lease cap", "lease open", "lease stat", "lease absent", "owned inode changed", "response bounds", "short response", "reply absent", "reply still borrowed", "lease close", "discard unpublished stage", "incomplete source/owner drain", "cleanup stat", "owned unlink", "owned rmdir"]
     mutating func poll() {if polls<UInt32.max {polls += 1}}
@@ -190,30 +190,30 @@ struct MKVDiagnostics {
     }
     static func engineReason(_ code:UInt32)->String {
         switch code {
-        case 211:return "此測試版的 MKV 目前只支援單一 VP9 視訊軌；這支影片的視訊編碼尚未支援。"
-        case 212:return "此測試版的 MKV 目前只支援單一 AAC 音軌。"
+        case 211:return VistaL10n.text("此播放路徑只支援單一 VP9 視訊軌；這支影片的視訊編碼尚未支援。")
+        case 212:return VistaL10n.text("此播放路徑只支援單一 AAC 音軌。")
         default:return SourceAdapterSession.diagnosticReason(code)
         }
     }
     var safeReason:String {
         if reason==2,let engine {return Self.engineReason(engine.reasonCode)}
         if reason>=1000,Int(reason-1000)<Self.knownMessages.count {return Self.knownMessages[Int(reason-1000)]}
-        if reason>=2000,Int(reason-2000)<Self.adapterReasons.count {return "來源檢查："+Self.adapterReasons[Int(reason-2000)]}
-        if reason>=3000,Int(reason-3000)<Self.storeReasons.count {return "片段儲存："+Self.storeReasons[Int(reason-3000)]}
+        if reason>=2000,Int(reason-2000)<Self.adapterReasons.count {return VistaL10n.text("來源檢查：")+Self.adapterReasons[Int(reason-2000)]}
+        if reason>=3000,Int(reason-3000)<Self.storeReasons.count {return VistaL10n.text("片段儲存：")+Self.storeReasons[Int(reason-3000)]}
         switch reason {
-        case 10:return "無法取得所選資料夾的讀取權限。";case 11:return "資料夾授權已失效，請重新選取。"
-        case 12:return "來源路徑未通過安全檢查。";case 13:return "本機來源暫時無法存取。";case 14:return "資料夾項目超過候選上限。"
-        case 20:return "來源或讀取工作未通過生命週期檢查。";case 21:return "本機來源的系統讀取操作失敗。"
-        case 30:return "片段儲存未通過安全或容量檢查。";case 31:return "片段儲存的系統操作失敗。"
-        case 40:return "來源讀取失敗。";case 41:return "系統播放器超過 30 秒沒有交付新畫面。"
-        case 42:return "系統播放器無法播放這個檔案。";case 43:return "這個操作不在候選支援範圍。"
-        default:return "候選在此階段失敗，已保存匿名診斷代碼。"
+        case 10:return VistaL10n.text("無法取得所選資料夾的讀取權限。");case 11:return VistaL10n.text("資料夾授權已失效，請重新選取。")
+        case 12:return VistaL10n.text("來源路徑未通過安全檢查。");case 13:return VistaL10n.text("本機來源暫時無法存取。");case 14:return VistaL10n.text("資料夾項目超過可處理的上限。")
+        case 20:return VistaL10n.text("來源或讀取工作未通過生命週期檢查。");case 21:return VistaL10n.text("本機來源的系統讀取操作失敗。")
+        case 30:return VistaL10n.text("片段儲存未通過安全或容量檢查。");case 31:return VistaL10n.text("片段儲存的系統操作失敗。")
+        case 40:return VistaL10n.text("來源讀取失敗。");case 41:return VistaL10n.text("系統播放器超過 30 秒沒有交付新畫面。")
+        case 42:return VistaL10n.text("系統播放器無法播放這個檔案。");case 43:return VistaL10n.text("尚未支援這個操作。")
+        default:return VistaL10n.text("播放處理失敗。")
         }
     }
     var fatalMessage:String? {
         guard reason != 0 else{return nil}
-        let code=engine.map{"／引擎 \($0.stage):\($0.reasonCode)"} ?? ""
-        return "\(stage.label)失敗：\(safeReason)\n診斷 \(stage.rawValue):\(reason)\(code)"
+        let code=engine.map{VistaL10n.text("／引擎 %@:%@" , String(describing: $0.stage), String(describing: $0.reasonCode))} ?? ""
+        return VistaL10n.text("%@失敗：%@\n診斷 %@:%@%@" , String(describing: stage.label), String(describing: safeReason), String(describing: stage.rawValue), String(describing: reason), String(describing: code))
     }
     var values:[String:Double] {
         var v:[String:Double] = ["mkvSchema":7,"mkvAppStage":Double(stage.rawValue),"mkvAppReason":Double(reason),"mkvSystemDomain":Double(systemDomain),"mkvSystemCode":Double(systemCode),"mkvFrames":Double(frames),"mkvPolls":Double(polls)]

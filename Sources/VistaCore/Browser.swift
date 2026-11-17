@@ -5,7 +5,7 @@ public struct DirectoryPath: Hashable, Sendable {
     public let components: [String]
     public init(_ components: [String] = []) { self.components = components }
     public var parent: DirectoryPath? { components.isEmpty ? nil : DirectoryPath(Array(components.dropLast())) }
-    public var name: String { components.last ?? "分享根目錄" }
+    public var name: String { components.last ?? VistaL10n.text("分享根目錄") }
     public var display: String { "/" + components.joined(separator: "/") }
     public func appending(_ name: String) -> DirectoryPath { DirectoryPath(components + [name]) }
 }
@@ -202,7 +202,7 @@ public struct PlaybackSelection: Identifiable, Equatable, Sendable {
                 guard let self, token == self.generation, path == self.current else { return }
                 self.directories[path]?.isLoading = false
                 // Never expose a backend error: it may contain credentials or private URLs.
-                self.directories[path]?.error = "無法讀取資料夾。請檢查連線或存取權限後重試。"
+                self.directories[path]?.error = VistaL10n.text("無法讀取資料夾。請檢查連線或存取權限後重試。")
             }
         }
     }
@@ -312,14 +312,14 @@ public enum FinderTagState: Hashable, Sendable {
     }
     public var label:String {
         switch self {
-        case .notLoaded:return "尚未讀取"
-        case .loading:return "讀取中"
-        case .loaded(let tags):return tags.isEmpty ? "無標籤":displayTags.map(\.name).joined(separator:"、")
-        case .unavailable:return "未提供"
-        case .unsupported:return "不支援"
-        case .denied:return "無權限"
-        case .invalid:return "格式錯誤"
-        case .failed:return "讀取失敗"
+        case .notLoaded:return VistaL10n.text("尚未讀取")
+        case .loading:return VistaL10n.text("讀取中")
+        case .loaded(let tags):return tags.isEmpty ? VistaL10n.text("無標籤"):displayTags.map(\.name).joined(separator:VistaL10n.text("、"))
+        case .unavailable:return VistaL10n.text("未提供")
+        case .unsupported:return VistaL10n.text("不支援")
+        case .denied:return VistaL10n.text("無權限")
+        case .invalid:return VistaL10n.text("格式錯誤")
+        case .failed:return VistaL10n.text("讀取失敗")
         }
     }
     public var isResolvedForSorting:Bool {isConfirmed || self == .unavailable}

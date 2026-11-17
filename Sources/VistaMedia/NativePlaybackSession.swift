@@ -28,7 +28,7 @@ struct NativeRequestMetrics {
  var epoch=0,reads=0,bytes=0,interrupted=0
  var started=0.0,readSeconds=0.0,waitingSeconds=0.0
  var waitingSince:Double?,seekCompleted:Double?,firstFrame:Double?,firstPTS:Double?
- var reason="無",kind="開片"
+ var reason=VistaL10n.text("無"),kind=VistaL10n.text("開片")
  var target:Double?,targetBuffered:Bool?
  var seekSnapshot:NativeStageSnapshot?,firstSnapshot:NativeStageSnapshot?,presentationSnapshot:NativeStageSnapshot?
  func snapshot(now:Double)->NativeStageSnapshot {
@@ -54,12 +54,12 @@ struct NativeRequestMetrics {
  func text(now:Double)->String {
   func stage(_ name:String,_ value:NativeStageSnapshot?)->String {
    guard let v=value else{return "\(name)：—"}
-   return "\(name) \(Int((v.at-started)*1000)) ms／讀\(v.reads)、\(v.bytes) B、Σ\(Int(v.readSeconds*1000)) ms／中止\(v.interrupted)／等\(Int(v.waitingSeconds*1000)) ms（\(v.reason)）"
+   return VistaL10n.text("%@ %@ ms／讀%@、%@ B、Σ%@ ms／中止%@／等%@ ms（%@）" , String(describing: name), String(describing: Int((v.at-started)*1000)), String(describing: v.reads), String(describing: v.bytes), String(describing: Int(v.readSeconds*1000)), String(describing: v.interrupted), String(describing: Int(v.waitingSeconds*1000)), String(describing: v.reason))
   }
   let targetText=target.map{String(format:"%.2f",$0)} ?? "—"
-  let buffered=targetBuffered.map{$0 ? "是":"未報告涵蓋"} ?? "不適用"
-  return "請求 \(epoch) \(kind)／目標 \(targetText) s／已緩衝：\(buffered)\n" +
-   [stage("seek",seekSnapshot),stage("首幀",firstSnapshot),stage("呈現通知",presentationSnapshot)].joined(separator:"\n")
+  let buffered=targetBuffered.map{$0 ? VistaL10n.text("是"):VistaL10n.text("未報告涵蓋")} ?? VistaL10n.text("不適用")
+  return VistaL10n.text("請求 %@ %@／目標 %@ s／已緩衝：%@\n" , String(describing: epoch), String(describing: kind), String(describing: targetText), String(describing: buffered)) +
+   [stage("seek",seekSnapshot),stage(VistaL10n.text("首幀"),firstSnapshot),stage(VistaL10n.text("呈現通知"),presentationSnapshot)].joined(separator:"\n")
  }
 
 }
@@ -68,7 +68,7 @@ struct NativeRequestMetrics {
 struct AnonymousIOSnapshot:Equatable {
  let started:Int,finished:Int,cancelled:Int,failed:Int,inFlight:Int,oldAtStart:Int,oldRemaining:Int,peak:Int,bytes:Int,overflow:Int
  let maxTotalMS:Double,lastOldMS:Double
- var text:String {"I/O 起\(started) 完\(finished) 取消\(cancelled) 錯\(failed) 在途\(inFlight) 峰\(peak) B\(bytes) 溢\(overflow) 舊\(oldAtStart)/\(oldRemaining) 舊尾\(Int(lastOldMS))ms 最長總等待\(Int(maxTotalMS))ms"}
+ var text:String {VistaL10n.text("I/O 起%@ 完%@ 取消%@ 錯%@ 在途%@ 峰%@ B%@ 溢%@ 舊%@/%@ 舊尾%@ms 最長總等待%@ms" , String(describing: started), String(describing: finished), String(describing: cancelled), String(describing: failed), String(describing: inFlight), String(describing: peak), String(describing: bytes), String(describing: overflow), String(describing: oldAtStart), String(describing: oldRemaining), String(describing: Int(lastOldMS)), String(describing: Int(maxTotalMS)))}
 }
 @MainActor final class AnonymousIOAggregate {
  private struct Slot {let epoch:Int,start:Double}
@@ -307,7 +307,7 @@ struct NativeVideoDeliveryDiagnostics {
 @MainActor public final class NativePlaybackSession {
  public enum State:Equatable,Sendable {case preparing,playing,waiting,paused,seeking,ended}
  public enum Failure:Error,Equatable {case source,stalled,player,unsupported}
- public let decoderDescription="解碼方式：系統管理（未知）"
+ public let decoderDescription=VistaL10n.text("解碼方式：系統管理（未知）")
  #if os(visionOS)
  private var displayClock:NativeDisplayClock?
  #endif
@@ -715,7 +715,7 @@ struct NativeVideoDeliveryDiagnostics {
  private var frames=0,waits=0
  private var videoDeliveryDiagnostics=NativeVideoDeliveryDiagnostics()
  private var maxClockDifference=0.0
- public private(set) var diagnosticsText="AVPlayer 候選／解碼方式：系統管理（未知）"
+ public private(set) var diagnosticsText=VistaL10n.text("AVPlayer／解碼方式：系統管理（未知）")
  private var diagnosticUpdate=0.0
  #if VISTA_ANON_IO_EXPERIMENT
  var experimentItem:AVPlayerItem?{item}
@@ -954,7 +954,7 @@ struct NativeVideoDeliveryDiagnostics {
   interruptBufferingWait()
   abortWait(.seek)
   let id=UUID();seekGeneration=id;seeking=true;stallRecovery.interrupt(userInitiated:true);prefetchSource?.invalidatePrefetch(reason:.seek);updatePrefetchActivity();player.pause();item.cancelPendingSeeks()
-  requestMetrics.begin("跳轉",now:ProcessInfo.processInfo.systemUptime)
+  requestMetrics.begin(VistaL10n.text("跳轉"),now:ProcessInfo.processInfo.systemUptime)
   #if VISTA_ANON_IO_EXPERIMENT
   anonymousIO.beginEpoch(now:ProcessInfo.processInfo.systemUptime);anonymousStages=[:]
   #endif
@@ -977,11 +977,11 @@ struct NativeVideoDeliveryDiagnostics {
   guard active,session==frameSession else{return}
   requestMetrics.present(now:ProcessInfo.processInfo.systemUptime)
   #if VISTA_ANON_IO_EXPERIMENT
-  if anonymousStages["呈現"]==nil {anonymousStages["呈現"]=anonymousIO.snapshot()}
+  if anonymousStages[VistaL10n.text("呈現")]==nil {anonymousStages[VistaL10n.text("呈現")]=anonymousIO.snapshot()}
   // Presentation can arrive while paused, without another video frame to refresh the text.
-  if let divider=diagnosticsText.range(of:"\nAVPlayer 候選") {
-   let suffix=String(diagnosticsText[divider.lowerBound...]).components(separatedBy:"\n").filter{!$0.contains(" I/O 起")}.joined(separator:"\n")
-   let lines=["seek","首幀","呈現"].compactMap {key in anonymousStages[key].map{key+" "+$0.text}}
+  if let divider=diagnosticsText.range(of:VistaL10n.text("\nAVPlayer")) {
+   let suffix=String(diagnosticsText[divider.lowerBound...]).components(separatedBy:"\n").filter{!$0.contains(VistaL10n.text(" I/O 起"))}.joined(separator:"\n")
+   let lines=["seek",VistaL10n.text("首幀"),VistaL10n.text("呈現")].compactMap {key in anonymousStages[key].map{key+" "+$0.text}}
    diagnosticsText=requestMetrics.text(now:ProcessInfo.processInfo.systemUptime)+suffix+"\n"+lines.joined(separator:"\n")
   }
   #endif
@@ -1125,8 +1125,8 @@ struct NativeVideoDeliveryDiagnostics {
   if ext == "mkv" {
    mkvDiagnostics=MKVDiagnostics()
    do {
-    guard #available(visionOS 26.2, *) else{throw MKVPlaybackError.failure("此 MKV 路徑需要 visionOS 26.2 或更新版本。")}
-    guard source is LocalDirectoryProvider || source is PlaybackPrefetchSource else{throw MKVPlaybackError.failure("此 MKV 來源尚未支援。")}
+    guard #available(visionOS 26.2, *) else{throw MKVPlaybackError.failure(VistaL10n.text("此 MKV 路徑需要 visionOS 26.2 或更新版本。"))}
+    guard source is LocalDirectoryProvider || source is PlaybackPrefetchSource else{throw MKVPlaybackError.failure(VistaL10n.text("此 MKV 來源尚未支援。"))}
     _ = NativeSupplementalVideoDecoders.vp9RegistrationRequested
     mkvDiagnostics?.enter(.sourceOpen)
     memoryDiagnostics=PlaybackMemoryDiagnostics();finalPrefetchMetrics=nil
@@ -1148,7 +1148,7 @@ struct NativeVideoDeliveryDiagnostics {
       }
      }
      memoryDiagnostics.pressureMonitored=true;memoryPressureSource=pressure;pressure.resume()
-    } else {throw MKVPlaybackError.failure("此 MKV 來源尚未支援。")}
+    } else {throw MKVPlaybackError.failure(VistaL10n.text("此 MKV 來源尚未支援。"))}
     let driver=MKVPlaybackDriver();mkvDriver=driver;running=true
     let observationSource=mkvSourceKind
     driver.onObservation = { fields in
@@ -1227,7 +1227,7 @@ struct NativeVideoDeliveryDiagnostics {
   videoDeliveryDiagnostics=NativeVideoDeliveryDiagnostics()
   lastProgress=ProcessInfo.processInfo.systemUptime;frames=0;waits=0;maxClockDifference=0;diagnosticUpdate=0;onState(.preparing)
   do {
-   requestMetrics.begin("開片",now:ProcessInfo.processInfo.systemUptime)
+   requestMetrics.begin(VistaL10n.text("開片"),now:ProcessInfo.processInfo.systemUptime)
    let size:UInt64
    do {size=try await source.fileSize(for:file);lastProgress=ProcessInfo.processInfo.systemUptime}
    catch is CancellationError {throw CancellationError()}
@@ -1307,10 +1307,10 @@ struct NativeVideoDeliveryDiagnostics {
     let now=ProcessInfo.processInfo.systemUptime
     let reason:String
     switch native.reasonForWaitingToPlay {
-     case .toMinimizeStalls:reason="避免停滯"
-     case .evaluatingBufferingRate:reason="評估緩衝"
-     case .noItemToPlay:reason="無項目"
-     default:reason=stallRecovery.pending ? "資料不足":"其他／無"
+     case .toMinimizeStalls:reason=VistaL10n.text("避免停滯")
+     case .evaluatingBufferingRate:reason=VistaL10n.text("評估緩衝")
+     case .noItemToPlay:reason=VistaL10n.text("無項目")
+     default:reason=stallRecovery.pending ? VistaL10n.text("資料不足"):VistaL10n.text("其他／無")
     }
     requestMetrics.waiting(isWaitingForData,reason:reason,now:now)
     let time=native.currentTime()
@@ -1364,14 +1364,14 @@ struct NativeVideoDeliveryDiagnostics {
        videoDeliveryDiagnostics.recordFrame(now:lastProgress,presentationTime:display.seconds)
        requestMetrics.deliverFirst(now:lastProgress,pts:display.seconds)
        #if VISTA_ANON_IO_EXPERIMENT
-       if anonymousStages["首幀"]==nil {anonymousStages["首幀"]=anonymousIO.snapshot()}
+       if anonymousStages[VistaL10n.text("首幀")]==nil {anonymousStages[VistaL10n.text("首幀")]=anonymousIO.snapshot()}
        #endif
        maxClockDifference=max(maxClockDifference,abs(display.seconds-native.currentTime().seconds))
        if lastProgress-diagnosticUpdate>=1 {
         diagnosticUpdate=lastProgress
-        diagnosticsText=requestMetrics.text(now:lastProgress)+"\nAVPlayer 候選／解碼方式：系統管理（未知）\n影格 \(frames)／等待 \(waits)／影格與播放器時鐘差最大 \(Int(maxClockDifference*1000)) ms／\(CVPixelBufferGetWidth(pixel))×\(CVPixelBufferGetHeight(pixel))"
+        diagnosticsText=requestMetrics.text(now:lastProgress)+VistaL10n.text("\nAVPlayer／解碼方式：系統管理（未知）\n影格 %@／等待 %@／影格與播放器時鐘差最大 %@ ms／%@×%@" , String(describing: frames), String(describing: waits), String(describing: Int(maxClockDifference*1000)), String(describing: CVPixelBufferGetWidth(pixel)), String(describing: CVPixelBufferGetHeight(pixel)))
         #if VISTA_ANON_IO_EXPERIMENT
-        let aggregateLines=["seek","首幀","呈現"].compactMap {key in anonymousStages[key].map{key+" "+$0.text}}
+        let aggregateLines=["seek",VistaL10n.text("首幀"),VistaL10n.text("呈現")].compactMap {key in anonymousStages[key].map{key+" "+$0.text}}
         diagnosticsText += "\n"+aggregateLines.joined(separator:"\n")
         #endif
        }

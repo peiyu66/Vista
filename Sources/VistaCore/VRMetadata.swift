@@ -7,15 +7,15 @@ public enum VRMetadataResult: Equatable, Sendable {
     public var format: VRFormat? { if case let .recognized(value) = self { value } else { nil } }
     public var message: String {
         switch self {
-        case .recognized: "已依影片格式標記設定"
-        case .partial: "已採用已知格式標記，其餘依檔名或預設"
-        case .missing: "未找到格式標記，請手動選擇。"
-        case .incomplete: "格式標記不完整，請手動選擇。"
-        case .conflicting: "格式標記互相衝突，請手動選擇。"
-        case .unsupported: "此格式標記尚未支援自動設定，請手動選擇。"
-        case .invalid: "格式標記無法安全解析，請手動選擇。"
-        case .unavailable: "無法讀取格式標記，請手動選擇。"
-        case .limitExceeded: "格式資訊超出讀取上限，請手動選擇。"
+        case .recognized: VistaL10n.text("已依影片格式標記設定")
+        case .partial: VistaL10n.text("已採用已知格式標記，其餘依檔名或預設")
+        case .missing: VistaL10n.text("未找到格式標記，請手動選擇。")
+        case .incomplete: VistaL10n.text("格式標記不完整，請手動選擇。")
+        case .conflicting: VistaL10n.text("格式標記互相衝突，請手動選擇。")
+        case .unsupported: VistaL10n.text("此格式標記尚未支援自動設定，請手動選擇。")
+        case .invalid: VistaL10n.text("格式標記無法安全解析，請手動選擇。")
+        case .unavailable: VistaL10n.text("無法讀取格式標記，請手動選擇。")
+        case .limitExceeded: VistaL10n.text("格式資訊超出讀取上限，請手動選擇。")
         }
     }
 }
@@ -236,9 +236,9 @@ public struct VRFilenameHints: Equatable, Sendable {
         let stem=(filename as NSString).deletingPathExtension.precomposedStringWithCanonicalMapping.lowercased()
         let tokens=Set(stem.split { !$0.isLetter && !$0.isNumber && $0 != "°" }.map(String.init))
         var result=Self()
-        let side = !tokens.isDisjoint(with:["sbs","hsbs","左右"])
-        let over = !tokens.isDisjoint(with:["ou","tb","hou","htb","上下"])
-        let mono = !tokens.isDisjoint(with:["mono","2d","單眼"])
+        let side = !tokens.isDisjoint(with:["sbs","hsbs",VistaL10n.text("左右")])
+        let over = !tokens.isDisjoint(with:["ou","tb","hou","htb",VistaL10n.text("上下")])
+        let mono = !tokens.isDisjoint(with:["mono","2d",VistaL10n.text("單眼")])
         let layouts:[VRLayout]=[(side,VRLayout.sideBySide),(over,.overUnder),(mono,.mono)].compactMap{$0.0 ? $0.1:nil}
         result.layoutConflict=layouts.count>1
         if layouts.count==1 {result.values.layout=layouts[0]}

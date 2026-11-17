@@ -20,7 +20,7 @@ import VistaMedia
     var error: String?
     var ready = false
     var logValues: [PlaybackLogField: Double] = [:]
-    private(set) var route = "原雙貼圖"
+    private(set) var route = VistaL10n.text("原雙貼圖")
     #if DEBUG
     var reviewBusy: Bool { worker != nil }
     var reviewMeshCount = 0
@@ -243,7 +243,7 @@ import VistaMedia
         catch {
             guard ticket == generation else { return }
             releaseHeldPresentation(reason:4,hide:true)
-            entity.isEnabled = false; ready = false; self.error = "無法建立 VR 投影。請返回視窗重試。"
+            entity.isEnabled = false; ready = false; self.error = VistaL10n.text("無法建立 VR 投影。請返回視窗重試。")
         }
     }
     private func updateGPU(_ frame: DecodedVideoFrame, settings: VRSettings, metrics: PlaybackMetrics?, ticket: Int, queue: any MTLCommandQueue) async throws {
@@ -288,7 +288,7 @@ import VistaMedia
         logValues[.textureCount, default: 0] += 1
         lastOutputBytes=active.crops.reduce(0){$0+Int($1.width)*Int($1.height)*4}
         outputWidth=Int(active.crops[0].width);outputHeight=Int(active.crops[0].height);outputCount=active.crops.count
-        route = "SDR GPU 重用貼圖"
+        route = VistaL10n.text("SDR GPU 重用貼圖")
         finish(settings: settings, metrics: metrics)
         #if DEBUG
         reviewGPUFrames += 1
@@ -313,7 +313,7 @@ import VistaMedia
         try bind([leftTexture, rightTexture], settings: settings, width: left.width, height: left.height)
         lastOutputBytes=left.width*left.height*4*(settings.layout == .mono ? 1:2)
         outputWidth=left.width;outputHeight=left.height;outputCount=settings.layout == .mono ? 1:2
-        route = gpuFailed ? "原雙貼圖回退（GPU 更新失敗）" : "原雙貼圖"
+        route = gpuFailed ? VistaL10n.text("原雙貼圖回退（GPU 更新失敗）") : VistaL10n.text("原雙貼圖")
         finish(settings: settings, metrics: metrics)
         #if DEBUG
         reviewLegacyFrames += 1

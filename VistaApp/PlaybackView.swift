@@ -44,49 +44,49 @@ struct PlaybackView: View {
         Group {
         if directImmersive {
             VStack(spacing:16) {
-                Button("返回檔案",systemImage:"chevron.left") {Task {await stopAndReturn()}}.accessibilityIdentifier("returnToBrowser")
+                Button(VistaL10n.text("返回檔案"),systemImage:"chevron.left") {Task {await stopAndReturn()}}.accessibilityIdentifier("returnToBrowser")
                 if inspectionFailed {
-                    Text("無法讀取影片，請確認連線與檔案後重試。")
-                    Button("重試") {attempt += 1}
-                } else {ProgressView("準備影片…")}
+                    Text(VistaL10n.text("無法讀取影片，請確認連線與檔案後重試。"))
+                    Button(VistaL10n.text("重試")) {attempt += 1}
+                } else {ProgressView(VistaL10n.text("準備影片…"))}
                 if let message=vr.message {Text(message)}
                 if let preferenceMessage {Text(preferenceMessage)}
             }.padding(24).accessibilityIdentifier("directPlaybackPreparation")
         } else {
         VStack(spacing: 16) {
             HStack {
-                Button("返回檔案", systemImage: "chevron.left", action: {Task {await stopAndReturn()}})
-                    .accessibilityLabel("返回檔案").accessibilityIdentifier("returnToBrowser")
+                Button(VistaL10n.text("返回檔案"), systemImage: "chevron.left", action: {Task {await stopAndReturn()}})
+                    .accessibilityLabel(VistaL10n.text("返回檔案")).accessibilityIdentifier("returnToBrowser")
                 Spacer()
-                Text("視訊播放器").font(.headline)
-                if PlaybackDecodingPolicy.simulatorSoftwareTest {Text("模擬器解碼測試・非實機效能").font(.caption).accessibilityIdentifier("simulatorDecodeNotice")}
+                Text(VistaL10n.text("視訊播放器")).font(.headline)
+                if PlaybackDecodingPolicy.simulatorSoftwareTest {Text(VistaL10n.text("模擬器解碼測試・非實機效能")).font(.caption).accessibilityIdentifier("simulatorDecodeNotice")}
             }
             Divider()
             ScrollView {
                 VStack(spacing: 16) {
                     if let image = previewImage {
-                        Image(image, scale: 1, label: Text("影片畫面")).resizable().scaledToFit()
+                        Image(image, scale: 1, label: Text(VistaL10n.text("影片畫面"))).resizable().scaledToFit()
                             .frame(maxHeight: 220).accessibilityIdentifier("decodedVideoFrame")
                     } else { Image(systemName: "play.rectangle").font(.system(size: 60)).foregroundStyle(.secondary) }
                     Text(playingSelection.file.name).font(.title2).multilineTextAlignment(.center)
-                    if isDemo { Text("示範資料").font(.caption) }
+                    if isDemo { Text(VistaL10n.text("示範資料")).font(.caption) }
                     if PlaybackDecodingPolicy.simulatorSoftwareTest {
                         #if VISTA_NATIVE_PLAYER_EXPERIMENT
-                        Text("AVPlayer 候選・解碼方式未知").accessibilityIdentifier("nativeDecodeMode")
+                        Text(VistaL10n.text("AVPlayer・解碼方式未知")).accessibilityIdentifier("nativeDecodeMode")
                         #else
-                        Text("模擬器軟體解碼測試版・非實機效能").foregroundStyle(.orange).accessibilityIdentifier("simulatorDecodeMode")
+                        Text(VistaL10n.text("模擬器軟體解碼測試版・非實機效能")).foregroundStyle(.orange).accessibilityIdentifier("simulatorDecodeMode")
                         #endif
                     }
                     if let inspection {
-                        Text("檔案大小：\(ByteCountFormatter.string(fromByteCount: Int64(clamping: inspection.fileSize), countStyle: .file))")
-                        Text("檔頭：\(inspection.headerKind.rawValue)").accessibilityIdentifier("mediaHeader")
+                        Text(VistaL10n.text("檔案大小：%@" , String(describing: ByteCountFormatter.string(fromByteCount: Int64(clamping: inspection.fileSize), countStyle: .file))))
+                        Text(VistaL10n.text("檔頭：%@" , String(describing: VistaL10n.text(inspection.headerKind.rawValue)))).accessibilityIdentifier("mediaHeader")
                     } else if inspectionFailed {
-                        Text("無法讀取檔案資訊。請確認連線與檔案後重試。")
-                        Button("重試") { attempt += 1 }
-                    } else { ProgressView("讀取檔案資訊…") }
+                        Text(VistaL10n.text("無法讀取檔案資訊。請確認連線與檔案後重試。"))
+                        Button(VistaL10n.text("重試")) { attempt += 1 }
+                    } else { ProgressView(VistaL10n.text("讀取檔案資訊…")) }
                     if let trackInfo = player.trackInfo {
                         let scrubOwner = player.playbackGeneration
-                        Text("\(trackInfo.codec) · \(trackInfo.width) × \(trackInfo.height)").accessibilityIdentifier("videoTrackInfo")
+                        Text(VistaL10n.text("%@ · %@ × %@" , String(describing: trackInfo.codec), String(describing: trackInfo.width), String(describing: trackInfo.height))).accessibilityIdentifier("videoTrackInfo")
                         Slider(value: Binding(get: { scrubTime }, set: { value in
                             guard player.playbackGeneration == scrubOwner else { return }
                             scrubInteraction.update(value, owner: scrubOwner, initialPosition: scrubTime)
@@ -108,7 +108,7 @@ struct PlaybackView: View {
                             .onDisappear {
                                 if scrubInteraction.owner == scrubOwner {scrubInteraction.cancel();isScrubbing=false}
                             }
-                            .accessibilityLabel("播放位置").accessibilityIdentifier("playbackPosition")
+                            .accessibilityLabel(VistaL10n.text("播放位置")).accessibilityIdentifier("playbackPosition")
                         Text("\(timeLabel(isScrubbing ? scrubTime : player.progressPosition)) / \(timeLabel(trackInfo.duration))")
                             .monospacedDigit().accessibilityIdentifier("playbackTime")
                     }
@@ -117,46 +117,46 @@ struct PlaybackView: View {
                         if let metadata = formatChoice.metadata {
                             Text(metadata.message).font(.callout).accessibilityIdentifier("vrMetadataStatus")
                         } else if preferencesReady {
-                            ProgressView("讀取格式標記…")
+                            ProgressView(VistaL10n.text("讀取格式標記…"))
                         }
                         if preferencesReady && !formatChoice.confirmed {
-                            Button("使用目前格式", action: chooseManualFormat).accessibilityIdentifier("confirmVRFormat")
+                            Button(VistaL10n.text("使用目前格式"), action: chooseManualFormat).accessibilityIdentifier("confirmVRFormat")
                         }
                     }
                     if rememberedFormat != nil {
-                        Button("清除此片格式") {
+                        Button(VistaL10n.text("清除此片格式")) {
                             clearSavedFormat()
                         }
                             .accessibilityIdentifier("clearVRFormat")
                     }
                     if let preferenceMessage { Text(preferenceMessage).accessibilityIdentifier("vrPreferenceError") }
                     HStack {
-                        Button("進入 VR") { Task { await enterVR(testPattern: false) } }
+                        Button(VistaL10n.text("進入 VR")) { Task { await enterVR(testPattern: false) } }
                             .disabled((player.frame == nil && player.pixelFrame == nil) || !formatChoice.confirmed || vr.active || vr.opening).accessibilityIdentifier("openVR")
                         if isDemo {
-                            Button("投影測試圖") { Task { await enterVR(testPattern: true) } }
+                            Button(VistaL10n.text("投影測試圖")) { Task { await enterVR(testPattern: true) } }
                                 .disabled(vr.active || vr.opening).accessibilityIdentifier("openVRTest")
                         }
                     }
                     if let message = vr.message { Text(message) }
-                    if let trackInfo = player.trackInfo, !trackInfo.hasAudio { Text("影片無音軌").font(.caption) }
+                    if let trackInfo = player.trackInfo, !trackInfo.hasAudio { Text(VistaL10n.text("影片無音軌")).font(.caption) }
                     PlaybackSpeedIndicator(status:player.speedStatus,identifier:"flatPlaybackSpeed",buffering:player.isBuffering && !player.isPaused)
-                    if player.speedStatus.ready,!player.speedStatus.supportsFastForward {Text("此影片最高 2×").font(.caption2)}
+                    if player.speedStatus.ready,!player.speedStatus.supportsFastForward {Text(VistaL10n.text("此影片最高 2×")).font(.caption2)}
                     if let message=player.speedMessage {Text(message).font(.caption)}
                     if !player.isBuffering, let playbackMessage = player.message { Text(playbackMessage).accessibilityIdentifier("playbackStatus") }
                     HStack {
                         if player.trackInfo != nil {
-                            Button("恢復 1 倍速") { player.resetSpeed() }
+                            Button(VistaL10n.text("恢復 1 倍速")) { player.resetSpeed() }
                                 .disabled(!player.canResetSpeed).accessibilityIdentifier("skipBackward")
-                            Button("加速 0.5 倍", systemImage: "forward.fill") { player.increaseSpeed() }
+                            Button(VistaL10n.text("加速 0.5 倍"), systemImage: "forward.fill") { player.increaseSpeed() }
                                 .disabled(!player.canIncreaseSpeed).labelStyle(.iconOnly).accessibilityIdentifier("skipForward")
                         }
                         if player.isPlaying {
-                            Button(player.isPaused ? "繼續" : "暫停", action: player.togglePause)
+                            Button(player.isPaused ? VistaL10n.text("繼續") : VistaL10n.text("暫停"), action: player.togglePause)
                                 .disabled(player.isPreparing).accessibilityIdentifier("pauseResumeVideo")
-                            Button("停止") { Task { await stopAndReturn() } }.accessibilityIdentifier("stopVideo")
+                            Button(VistaL10n.text("停止")) { Task { await stopAndReturn() } }.accessibilityIdentifier("stopVideo")
                         } else {
-                            Button("播放", action: startPlayback).accessibilityIdentifier("playVideo")
+                            Button(VistaL10n.text("播放"), action: startPlayback).accessibilityIdentifier("playVideo")
                                 .disabled(!preferencesReady || !formatChoice.confirmed || vr.opening)
                         }
                     }
@@ -230,7 +230,7 @@ struct PlaybackView: View {
                     formatChoice.manualDimensions = saved
                     vr.settings = formatChoice.format.settings
                     preferenceMessage = nil
-                } catch { preferenceMessage = "無法讀取已存格式；仍可手動設定。" }
+                } catch { preferenceMessage = VistaL10n.text("無法讀取已存格式；仍可手動設定。") }
                 preferencesReady = true;vr.canClearFormat=rememberedFormat != nil
                 let metadata = try await VRMetadataInspector.inspect(file, source: prepared)
                 try Task.checkCancellation()
@@ -256,10 +256,10 @@ struct PlaybackView: View {
                     let cleanupFailed=(error as? PlaybackController.PreparationFailure) == .sourceCleanup
                     player.persistDiagnostics(event:.failed,rendererValues:[.failureKind:1])
                     inspectionFailed = true; preferencesReady = true; formatChoice.metadata = .unavailable
-                    preferenceMessage = "無法確認檔案；本次格式不會保存。"
+                    preferenceMessage = VistaL10n.text("無法確認檔案；本次格式不會保存。")
                     autoplayReplacement = false;replayAfterPreparation=false
                     vr.advancing = false
-                    vr.message = cleanupFailed ? "無法確認先前來源已完成清理，已停止準備影片。請停止返回檔案列表。":"無法讀取影片，請停止返回檔案列表，確認連線與檔案後再試。"
+                    vr.message = cleanupFailed ? VistaL10n.text("無法確認先前來源已完成清理，已停止準備影片。請停止返回檔案列表。"):VistaL10n.text("無法讀取影片，請停止返回檔案列表，確認連線與檔案後再試。")
                     vr.holdControls()
                 }
             }
@@ -289,7 +289,7 @@ struct PlaybackView: View {
             try VRPreferenceStore.local.get().saveDimensions(format, source: preferenceSource, file: file, revision: inspection.revision)
             rememberedFormat = format; preferenceMessage = nil; vr.canClearFormat = format != nil
             return true
-        } catch { preferenceMessage = "無法保存格式；本次設定仍可使用。"; return false }
+        } catch { preferenceMessage = VistaL10n.text("無法保存格式；本次設定仍可使用。"); return false }
     }
     private func timeLabel(_ value: Double) -> String {
         let seconds = Int(max(0, min(value, Double(Int.max / 2))))
@@ -343,7 +343,7 @@ struct PlaybackView: View {
                 replacement = next
             } catch {
                 guard !Task.isCancelled, vr.active, !vr.stopping else { return }
-                vr.advancing = false; vr.endControllerNavigation(showError:true);vr.message = "無法切換影片，請稍後重試。"
+                vr.advancing = false; vr.endControllerNavigation(showError:true);vr.message = VistaL10n.text("無法切換影片，請稍後重試。")
             }
         }
     }
@@ -369,8 +369,8 @@ struct PlaybackView: View {
         }
         switch result {
         case .opened: vr.active = true; vr.revealControls()
-        case .userCancelled: vr.player = nil; vr.testPattern = false; vr.advancing = false; player.stop(); vr.message = "已取消進入沉浸空間。"
-        default: vr.player = nil; vr.testPattern = false; vr.advancing = false; player.stop(); vr.message = "無法開啟 VR 空間。"
+        case .userCancelled: vr.player = nil; vr.testPattern = false; vr.advancing = false; player.stop(); vr.message = VistaL10n.text("已取消進入沉浸空間。")
+        default: vr.player = nil; vr.testPattern = false; vr.advancing = false; player.stop(); vr.message = VistaL10n.text("無法開啟 VR 空間。")
         }
         vr.opening = false
     }
@@ -420,7 +420,7 @@ struct PlaybackSpeedIndicator:View {
             ZStack {
                 if buffering ?? status.showsBufferingIndicator {
                     ProgressView().controlSize(.mini)
-                        .accessibilityLabel("等待播放")
+                        .accessibilityLabel(VistaL10n.text("等待播放"))
                         .accessibilityIdentifier(identifier + "Buffering")
                 }
             }.frame(width:14,height:14)

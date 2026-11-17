@@ -20,7 +20,7 @@ public struct PlaybackSpeedStatus:Equatable,Sendable {
  public var text:String {
   let value="\(Self.label(selected))×"
   if !ready {return value}
-  if paused {return "\(value) · 暫停"}
+  if paused {return VistaL10n.text("%@ · 暫停" , String(describing: value))}
   // Transport rate can lag the waiting flag during a transition. Keep the
   // selected rate stable; the shared indicator supplies the waiting feedback.
   return value

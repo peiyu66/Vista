@@ -28,15 +28,15 @@ public struct PlaybackMetricSnapshot: Sendable {
     public let events: [PlaybackMetricEvent: Int]
     public let readBytes: Int
     public var text: String {
-        let heading = String(format:"%@ %.1f 秒（含準備／暫停）",complete ? "已結束":"收集中",elapsed)
-        var lines = [heading, "來源：\(source.rawValue)　\(hardware)", format]
+        let heading = String(format:VistaL10n.text("%@ %.1f 秒（含準備／暫停）"),complete ? VistaL10n.text("已結束"):VistaL10n.text("收集中"),elapsed)
+        var lines = [heading, VistaL10n.text("來源：%@　%@" , String(describing: VistaL10n.text(source.rawValue)), String(describing: hardware)), format]
         for stage in PlaybackMetricStage.allCases {
             let s=stages[stage] ?? PlaybackMetricAggregate()
-            lines.append(String(format:"%@：%d 次／共 %.1f ms／最大 %.1f ms",stage.rawValue,s.count,s.seconds*1000,s.maximum*1000))
+            lines.append(String(format:VistaL10n.text("%@：%d 次／共 %.1f ms／最大 %.1f ms"),VistaL10n.text(stage.rawValue),s.count,s.seconds*1000,s.maximum*1000))
         }
-        lines.append("解碼 \(events[.decoded,default:0])／送出 \(events[.delivered,default:0])／同步丟幀 \(events[.dropped,default:0])")
-        lines.append("呈現請求 \(events[.submitted,default:0])／合併 \(events[.coalesced,default:0])／貼圖完成 \(events[.uploaded,default:0])／過期 \(events[.stale,default:0])")
-        lines.append("讀取 \(readBytes) bytes／失敗 \(events[.readFailure,default:0])（取消 \(events[.readCancelled,default:0])／其他 \(max(0,events[.readFailure,default:0]-events[.readCancelled,default:0]))）")
+        lines.append(VistaL10n.text("解碼 %@／送出 %@／同步丟幀 %@" , String(describing: events[.decoded,default:0]), String(describing: events[.delivered,default:0]), String(describing: events[.dropped,default:0])))
+        lines.append(VistaL10n.text("呈現請求 %@／合併 %@／貼圖完成 %@／過期 %@" , String(describing: events[.submitted,default:0]), String(describing: events[.coalesced,default:0]), String(describing: events[.uploaded,default:0]), String(describing: events[.stale,default:0])))
+        lines.append(VistaL10n.text("讀取 %@ bytes／失敗 %@（取消 %@／其他 %@）" , String(describing: readBytes), String(describing: events[.readFailure,default:0]), String(describing: events[.readCancelled,default:0]), String(describing: max(0,events[.readFailure,default:0]-events[.readCancelled,default:0]))))
         return lines.joined(separator:"\n")
     }
 }
@@ -50,8 +50,8 @@ public final class PlaybackMetrics: @unchecked Sendable {
     private var stages:[PlaybackMetricStage:PlaybackMetricAggregate]=[:]
     private var events:[PlaybackMetricEvent:Int]=[:]
     private var bytes=0
-    private var hardware="硬解尚未確認"
-    private var format="軌道尚未取得"
+    private var hardware=VistaL10n.text("硬解尚未確認")
+    private var format=VistaL10n.text("軌道尚未取得")
     public init(source:PlaybackSourceKind = .unknown, now:Double = ProcessInfo.processInfo.systemUptime) {self.source=source;start=now}
     private func accepts(_ now:Double)->Bool {ended == nil && now >= start && now < start+10}
     public func record(_ stage:PlaybackMetricStage, seconds:Double, bytes:Int=0, now:Double = ProcessInfo.processInfo.systemUptime) {
@@ -76,11 +76,11 @@ public final class PlaybackMetrics: @unchecked Sendable {
     }
     public func setHardware(verified:Bool, softwareTest:Bool, now:Double = ProcessInfo.processInfo.systemUptime) {
         lock.lock();defer{lock.unlock()};guard accepts(now) else{return}
-        hardware=softwareTest ? "模擬器軟解測試" : verified ? "已查核硬解":"硬解查核失敗"
+        hardware=softwareTest ? VistaL10n.text("模擬器軟解測試") : verified ? VistaL10n.text("已查核硬解"):VistaL10n.text("硬解查核失敗")
     }
     public func setFormat(codec:String,width:Int,height:Int,now:Double = ProcessInfo.processInfo.systemUptime) {
         lock.lock();defer{lock.unlock()};guard accepts(now) else{return}
-        let safeCodec=["H.264","HEVC","VP9"].contains(codec) ? codec:"其他編碼"
+        let safeCodec=["H.264","HEVC","VP9"].contains(codec) ? codec:VistaL10n.text("其他編碼")
         format="\(safeCodec)　\(width)×\(height)"
     }
     public func finish(now:Double = ProcessInfo.processInfo.systemUptime) {
@@ -150,7 +150,7 @@ public final class ReadCancellationTrace:@unchecked Sendable {
         let rows=snapshot(),failures=rows.filter(\.readThrewCancellation)
         let counts=["loader","cleanup","source"].map {origin in failures.filter {$0.origin==origin}.count}
         let lag=rows.compactMap(\.releaseMS).max() ?? 0
-        return "取消追蹤（最近64請求，非10秒計數）：讀取拋取消 loader \(counts[0])／cleanup \(counts[1])／source \(counts[2])；釋放最久 \(Int(lag)) ms"
+        return VistaL10n.text("取消追蹤（最近64請求，非10秒計數）：讀取拋取消 loader %@／cleanup %@／source %@；釋放最久 %@ ms" , String(describing: counts[0]), String(describing: counts[1]), String(describing: counts[2]), String(describing: Int(lag)))
     }
 }
 

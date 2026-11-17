@@ -752,7 +752,7 @@ import VistaCore
     }
     private func failureMessage(stage:String)->String {
         let status=(video.error as NSError?).map {" code=\($0.code)"} ?? ""
-        return "系統影片呈現失敗，已停止 [videoRenderer/\(stage)\(status)]"
+        return VistaL10n.text("系統影片呈現失敗，已停止 [videoRenderer/%@%@]" , String(describing: stage), String(describing: status))
     }
     private func startStatusMonitor(ticket:Int) {
         guard statusTask==nil else{return}
@@ -802,11 +802,11 @@ import VistaCore
                             CGImageDestinationAddImage(destination,image,nil);_ = CGImageDestinationFinalize(destination)
                         }
                     }
-                    probe=inputProbe+" renderer 可讀回影格 \(CVPixelBufferGetWidth(pixel))×\(CVPixelBufferGetHeight(pixel))；非雙眼輸出驗收"
+                    probe=inputProbe+VistaL10n.text(" renderer 可讀回影格 %@×%@；非雙眼輸出驗收" , String(describing: CVPixelBufferGetWidth(pixel)), String(describing: CVPixelBufferGetHeight(pixel)))
                     return
                 }
             }
-            probe=inputProbe+" renderer 讀回不可用（不代表黑畫面） status=\(video.status.rawValue) ready=\(acceptsSamples) flush=\(requiresFlush) rate=\(CMTimebaseGetRate(video.timebase)) error=\((video.error as NSError?)?.code ?? 0)"
+            probe=inputProbe+VistaL10n.text(" renderer 讀回不可用（不代表黑畫面） status=%@ ready=%@ flush=%@ rate=%@ error=%@" , String(describing: video.status.rawValue), String(describing: acceptsSamples), String(describing: requiresFlush), String(describing: CMTimebaseGetRate(video.timebase)), String(describing: (video.error as NSError?)?.code ?? 0))
             print("SYSTEM_RENDERER_PROBE status=\(video.status.rawValue) ready=\(acceptsSamples) requiresFlush=\(requiresFlush) time=\(CMTimebaseGetTime(video.timebase).seconds) rate=\(CMTimebaseGetRate(video.timebase)) error=\((video.error as NSError?)?.code ?? 0)")
         }
         #endif

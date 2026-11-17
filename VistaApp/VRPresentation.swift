@@ -122,17 +122,17 @@ struct VRSettingsView: View {
     @Bindable var presentation: VRPresentation
     var edited: () -> Void = {}
     var body: some View {
-        Text("影片格式").font(.subheadline).foregroundStyle(.secondary).frame(maxWidth:.infinity,alignment:.leading).accessibilityAddTraits(.isHeader).accessibilityIdentifier("videoFormatHeading")
+        Text(VistaL10n.text("影片格式")).font(.subheadline).foregroundStyle(.secondary).frame(maxWidth:.infinity,alignment:.leading).accessibilityAddTraits(.isHeader).accessibilityIdentifier("videoFormatHeading")
         HStack(spacing:8) {
             projectionChoice("180°",.equirectangular180)
             projectionChoice("360°",.equirectangular360)
-            projectionChoice("魚眼",.equidistantFisheye180)
-        }.accessibilityElement(children:.contain).accessibilityLabel("投影")
+            projectionChoice(VistaL10n.text("魚眼"),.equidistantFisheye180)
+        }.accessibilityElement(children:.contain).accessibilityLabel(VistaL10n.text("投影"))
         HStack(spacing:8) {
-            layoutChoice("上下",.overUnder)
-            layoutChoice("左右",.sideBySide)
-            layoutChoice("單眼",.mono)
-        }.accessibilityElement(children:.contain).accessibilityLabel("畫面排列")
+            layoutChoice(VistaL10n.text("上下"),.overUnder)
+            layoutChoice(VistaL10n.text("左右"),.sideBySide)
+            layoutChoice(VistaL10n.text("單眼"),.mono)
+        }.accessibilityElement(children:.contain).accessibilityLabel(VistaL10n.text("畫面排列"))
         if presentation.settings.projection == .equidistantFisheye180 {
             explanation.accessibilityIdentifier("fisheyeScope")
         } else {
@@ -140,23 +140,23 @@ struct VRSettingsView: View {
         }
     }
     private var explanation:some View {
-        Text("每眼須為置中的 180° 等距圓形影像，圓徑等於短邊；不適用前後雙魚眼 360° 或需鏡頭校正的素材。")
+        Text(VistaL10n.text("每眼須為置中的 180° 等距圓形影像，圓徑等於短邊；不適用前後雙魚眼 360° 或需鏡頭校正的素材。"))
             .font(.caption).foregroundStyle(.secondary)
             .fixedSize(horizontal:false,vertical:true).allowsHitTesting(false)
     }
-    private func projectionChoice(_ title:LocalizedStringKey,_ value:VRProjection)->some View {
+    private func projectionChoice(_ title:String,_ value:VRProjection)->some View {
         choice(title,description:value.title,selected:presentation.settings.projection == value,identifier:"projection-"+value.rawValue) {
             guard presentation.settings.projection != value else{return}
             presentation.settings.projection=value;edited()
         }
     }
-    private func layoutChoice(_ title:LocalizedStringKey,_ value:VRLayout)->some View {
+    private func layoutChoice(_ title:String,_ value:VRLayout)->some View {
         choice(title,description:value.title,selected:presentation.settings.layout == value,identifier:"layout-"+value.rawValue) {
             guard presentation.settings.layout != value else{return}
             presentation.settings.layout=value;edited()
         }
     }
-    private func choice(_ title:LocalizedStringKey,description:String,selected:Bool,identifier:String,action:@escaping ()->Void)->some View {
+    private func choice(_ title:String,description:String,selected:Bool,identifier:String,action:@escaping ()->Void)->some View {
         Button(action:action) {
             Text(title).lineLimit(1).minimumScaleFactor(0.85)
                 .frame(maxWidth:.infinity,minHeight:44).padding(.horizontal,6)
@@ -165,7 +165,7 @@ struct VRSettingsView: View {
                 .overlay(Capsule().strokeBorder(selected ? BrowserBluePalette.emphasis.opacity(0.7):.clear,lineWidth:1))
                 .contentShape(.interaction,Capsule()).contentShape(.hoverEffect,Capsule())
         }.buttonStyle(.plain).hoverEffect(.highlight)
-            .accessibilityLabel(description).accessibilityValue(selected ? "已選取":"未選取")
+            .accessibilityLabel(description).accessibilityValue(selected ? VistaL10n.text("已選取"):VistaL10n.text("未選取"))
             .accessibilityAddTraits(selected ? .isSelected:[]).accessibilityIdentifier(identifier)
     }
 }
@@ -318,46 +318,46 @@ struct VRImmersiveView: View {
                 } else {
                 VStack {
                     if presentation.testPattern {
-                        Text("投影測試圖，非影片播放").accessibilityIdentifier("vrTestPattern")
+                        Text(VistaL10n.text("投影測試圖，非影片播放")).accessibilityIdentifier("vrTestPattern")
                         if presentation.settings.projection == .equidistantFisheye180 {
-                            Text("魚眼校準圖：環線 30°／60°／90°，上綠、右紅、下藍、左黃")
+                            Text(VistaL10n.text("魚眼校準圖：環線 30°／60°／90°，上綠、右紅、下藍、左黃"))
                                 .font(.caption).accessibilityIdentifier("fisheyeCalibration")
                         }
                     }
                     if presentation.calibration.status == .capturing {
-                        ProgressView("設定初始方向…")
+                        ProgressView(VistaL10n.text("設定初始方向…"))
                     } else if presentation.calibration.status == .unavailable {
-                        Text("無法取得初始方向；可手動調整或重新置中。")
+                        Text(VistaL10n.text("無法取得初始方向；可手動調整或重新置中。"))
                             .font(.caption).accessibilityIdentifier("initialPoseUnavailable")
                     }
                     if let error = renderer.error { Text(error).accessibilityIdentifier("vrError") }
                     else if renderer.ready { Text(presentation.settings.projection.title).accessibilityIdentifier("vrReady") }
-                    else { ProgressView("準備投影…") }
+                    else { ProgressView(VistaL10n.text("準備投影…")) }
                     Text(presentation.settings.layout.title).accessibilityIdentifier("vrLayoutReady")
                     HStack {
-                        Button("向左轉") { adjustManualDirection(yaw: -15) }
-                        Button("方向歸零") { resetDirectionFromControls() }
-                        Button("向右轉") { adjustManualDirection(yaw: 15) }
+                        Button(VistaL10n.text("向左轉")) { adjustManualDirection(yaw: -15) }
+                        Button(VistaL10n.text("方向歸零")) { resetDirectionFromControls() }
+                        Button(VistaL10n.text("向右轉")) { adjustManualDirection(yaw: 15) }
                     }
-                    .accessibilityIdentifier("recenterVideo").accessibilityHint("以目前觀看方向重新置中影片")
+                    .accessibilityIdentifier("recenterVideo").accessibilityHint(VistaL10n.text("以目前觀看方向重新置中影片"))
                     .disabled(!canAdjustManualDirection)
                     HStack {
-                        Button("向上轉") { adjustManualDirection(pitch: 15) }
-                        Button("向下轉") { adjustManualDirection(pitch: -15) }
-                        Button("左傾") { adjustManualDirection(roll: 15) }
-                        Button("右傾") { adjustManualDirection(roll: -15) }
-                    }.accessibilityIdentifier("recenterVideo").accessibilityHint("以目前觀看方向重新置中影片")
+                        Button(VistaL10n.text("向上轉")) { adjustManualDirection(pitch: 15) }
+                        Button(VistaL10n.text("向下轉")) { adjustManualDirection(pitch: -15) }
+                        Button(VistaL10n.text("左傾")) { adjustManualDirection(roll: 15) }
+                        Button(VistaL10n.text("右傾")) { adjustManualDirection(roll: -15) }
+                    }.accessibilityIdentifier("recenterVideo").accessibilityHint(VistaL10n.text("以目前觀看方向重新置中影片"))
                     .disabled(!canAdjustManualDirection)
-                    Button("重新置中") {
+                    Button(VistaL10n.text("重新置中")) {
                         presentation.calibration.requestRecenter(); presentation.calibrationRequest += 1
-                    }.accessibilityIdentifier("recenterVideo").accessibilityHint("以目前觀看方向重新置中影片")
+                    }.accessibilityIdentifier("recenterVideo").accessibilityHint(VistaL10n.text("以目前觀看方向重新置中影片"))
                     .disabled(!canAdjustManualDirection)
                         .accessibilityIdentifier("recenterVR")
-                        .accessibilityValue(presentation.calibration.status == .ready ? "已取得初始方向" : "尚未取得初始方向")
+                        .accessibilityValue(presentation.calibration.status == .ready ? VistaL10n.text("已取得初始方向") : VistaL10n.text("尚未取得初始方向"))
                     if !presentation.testPattern, let player = presentation.player {
-                        Button(player.isPaused ? "繼續" : "暫停", action: player.togglePause).disabled(player.isPreparing || !player.isPlaying)
+                        Button(player.isPaused ? VistaL10n.text("繼續") : VistaL10n.text("暫停"), action: player.togglePause).disabled(player.isPreparing || !player.isPlaying)
                     }
-                    Button("返回視窗") { Task { await dismiss(); presentation.active = false } }.accessibilityIdentifier("closeVR")
+                    Button(VistaL10n.text("返回視窗")) { Task { await dismiss(); presentation.active = false } }.accessibilityIdentifier("closeVR")
                 }.padding().glassBackgroundEffect()
                 }
             }
@@ -439,7 +439,7 @@ struct VRImmersiveView: View {
     }
     private var previousVideoButton:some View {
         compactPlaybackButton(action:{presentation.onPrevious?();presentation.holdControls()}) {Image(systemName:"backward.end.fill")}
-            .accessibilityLabel("上一個影片").accessibilityIdentifier("immersivePrevious")
+            .accessibilityLabel(VistaL10n.text("上一個影片")).accessibilityIdentifier("immersivePrevious")
             .disabled(!presentation.canGoBack || presentation.advancing)
     }
     private var observedContent:some View {
@@ -492,10 +492,10 @@ struct VRImmersiveView: View {
         .onChange(of:presentation.player?.mkvFatalMessage) {_,message in
             if message != nil {presentation.endControllerNavigation(showError:true);presentation.holdControls()}
         }
-        .alert("MKV 無法播放",isPresented:Binding(
+        .alert(VistaL10n.text("MKV 無法播放"),isPresented:Binding(
             get:{presentation.player?.mkvFatalMessage != nil},
             set:{if !$0 {presentation.player?.dismissMKVFailure()}})) {
-            Button("知道了",role:.cancel) {presentation.player?.dismissMKVFailure()}
+            Button(VistaL10n.text("知道了"),role:.cancel) {presentation.player?.dismissMKVFailure()}
         } message: {
             Text(presentation.player?.mkvFatalMessage ?? "")
         }
@@ -667,25 +667,25 @@ struct VRImmersiveView: View {
     }
     private var submittedAccessibilityValue:String {
         #if VISTA_SYSTEM_VIDEO_EXPERIMENT
-        return (renderer.ready || systemRenderer.ready) ? "影格已提交":"準備影像"
+        return (renderer.ready || systemRenderer.ready) ? VistaL10n.text("影格已提交"):VistaL10n.text("準備影像")
         #else
-        return renderer.ready ? "影像已呈現":"準備影像"
+        return renderer.ready ? VistaL10n.text("影像已呈現"):VistaL10n.text("準備影像")
         #endif
     }
     private var candidateRouteText:String {
         #if VISTA_NATIVE_PLAYER_EXPERIMENT
-        let label="AVPlayer 候選"
+        let label=VistaL10n.text("AVPlayer")
         #else
-        let label="B 系統呈現候選"
+        let label=VistaL10n.text("系統呈現")
         #endif
         if let error=systemRenderer.error {return label+"："+error}
-        if presentation.settings.projection == .equidistantFisheye180,renderer.ready { return label+"：魚眼投影，"+renderer.route }
+        if presentation.settings.projection == .equidistantFisheye180,renderer.ready { return label+VistaL10n.text("：魚眼投影，")+renderer.route }
         if let frame=presentation.player?.pixelFrame {
             if #available(visionOS 26.0,*) {
-                if let reason=SystemVideoSamples.fallbackReason(frame,settings:presentation.settings) {return label+"相容回退："+reason+"（原雙貼圖）"}
-            } else {return label+"相容回退：系統版本（原雙貼圖）"}
+                if let reason=SystemVideoSamples.fallbackReason(frame,settings:presentation.settings) {return label+VistaL10n.text("相容回退：")+reason+VistaL10n.text("（原雙貼圖）")}
+            } else {return label+VistaL10n.text("相容回退：系統版本（原雙貼圖）")}
         }
-        return systemRenderer.ready ? label+"：送入 renderer，尚非雙眼驗收":label+"：準備中"
+        return systemRenderer.ready ? label+VistaL10n.text("：送入 renderer，尚非雙眼驗收"):label+VistaL10n.text("：準備中")
     }
     private var displayedSpeedStatus:PlaybackSpeedStatus {
         #if DEBUG
@@ -735,7 +735,7 @@ struct VRImmersiveView: View {
                         await dismiss(); presentation.finishSession()
                     }
                 }) { Image(systemName:"chevron.backward") }
-                .accessibilityLabel("停止並返回瀏覽").accessibilityIdentifier("immersiveStop")
+                .accessibilityLabel(VistaL10n.text("停止並返回瀏覽")).accessibilityIdentifier("immersiveStop")
                 .disabled(presentation.stopping).frame(height:44)
                 HStack(alignment:.top,spacing:0) {
                     ControllerFilenameTitle(title:presentation.fileTitle,readiness:submittedAccessibilityValue)
@@ -754,13 +754,13 @@ struct VRImmersiveView: View {
                 .accessibilityValue("materialInstances=\(systemRenderer.materialCreationCount)")
             if !systemRenderer.probe.isEmpty {Text(systemRenderer.probe).font(.caption2).accessibilityIdentifier("systemVideoProbe")}
             #elseif VISTA_PRESENTATION_BASELINE
-            Text("A 雙貼圖基準").font(.caption2).accessibilityIdentifier("baselineVideoPath")
+            Text(VistaL10n.text("A 雙貼圖基準")).font(.caption2).accessibilityIdentifier("baselineVideoPath")
             #endif
             #if VISTA_NATIVE_PLAYER_EXPERIMENT
-            Text("AVPlayer 候選・解碼方式未知").font(.caption2)
+            Text(VistaL10n.text("AVPlayer・解碼方式未知")).font(.caption2)
             #else
             if PlaybackDecodingPolicy.simulatorSoftwareTest {
-                Text("模擬器軟體解碼測試").font(.caption2).foregroundStyle(.orange)
+                Text(VistaL10n.text("模擬器軟體解碼測試")).font(.caption2).foregroundStyle(.orange)
             }
             #endif
             #endif
@@ -769,37 +769,37 @@ struct VRImmersiveView: View {
                 HStack(spacing: 16) {
                     previousVideoButton
                     compactPlaybackButton(action:{ presentation.revealControls(); player.resetSpeed() }) { Text("1×").monospacedDigit() }
-                        .accessibilityLabel("恢復 1 倍速").accessibilityIdentifier("immersiveBack")
+                        .accessibilityLabel(VistaL10n.text("恢復 1 倍速")).accessibilityIdentifier("immersiveBack")
                         .disabled(!player.canResetSpeed || presentation.advancing || presentation.requiresFormatConfirmation)
                     compactPlaybackButton(action:{
                         if player.isPlaying { player.togglePause() } else { presentation.onReplay?() }
                         presentation.revealControls()
                     }) { Image(systemName: player.isPlaying && !player.isPaused ? "pause.fill" : "play.fill") }
-                        .accessibilityLabel(player.isPlaying && !player.isPaused ? "暫停" : "播放")
+                        .accessibilityLabel(player.isPlaying && !player.isPaused ? VistaL10n.text("暫停") : VistaL10n.text("播放"))
                         .accessibilityIdentifier("immersivePause")
                         .disabled(player.isPreparing || presentation.advancing || presentation.requiresFormatConfirmation)
                     compactPlaybackButton(action:{ presentation.revealControls(); player.increaseSpeed() }) { Image(systemName:"forward.fill") }
-                        .accessibilityLabel("加速 0.5 倍").accessibilityIdentifier("immersiveForward")
-                        .accessibilityHint("最高 \(PlaybackSpeedStatus.upperLimit) 倍速，依影片支援能力開放")
+                        .accessibilityLabel(VistaL10n.text("加速 0.5 倍")).accessibilityIdentifier("immersiveForward")
+                        .accessibilityHint(VistaL10n.text("最高 %@ 倍速，依影片支援能力開放" , String(describing: PlaybackSpeedStatus.upperLimit)))
                         .disabled(!player.canIncreaseSpeed || presentation.advancing || presentation.requiresFormatConfirmation)
                         .overlay(alignment:.bottom) {
                             speedStatusBelowButton.alignmentGuide(.bottom) {$0[.top]-4}
                         }
                     compactPlaybackButton(action:{ presentation.onNext?(); presentation.holdControls() }) { Image(systemName: "forward.end.fill") }
-                        .accessibilityLabel("下一個影片").accessibilityIdentifier("immersiveNext")
+                        .accessibilityLabel(VistaL10n.text("下一個影片")).accessibilityIdentifier("immersiveNext")
                         .disabled(!presentation.canAdvance || presentation.advancing)
                     compactPlaybackButton(action:{ presentation.settingsVisible.toggle(); presentation.revealControls() }) { Image(systemName: "slider.horizontal.3") }
-                        .accessibilityLabel("影片格式設定").accessibilityIdentifier("immersiveSettings")
+                        .accessibilityLabel(VistaL10n.text("影片格式設定")).accessibilityIdentifier("immersiveSettings")
                 }.buttonStyle(.borderless).font(.title3).disabled(presentation.stopping || presentation.scrubbing)
                     .padding(.bottom,speedStatusLineHeight+4)
                 #if DEBUG && VISTA_DIAGNOSTIC_UI
-                Button("效能診斷") {presentation.diagnosticsVisible.toggle();presentation.holdControls();if !presentation.diagnosticsVisible {presentation.scheduleHide()}}
+                Button(VistaL10n.text("效能診斷")) {presentation.diagnosticsVisible.toggle();presentation.holdControls();if !presentation.diagnosticsVisible {presentation.scheduleHide()}}
                     .accessibilityIdentifier("playbackDiagnostics")
                 if presentation.diagnosticsVisible {
                     Text("Vista \(Bundle.main.object(forInfoDictionaryKey:"CFBundleShortVersionString") as? String ?? "?") (\(Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "?"))\n" + player.diagnosticsText + "\n" + player.preparationText)
                         .font(.caption.monospacedDigit()).textSelection(.enabled)
                         .accessibilityIdentifier("playbackDiagnosticsResult")
-                    Text("各階段可能重疊；貼圖完成不代表螢幕已顯示。跳轉或重播會重新量測。")
+                    Text(VistaL10n.text("各階段可能重疊；貼圖完成不代表螢幕已顯示。跳轉或重播會重新量測。"))
                         .font(.caption2).foregroundStyle(.secondary)
                 }
                 #endif
@@ -808,55 +808,55 @@ struct VRImmersiveView: View {
                 Divider()
                 VRSettingsView(presentation: presentation) { presentation.onFormatChanged?(); presentation.holdControls() }
                 if presentation.requiresFormatConfirmation {
-                    Button("使用目前格式並播放") { presentation.onFormatChanged?(); presentation.onReplay?() }
+                    Button(VistaL10n.text("使用目前格式並播放")) { presentation.onFormatChanged?(); presentation.onReplay?() }
                         .accessibilityIdentifier("immersiveConfirmFormat")
                 }
                 angleRuler(vertical:false).padding(.leading,56)
                 HStack(spacing:8) {
                     angleRuler(vertical:true)
                     ZStack {
-                    ringControl("重設影片方向", angle: -90, outer: true, identifier: "recenterVideo", hint: "以目前觀看方向重新置中影片，成功後清除自動補償與手動轉向；也可長按影片背景", action:resetVideoDirection).disabled(!canAdjustManualDirection)
-                    ringControl("重設\n影片格式", angle: -165, outer: true, identifier: "clearVRFormat", hint: "清除此片保存格式，不重設方向或控制器位置") {
+                    ringControl(VistaL10n.text("重設影片方向"), angle: -90, outer: true, identifier: "recenterVideo", hint: VistaL10n.text("以目前觀看方向重新置中影片，成功後清除自動補償與手動轉向；也可長按影片背景"), action:resetVideoDirection).disabled(!canAdjustManualDirection)
+                    ringControl(VistaL10n.text("重設\n影片格式"), angle: -165, outer: true, identifier: "clearVRFormat", hint: VistaL10n.text("清除此片保存格式，不重設方向或控制器位置")) {
                         presentation.onClearFormat?(); presentation.holdControls()
                     }.disabled(!presentation.canClearFormat || presentation.advancing)
                         .opacity(!presentation.canClearFormat || presentation.advancing ? 0.35:1)
                         .hoverEffectDisabled(!presentation.canClearFormat || presentation.advancing)
-                    ringControl("重設\n控制器\n位置", angle: -15, outer: true, identifier: "resetControllerPosition", hint: "也可雙擊影片背景", action: resetControllerPosition)
-                    ringControl("arrowtriangle.up.fill", angle: -90, outer: false, identifier: "directionUp", hint: "向上轉，每次15度") { adjustManualDirection(pitch: 15) }.disabled(!canAdjustManualDirection)
-                    ringControl("arrowtriangle.left.fill", angle: -180, outer: false, identifier: "directionLeft", hint: "向左轉，每次15度") { adjustManualDirection(yaw: -15) }.disabled(!canAdjustManualDirection)
-                    ringControl("arrowtriangle.right.fill", angle: 0, outer: false, identifier: "directionRight", hint: "向右轉，每次15度") { adjustManualDirection(yaw: 15) }.disabled(!canAdjustManualDirection)
-                    ringControl("arrowtriangle.down.fill", angle: 90, outer: false, identifier: "directionDown", hint: "向下轉，每次15度") { adjustManualDirection(pitch: -15) }.disabled(!canAdjustManualDirection)
+                    ringControl(VistaL10n.text("重設\n控制器\n位置"), angle: -15, outer: true, identifier: "resetControllerPosition", hint: VistaL10n.text("也可雙擊影片背景"), action: resetControllerPosition)
+                    ringControl("arrowtriangle.up.fill", angle: -90, outer: false, identifier: "directionUp", hint: VistaL10n.text("向上轉，每次15度")) { adjustManualDirection(pitch: 15) }.disabled(!canAdjustManualDirection)
+                    ringControl("arrowtriangle.left.fill", angle: -180, outer: false, identifier: "directionLeft", hint: VistaL10n.text("向左轉，每次15度")) { adjustManualDirection(yaw: -15) }.disabled(!canAdjustManualDirection)
+                    ringControl("arrowtriangle.right.fill", angle: 0, outer: false, identifier: "directionRight", hint: VistaL10n.text("向右轉，每次15度")) { adjustManualDirection(yaw: 15) }.disabled(!canAdjustManualDirection)
+                    ringControl("arrowtriangle.down.fill", angle: 90, outer: false, identifier: "directionDown", hint: VistaL10n.text("向下轉，每次15度")) { adjustManualDirection(pitch: -15) }.disabled(!canAdjustManualDirection)
                     Button(action:resetDirectionFromControls) {
-                        Text("歸零").font(.caption).frame(width:54,height:54)
+                        Text(VistaL10n.text("歸零")).font(.caption).frame(width:54,height:54)
                     }.buttonStyle(CenterRingFeedbackStyle()).disabled(!canAdjustManualDirection)
-                        .accessibilityLabel("方向歸零").accessibilityIdentifier("directionZero")
+                        .accessibilityLabel(VistaL10n.text("方向歸零")).accessibilityIdentifier("directionZero")
                         .accessibilityValue("yaw=\(VRManualAngleDisplay.normalized(presentation.videoSettings.yawDegrees)),pitch=\(VRManualAngleDisplay.normalized(presentation.videoSettings.pitchDegrees)),roll=\(VRManualAngleDisplay.normalized(presentation.videoSettings.rollDegrees))")
-                        .accessibilityHint("清除自動補償與手動轉向，不重新採樣觀看方向").position(x:190,y:180)
+                        .accessibilityHint(VistaL10n.text("清除自動補償與手動轉向，不重新採樣觀看方向")).position(x:190,y:180)
                     }.frame(width:380,height:286)
                 }
-                Text("角度含自動補償與手動調整，相對本次取樣；每格 15°")
+                Text(VistaL10n.text("角度含自動補償與手動調整，每格 15°"))
                     .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
-                Text("看向影片背景：單擊顯示／隱藏；雙擊重設控制器位置；長按重設影片方向")
+                Text(VistaL10n.text("看向影片背景：單擊顯示／隱藏控制器；雙擊重設控制器位置；長按重設影片方向。"))
                     .fixedSize(horizontal:false,vertical:true)
                     .font(.caption).foregroundStyle(.secondary)
                     .accessibilityIdentifier("resetControllerGestureHint")
                 if let info=displayedVideoInfo {
                     HStack(spacing:6) {
-                        Text("\(info.codec) · \(info.width) × \(info.height) · \(info.averageBitrateText)")
+                        Text(VistaL10n.text("%@ · %@ × %@ · %@" , String(describing: info.codec), String(describing: info.width), String(describing: info.height), String(describing: info.averageBitrateText)))
                             .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center).fixedSize(horizontal:false,vertical:true)
                             .accessibilityIdentifier("controllerVideoInfo")
-                            .accessibilityHint("位元率是視訊軌平均估計值，不含音訊與容器，不是即時位元率；破折號表示未知")
+                            .accessibilityHint(VistaL10n.text("位元率是視訊軌平均估計值，不含音訊與容器，不是即時位元率；破折號表示未知"))
                         // Keep the info text stable across brief waits; absent when collapsed.
                         ZStack {
                             if displayedBuffering {
                                 ProgressView().controlSize(.mini)
-                                    .accessibilityLabel("等待播放")
+                                    .accessibilityLabel(VistaL10n.text("等待播放"))
                                     .accessibilityIdentifier("controllerVideoInfoBuffering")
                             }
                         }.frame(width:14,height:14)
                     }
-                    if !info.hasAudio {Text("影片無音軌").font(.caption).foregroundStyle(.secondary)}
+                    if !info.hasAudio {Text(VistaL10n.text("影片無音軌")).font(.caption).foregroundStyle(.secondary)}
                 }
 
             }
@@ -899,7 +899,7 @@ struct VRImmersiveView: View {
             .background(.white.opacity(0.08),in:Capsule()).contentShape(.interaction,Capsule())
             .contentShape(.hoverEffect,Capsule()).hoverEffect(.highlight)
             .accessibilityLabel(label).accessibilityIdentifier(identifier)
-            .accessibilityHint("每次調整15度")
+            .accessibilityHint(VistaL10n.text("每次調整15度"))
     }
     private func cancelScrubInteraction() {
         scrubInteraction.cancel();presentation.scrubbing=false
@@ -949,9 +949,9 @@ struct VRImmersiveView: View {
             }).disabled(!enabled)
                 .id(scrubOwner)
                 .onDisappear {if scrubInteraction.owner==scrubOwner {cancelScrubInteraction()}}
-                .accessibilityLabel("播放進度")
+                .accessibilityLabel(VistaL10n.text("播放進度"))
                 .accessibilityIdentifier("playbackSeek")
-                .accessibilityHint("拖曳後放開以跳轉。")
+                .accessibilityHint(VistaL10n.text("拖曳後放開以跳轉。"))
             Text(progressDurationText(player)).accessibilityIdentifier("playbackDuration")
         }.font(.caption.monospacedDigit())
     }
@@ -1991,13 +1991,13 @@ private struct AngleRulerReadout:View {
         VStack(spacing:4) {
             // Retain the original two-line header height so the track and controls do not move.
             VStack(spacing:4) {
-                Text(vertical ? "垂直":"水平")
+                Text(vertical ? VistaL10n.text("垂直"):VistaL10n.text("水平"))
                 Text(VRManualAngleDisplay.text(value)).fixedSize()
             }.hidden().accessibilityHidden(true)
                 .frame(width:vertical ? 56:nil)
                 .overlay(alignment:vertical ? .leading:.bottom) {
                     HStack(alignment:.firstTextBaseline,spacing:6) {
-                        Text(vertical ? "垂直":"水平")
+                        Text(vertical ? VistaL10n.text("垂直"):VistaL10n.text("水平"))
                             .accessibilityIdentifier(vertical ? "manualVerticalTitle":"manualHorizontalTitle")
                         Text(VRManualAngleDisplay.text(value))
                             .accessibilityIdentifier(vertical ? "manualVerticalAngle":"manualHorizontalAngle")
