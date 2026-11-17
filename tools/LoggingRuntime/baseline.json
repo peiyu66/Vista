@@ -1,0 +1,134 @@
+{
+  "schema": 1,
+  "productCommit": "acaa871aed2008171d3bce1e7345fbc6093bcc55",
+  "host": "Apple Silicon macOS",
+  "optimization": "Release and Diagnostic both optimized; neither defines DEBUG",
+  "productHashes": {
+    "Sources/VistaCore/LifecycleDiagnostics.swift": "ce5ff3ca5e073f52576fcda55482f7b5e4fd21f7b9fe3619c2207de270d365e8",
+    "Sources/VistaCore/PlaybackFlowTrace.swift": "c98493c34ab240489c61d0e684d651dcb0ed10f62e8e3635d045551bbb0f0209",
+    "Sources/VistaMedia/PlaybackMetrics.swift": "536fc63ca5ef3aaa7591f6c3f0cf0628b2c2c19c7cc8ff314230760a6a8e31e6",
+    "engine/source/source-adapter/SourceAdapterSession.swift": "b7268472c0a79d4629d44ed98b7440dc91089d3ddea373707b2587daaa342ce4",
+    "engine/source/producer/MKVProducer.cpp": "82d3af0f1f440fc3c6d776da0f1e986c4ff94bc8a7f32d8751bd4a5f9d395a69",
+    "engine/vlc/Sources/VistaVLCBridge.c": "2b2e0730bac54ddd561ea9087fdf547461c9864f84f43ea6acbd32a59a21d8f7",
+    "VistaBrowser.xcodeproj/project.pbxproj": "b19848070fc6e2642c2e0d6d5acb6ddbf69cb8c8cb315c1451712103091de1e6",
+    "VistaBrowser.xcodeproj/xcshareddata/xcschemes/VistaBrowser.xcscheme": "bc60b14cdf8f001be95ff0b3f6a6ed72f8da99ee590339d437f594ee90058b56"
+  },
+  "runs": {
+    "writers": [
+      {
+        "mode": "Release",
+        "exit": 0,
+        "stdout": "PASS actual complete VistaCore/VistaMedia writers; enabled=false; files=0\n",
+        "before": {},
+        "after": {},
+        "binarySHA256": "908a2e2e47f1689b9515fdc133b07be31b22139e3c0e422496c66fc0eb575f7b"
+      },
+      {
+        "mode": "Diagnostic",
+        "exit": 0,
+        "stdout": "PASS actual complete VistaCore/VistaMedia writers; enabled=true; files=6\n",
+        "before": {},
+        "after": {
+          "VistaControllerCheckpoints/checkpoints.jsonl": {
+            "bytes": 650,
+            "sha256": "279d8c8aea369df2ae3b60814ebf79296f262e2347991781e22d076fa2b59eed"
+          },
+          "VistaControllerCheckpoints/status.json": {
+            "bytes": 381,
+            "sha256": "7b13190f294f015c4ac4f8bb95a875c80b3df8d7dec0be550fda910b7f771221"
+          },
+          "VistaDiagnostics/current.jsonl": {
+            "bytes": 88,
+            "sha256": "353bd471818dc5ffa931843c6762e380feec9301e36135eef138dfa303a73795"
+          },
+          "VistaDiagnostics/recovery-current.jsonl": {
+            "bytes": 1269,
+            "sha256": "e0dde04001ee8b32b62ce499574c26d826394059d9324880326f6068225ed46d"
+          },
+          "VistaLifecycleDiagnostics/critical-current.jsonl": {
+            "bytes": 1744,
+            "sha256": "eb72c47f140d52a8083dea11d70e9a8659526c34cca055d5dddd290fdff4a3a4"
+          },
+          "VistaLifecycleDiagnostics/current.jsonl": {
+            "bytes": 2043,
+            "sha256": "d439baecb68cc75c1a1be338858d99ac7ac0766b496f32cf8a8fa0425217a794"
+          }
+        },
+        "binarySHA256": "2579c6e81f0cc0d25ba609a84d252ea25b570e2d1c2136920c082c261730f4f4"
+      }
+    ],
+    "flow": [
+      {
+        "mode": "Release",
+        "exit": 0,
+        "stdout": "PASS actual Flow writer started=false, result=[\"status\": 2]\n",
+        "before": {},
+        "after": {}
+      },
+      {
+        "mode": "Diagnostic",
+        "exit": 0,
+        "stdout": "PASS actual Flow writer started=true, result=[\"capacityLost\": 0, \"records\": 129, \"chunks\": 1, \"contentionLost\": 0, \"session\": 1, \"staleLost\": 0, \"status\": 0, \"mapLost\": 0]\n",
+        "before": {},
+        "after": {
+          "status.json": {
+            "bytes": 560,
+            "sha256": "aa607c8c4e302fbe0070efb8b537e69db7aefea5f4e11d11a83527ddb46c02b5"
+          },
+          "1/events-000000.bin": {
+            "bytes": 8256,
+            "sha256": "bec909f1521003418d8a63a0818cb201aae1a2d2eff155aafa77540d54d5dbea"
+          },
+          "1/manifest.json": {
+            "bytes": 10185,
+            "sha256": "bceaca214403ea82d52a145596ab2f8b404978101ce881aa76c4718a68ed8cdc"
+          }
+        }
+      }
+    ],
+    "producer": [
+      {
+        "mode": "Release",
+        "exit": 0,
+        "stdout": "failure=0 state=2 segments=12 error=\nfailure=1 state=3 segments=0 error=async source exact read failed/invalidated\n",
+        "before": {},
+        "after": {}
+      },
+      {
+        "mode": "Diagnostic",
+        "exit": 0,
+        "stdout": "failure=0 state=2 segments=12 error=\nfailure=1 state=3 segments=0 error=async source exact read failed/invalidated\n",
+        "before": {},
+        "after": {
+          "failure.jsonl": {
+            "bytes": 137,
+            "sha256": "cc4556dc17282c87ba769ce53d8abd36cabf57f3790352e0474f8922490f9dfc"
+          },
+          "producer.jsonl": {
+            "bytes": 14260,
+            "sha256": "32c5f8f064234b26fb3a472e27984131b4ffd953bf97189c7ccd2ee66d7c921d"
+          }
+        }
+      }
+    ]
+  },
+  "archiveConfiguration": "Release",
+  "xrosFlowWriterSymbols": {
+    "Release": 0,
+    "Diagnostic": 113
+  },
+  "limits": [
+    "Complete actual VistaCore/VistaMedia modules executed on macOS using injected fresh directory, not a full visionOS App container.",
+    "Flow uses complete actual Swift writer and C queue; only clock adapter is host clock and Diagnostic destination uses existing test injection.",
+    "Native producer runs current complete implementation, normal 12-fragment generated fixture and read failure; mode supplies empty/nonempty receipt matching inspected SourceAdapterSession. Full adapter/VLC playback not executed.",
+    "Native base parser/GPAC host libraries reused; current producer compiled anew.",
+    "No physical device install, launch, removal, or data clearing; full shipping artifact runtime remains unverified.",
+    "No claim about Apple system diagnostics or third-party output bypassing the LibVLC logger.",
+    "Development log content and retention unchanged."
+  ],
+  "producerDependencyHashes": {
+    "parser.o": "51a543d0cd44a1758036e98cf1e5c83b2f8e64319e9f3893446d63380d6f4e92",
+    "budget.o": "da4535256f5f6de579bcdfa4f449f71218cf29b6cc2d2a15bf96f99b8d80123e",
+    "libgpac_static.a": "11e896976464552d942971fc981ebd5fe19dd260cab011fa45ce9c7fc0fefd4a"
+  }
+}
