@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "baseCommit": "d9018e14aa5d9e062eff887a8660d5bf5e31381f",
+  "acceptedExperiment": 206,
+  "sourceIntegrationBuild": 207,
+  "scope": "Preserve HEVC decoder state; pause common clocks, demand demux supply, resume timer and retain post-hold progress recovery. Existing accepted direct194 and cap3/omission204 retained.",
+  "productHashes": {
+    "NativeBuild/overlay/build.py": "5865341184f4c6cd1effc23d8f09edd6efb981acc6aa45d40126cda780de7f0d",
+    "NativeBuild/overlay/inputs-manifest.json": "e0ae917adfa67c225394041c6e08ad76d667f7a2e48c935b285b2892ae569e11",
+    "NativeBuild/overlay/inputs/current/vista-recovery-145/native/source/src/input/input.c": "06e485bb62b5f9bbc41d7b2a5649e3c7a8c52cf3f43851cfce8e367a1a709436",
+    "NativeBuild/overlay/inputs/current/vista-recovery-153/native/source/src/input/es_out.c": "e23086a3bd17816c0144f6b8e6ddd92d04731946cb375e98630ccc81e7a7391d",
+    "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/src/input/decoder.c": "fa9f41fcc167c0561095722504e83b4200413a15dc954ece9c3201266d9ac21f",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/include/vlc_demux.h": "dfdf8194ae02044d474dc6cd7ff4febcfb5ed77a53f95820c4a47607c994463e",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/include/vlc_es_out.h": "67ec526d05cf82eedb17c2d6262a0a1037007ecb4c7faa070e6e6d626028f494",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/include/vlc_interrupt.h": "ff1dfdaba8b495d5e12cd0cf67e403bcbf9f0f802351f35acfc2af41d03a276c",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/include/vlc_media_library.h": "16e9b00deb251621f9883437fe3d40eb139f6d3528f0731835b72bd28f40619e",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/include/vlc_stream.h": "3ef1ceec15072ad87890f8297529543f5be3ba95585ee8b4b84115272776ca59",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/include/vlc_vout_osd.h": "831da65a7a379374dec548599d8668ac1ffe67966abe9c174892f7c4422e4868",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/src/player/player.h": "459d3397181443f5947b4354acf664770fa011a168d127d8ab05f5900ff64d14",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/vista_hold187.h": "36adf4ba89731c5be5b61fdb47ac808e42b4148bb6a4486903e1773144b5bf90",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/vista_hold187_internal.h": "7cb2fb2ca85143c7e4aba0ca8e7397c96fcb04921dc1805805b6beee0322a430",
+    "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/vista_hold187_player.c": "166ab450c9ae41bb784ebd43fe5b3d0ff4826b96b9e6e781154099fef10b4dbd",
+    "NativeBuild/overlay/recipes.json": "d8b0c84cc4555a86d6a7f6ae16322823a4ae4d47a599cfaeff082b53e3cc9fb7",
+    "VistaBrowser.xcodeproj/project.pbxproj": "b19848070fc6e2642c2e0d6d5acb6ddbf69cb8c8cb315c1451712103091de1e6",
+    "engine/vlc/Sources/VLCClockResyncPolicy.swift": "0a6e38f186d05f0716428d9b732764c1c033d2fea61f360278275803502e6345",
+    "engine/vlc/Sources/VLCPlaybackDriver.swift": "bc65f031052841185ce59f7c99f60562a67e0908452e8a66075061ffc7ae5ba4",
+    "engine/vlc/Sources/VistaVLCBridge.c": "2b2e0730bac54ddd561ea9087fdf547461c9864f84f43ea6acbd32a59a21d8f7",
+    "engine/vlc/Sources/VistaVLCBridge.h": "ff9b35611855650d71cb06179fc924f9eb44be4050431f13e1d30aa5e6c6b4ac",
+    "engine/vlc/Sources/vista_hold187.h": "36adf4ba89731c5be5b61fdb47ac808e42b4148bb6a4486903e1773144b5bf90"
+  },
+  "equivalence": {
+    "vista_hold187.h": true,
+    "vista_hold187_internal.h": true,
+    "vista_hold187_player.c": true,
+    "input.c exact": true,
+    "VistaHoldInputTick": true,
+    "vista_hold189_resume_timer": true,
+    "es_out.c except diagnostics": true,
+    "VistaSourceRebuffer": true,
+    "VistaHoldEnd": true,
+    "VistaHoldBegin": true,
+    "VistaHoldTick": true,
+    "vista_hold187_decoder_begin": true,
+    "vista_hold187_decoder_end": true,
+    "vista_hold187_decoder_paused": true,
+    "vista_hold_forward_input_state": true,
+    "VLCVistaCatchupStart": true,
+    "VLCVistaCatchupPoll": true,
+    "VLCVistaCatchupCancel": true,
+    "libvlccore_la-timer.o inherited identical": true,
+    "libvlccore_la-player.o inherited identical": true
+  },
+  "nativeCompile": {
+    "units": 35,
+    "passed": true,
+    "producerRecompiled": true,
+    "fullBaseDependenciesRebuilt": false
+  },
+  "regressions": {
+    "forwardCoordinatorAssertions": 128,
+    "forwardModes": [
+      "ASan/UBSan",
+      "TSan"
+    ],
+    "clocksAssertionsPerMode": 210,
+    "pcmAssertionsPerMode": 631,
+    "clocksAndPCMModes": [
+      "O2",
+      "ASan/UBSan"
+    ],
+    "direct194ChecksPerMode": 255,
+    "postHoldChecksPerMode": 41,
+    "swiftModes": [
+      "Onone",
+      "O"
+    ],
+    "admissionAndOmission204": [
+      {
+        "test": "gate198",
+        "mode": "release",
+        "passed": true,
+        "cap": 3,
+        "cases": 115,
+        "ringWrapCalls": 30000,
+        "noTimeoutObservedMS": 300,
+        "exactAdmissionHelper": true
+      },
+      {
+        "test": "gate198",
+        "mode": "asan-ubsan",
+        "passed": true,
+        "cap": 3,
+        "cases": 115,
+        "ringWrapCalls": 30000,
+        "noTimeoutObservedMS": 300,
+        "exactAdmissionHelper": true
+      },
+      {
+        "test": "gate198",
+        "mode": "tsan",
+        "passed": true,
+        "cap": 3,
+        "cases": 115,
+        "ringWrapCalls": 30000,
+        "noTimeoutObservedMS": 300,
+        "exactAdmissionHelper": true
+      },
+      {
+        "test": "omit202",
+        "mode": "release",
+        "passed": true,
+        "cases": 118,
+        "metadataCommits": 5000,
+        "pauseWaitMS": 300,
+        "exactHelpers": true,
+        "actualPacer": true
+      },
+      {
+        "test": "omit202",
+        "mode": "asan-ubsan",
+        "passed": true,
+        "cases": 118,
+        "metadataCommits": 5000,
+        "pauseWaitMS": 300,
+        "exactHelpers": true,
+        "actualPacer": true
+      },
+      {
+        "test": "omit202",
+        "mode": "tsan",
+        "passed": true,
+        "cases": 118,
+        "metadataCommits": 5000,
+        "pauseWaitMS": 300,
+        "exactHelpers": true,
+        "actualPacer": true
+      }
+    ],
+    "loggingOptimizedBothModes": true,
+    "producerEventASanUBSan": true,
+    "lifecycleDebugTests": 30
+  },
+  "builds": [
+    {
+      "configuration": "Release",
+      "build": 207,
+      "unsigned": true,
+      "binarySHA256": "c63cfb183f0e47179644419bd598357077546c8c3ad8a23e0b17b3b82582f3b0",
+      "installed": false
+    },
+    {
+      "configuration": "Diagnostic",
+      "build": 207,
+      "unsigned": true,
+      "binarySHA256": "fe2f80e5b595954f32314014d2f77ec6d7e3338fcdf8cac744ca41bb322283bf",
+      "installed": false
+    }
+  ],
+  "artifactHashes": {
+    "engine/vlc/Vendor/libvlc-vista-cache-xros.a": "458fb37458b90b6b0cfd5cbf3f584e27417876e99d4533cc50991edd26a162eb",
+    "engine/libs/xros/MKVProducer.o": "e96467a281c7be7f0e616369de9e012445f5ac956bd0b256a395a6729df1036b"
+  },
+  "limits": [
+    "Accepted experiment206 and integrated207 are different artifacts; integrated207 has not run on device.",
+    "No audio-reserve192, cleanup195 or provenance197 integration.",
+    "Clock/PCM/FIFO tests execute actual extracted functions with mocked device sinks; no physical audiovisual timing claim.",
+    "Shipping Release runtime no-log verification is a separate follow-up, not established by these builds.",
+    "Historical whole-file baselines194/204 remain snapshots; expanded policy tested against original255 assertions plus post-hold41 checks.",
+    "Lifecycle suite requires DEBUG-only testing interfaces; corrected Debug run passed30 tests; optimized standalone Release writer tests passed."
+  ]
+}

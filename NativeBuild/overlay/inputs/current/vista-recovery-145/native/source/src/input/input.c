@@ -37,6 +37,7 @@
 #include <sys/stat.h>
 
 #include "input_internal.h"
+#include "vista_hold187_internal.h"
 #include "event.h"
 #include "es_out.h"
 #include "demux.h"
@@ -562,6 +563,7 @@ static void MainLoopDemux( input_thread_t *p_input, bool *pb_changed )
         msg_Dbg( p_input, "EOF reached" );
         p_priv->master->b_eof = true;
         es_out_Eos(p_priv->p_es_out);
+        es_out_PrivControl(p_priv->p_es_out_display,VHR_ES_SOURCE_END);
     }
     else if( i_ret == VLC_DEMUXER_EGENERIC )
     {
@@ -652,6 +654,34 @@ static void MainLoopStatistics( input_thread_t *p_input )
  * MainLoop
  * The main input loop.
  */
+/* The hold does not change input state. Re-announce its actual PLAYING
+ * state after output-clock resume, using the same resume date. This reaches
+ * the existing player timer transition without inventing a user play command.
+ * Input identity is carried by the existing event callback; user pause/stop
+ * and another buffering cause must not be cleared here. */
+bool vista_hold189_resume_timer(void *opaque,int64_t date,bool still_paused)
+{
+    input_thread_t *input=opaque;
+    if(!input || still_paused || input_priv(input)->i_state!=PLAYING_S)return false;
+    input_SendEventState(input,PLAYING_S,date);
+    return true;
+}
+
+static int VistaHoldInputTick(input_thread_t *p_input)
+{
+    input_thread_private_t *priv=input_priv(p_input);
+    int state=es_out_PrivControl(priv->p_es_out_display,VHR_ES_TICK);
+    if(state==2){
+        /* Do not leave only es_out paused while input/player still says playing.
+         * Rebuffer already holds both outputs, so this transfer cannot resume
+         * audio between cancellation and the actual user pause. */
+        if(priv->i_state==PLAYING_S)ControlPause(p_input,vlc_tick_now(),false);
+        es_out_PrivControl(priv->p_es_out_display,VHR_ES_CANCEL,0);
+        return 0;
+    }
+    return state;
+}
+
 static void MainLoop( input_thread_t *p_input, bool b_interactive )
 {
     vlc_tick_t i_intf_update = 0;
@@ -671,7 +701,9 @@ static void MainLoop( input_thread_t *p_input, bool b_interactive )
 
     while( !input_Stopped( p_input ) && input_priv(p_input)->i_state != ERROR_S )
     {
-        vlc_tick_t i_wakeup = -1;
+        const int vista_hold_state=VistaHoldInputTick(p_input);
+        const bool vista_holding=vista_hold_state>0;
+        vlc_tick_t i_wakeup = vista_holding ? vlc_tick_now()+10000 : -1;
         bool b_paused = input_priv(p_input)->i_state == PAUSE_S;
         /* FIXME if input_priv(p_input)->i_state == PAUSE_S the access/access_demux
          * is paused -> this may cause problem with some of them
@@ -684,12 +716,13 @@ static void MainLoop( input_thread_t *p_input, bool b_interactive )
                 b_paused = false;
         }
 
-        if( !b_paused )
+        if( !b_paused && (!vista_holding || vista_hold_state==3 || vista_hold_state==4) )
         {
             if( !input_priv(p_input)->master->b_eof )
             {
                 bool b_force_update = false;
 
+                if(vista_holding)es_out_PrivControl(input_priv(p_input)->p_es_out_display,VHR_ES_INPUT_REQUEST);
                 MainLoopDemux( p_input, &b_force_update );
 
                 if( b_can_demux )
@@ -736,7 +769,9 @@ static void MainLoop( input_thread_t *p_input, bool b_interactive )
         /* Handle control */
         for( ;; )
         {
-            vlc_tick_t i_deadline = i_wakeup;
+            int hold_state=VistaHoldInputTick(p_input);
+            bool hold_now=hold_state>0;
+            vlc_tick_t i_deadline = hold_state==3 ? 0 : (hold_now ? vlc_tick_now()+10000 : i_wakeup);
 
             /* Postpone seeking until ES buffering is complete or at most
              * 125 ms. */
@@ -781,6 +816,7 @@ static void MainLoop( input_thread_t *p_input, bool b_interactive )
             }
         }
     }
+    es_out_PrivControl(input_priv(p_input)->p_es_out_display,VHR_ES_CANCEL,2);
 }
 
 static int InitSout( input_thread_t * p_input )
@@ -1722,6 +1758,7 @@ static void ControlRelease( int i_type, const input_control_param_t *p_param )
 
     switch( i_type )
     {
+    case VHR_INPUT_BEGIN:vhr_release(p_param->val.p_address);break;
     case INPUT_CONTROL_ADD_SLAVE:
         if( p_param->val.p_address )
             input_item_slave_Delete( p_param->val.p_address );
@@ -2128,6 +2165,10 @@ static bool Control( input_thread_t *p_input,
              i_type==INPUT_CONTROL_SET_TIME ? param.time.i_val : 0,0);
     input_thread_private_t *priv = input_priv(p_input);
     const vlc_tick_t i_control_date = vlc_tick_now();
+    if(i_type!=VHR_INPUT_BEGIN){
+        int keep=(i_type==INPUT_CONTROL_SET_STATE && param.val.i_int==PAUSE_S)?1:0;
+        es_out_PrivControl(priv->p_es_out_display,VHR_ES_CANCEL,keep);
+    }
     /* FIXME b_force_update is abused, it should be carefully checked */
     bool b_force_update = false;
 
@@ -2137,6 +2178,11 @@ static bool Control( input_thread_t *p_input,
 
     switch( i_type )
     {
+        case VHR_INPUT_BEGIN:
+            if(priv->i_state==PLAYING_S)
+                es_out_PrivControl(priv->p_es_out_display,VHR_ES_BEGIN,(VHRRequest*)param.val.p_address);
+            else vhr_finish(param.val.p_address,VHR_FAILED,7,vlc_tick_now());
+            break;
         case INPUT_CONTROL_SET_POSITION:
         {
             if( priv->b_recording )

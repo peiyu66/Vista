@@ -15,6 +15,7 @@
 #include <math.h>
 
 struct VLCProbeEngine {
+    VHRRequest *catchup187;
     uint64_t vsc_engine;
     atomic_uint_fast64_t vsc_input;
     vista_cvpx_bridge *bridge;
@@ -218,6 +219,7 @@ VLCVistaState VLCVistaGetState(VLCProbeEngine *e) {
 }
 int64_t VLCVistaClock(void){return libvlc_clock();}
 void VLCVistaPause(VLCProbeEngine *e,bool paused){if(e&&e->player){
+ VLCVistaCatchupCancel(e,paused);
  VLCVistaAudioFinish(e,VAB_PAUSE,NULL);
  if(paused)VLCVistaFrameFinish(e,VFS_PAUSE,NULL);
  if(paused)VLCVistaResumeFinish(e,VRR_PAUSE,NULL);
@@ -229,6 +231,7 @@ void VLCVistaPause(VLCProbeEngine *e,bool paused){if(e&&e->player){
 }}
 VLCVistaRateReceipt VLCVistaRate(VLCProbeEngine *e,float rate){
  VLCVistaRateReceipt result={.status=-1};if(!e||!e->player)return result;
+ VLCVistaCatchupCancel(e,false);
  pthread_mutex_lock(&e->timing_lock);result.watch_floor=e->watch_updates;pthread_mutex_unlock(&e->timing_lock);
  result.status=libvlc_media_player_set_rate(e->player,rate);result.command_clock_us=libvlc_clock();return result;
 }
@@ -238,6 +241,7 @@ int VLCVistaSeek(VLCProbeEngine *e,int64_t target){
 VLCVistaSeekDispatch VLCVistaSeekObserved(VLCProbeEngine *e,int64_t target){
  VLCVistaSeekDispatch result={.status=-1};
  if(!e||!e->player||target<0)return result;
+ VLCVistaCatchupCancel(e,false);
  /* Includes manual and automatic resync: diagnostics end before the same setter. */
  VLCVistaAudioFinish(e,VAB_SEEK,NULL);
  VLCVistaFrameFinish(e,VFS_SEEK,NULL);
@@ -285,6 +289,7 @@ VLCProbePipelineDiagnostics VLCProbeEnginePipelineDiagnostics(VLCProbeEngine *e)
     return VLCProbeMapPipeline(&pipeline);
 }
 bool VLCProbeEngineDestroy(VLCProbeEngine *e) {
+    if(e&&e->catchup187){vista_hold187_cancel(e->catchup187);vista_hold187_release(e->catchup187);e->catchup187=NULL;}
     if(!e)return true;
     VLCVistaFrameFinish(e,VFS_STOP,NULL);
     VLCVistaResumeFinish(e,VRR_STOP,NULL);
@@ -464,3 +469,11 @@ vista_queue_pressure_snapshot_data VLCVistaQueuePressure(VLCProbeEngine *e) {
  if(e && e->player)vista_queue_pressure_snapshot(e->player,&out);
  return out;
 }
+
+bool VLCVistaCatchupStart(VLCProbeEngine*e,uint64_t command,int64_t target,int64_t sample,double rate){
+ if(!e||!e->player)return false;
+ if(e->catchup187){VHRResult x=vista_hold187_poll(e->catchup187);if(x.state<VHR_RESUMED)return false;vista_hold187_release(e->catchup187);e->catchup187=NULL;}
+ e->catchup187=vista_hold187_request(e->player,(VHRInput){command,target,sample,rate});return e->catchup187!=NULL;
+}
+VHRResult VLCVistaCatchupPoll(VLCProbeEngine*e){return e?vista_hold187_poll(e->catchup187):(VHRResult){0};}
+void VLCVistaCatchupCancel(VLCProbeEngine*e,bool paused){if(e){if(paused)vista_hold187_cancel_paused(e->catchup187);else vista_hold187_cancel(e->catchup187);}}

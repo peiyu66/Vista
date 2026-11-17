@@ -58,6 +58,7 @@
 #include "stream_output/stream_output.h"
 #include "../clock/clock.h"
 #include "decoder.h"
+#include "vista_hold187_internal.h"
 #include "resource.h"
 #include "decoder_prevframe.h"
 
@@ -247,6 +248,7 @@ struct vlc_input_decoder_t
     float rate, output_rate;
     int frames_countdown;
     bool paused, output_paused;
+    VHRRequest *vista_hold187; /* FIFO-protected, owning reference. */
 
     bool error;
 
@@ -1588,10 +1590,17 @@ static int ModuleThread_PlayVideo( vlc_input_decoder_t *p_owner, picture_t *p_pi
         return VLC_SUCCESS;
     }
 
-    vout_thread_t  *p_vout = p_owner->video.vout;
-
-    assert( p_owner->video.started );
-
+    vout_thread_t *p_vout = p_owner->video.vout;
+    assert(p_owner->video.started);
+    if(p_owner->vista_hold187 && p_owner->paused && p_owner->output_paused) {
+        int action=vhr_picture(p_owner->vista_hold187,p_picture->date,vlc_tick_now());
+        if(action==2 && p_vout && p_owner->video.started) {
+            /* Exactly one target image enters the paused output. The input
+             * coordinator takes this FIFO lock before resuming shared clocks. */
+            vout_PutPicture(p_vout,p_picture);
+        } else picture_Release(p_picture);
+        return VLC_SUCCESS;
+    }
     bool prerolled = p_owner->i_preroll_end != PREROLL_NONE;
     if( prerolled && p_owner->i_preroll_end > p_picture->date )
     {
@@ -2218,7 +2227,8 @@ static void *DecoderThread( void *p_data )
             continue;
         }
 
-        if( p_owner->paused && p_owner->frames_countdown == 0 )
+        if( p_owner->paused && p_owner->frames_countdown == 0
+            && !vhr_running(p_owner->vista_hold187,vlc_tick_now()) )
         {   /* Wait for resumption from pause */
             p_owner->b_idle = true;
             vlc_cond_signal( &p_owner->wait_acknowledge );
@@ -2386,6 +2396,7 @@ CreateDecoder( vlc_object_t *p_parent, const struct vlc_input_decoder_cfg *cfg )
     p_owner->output_delay = p_owner->delay = 0;
     p_owner->output_rate = p_owner->rate = 1.f;
     p_owner->output_paused = p_owner->paused = false;
+    p_owner->vista_hold187=NULL;
     p_owner->output_pause_date = p_owner->pause_date = VLC_TICK_INVALID;
     p_owner->frames_countdown = 0;
 
@@ -2736,6 +2747,7 @@ void vlc_input_decoder_Delete( vlc_input_decoder_t *p_owner )
 
     vlc_fifo_Lock( p_owner->p_fifo );
     p_owner->aborting = true;
+    if(p_owner->vista_hold187){atomic_store(&p_owner->vista_hold187->cancel,true);vhr_release(p_owner->vista_hold187);p_owner->vista_hold187=NULL;}
     p_owner->b_waiting = false;
     vlc_fifo_Signal( p_owner->p_fifo );
 
@@ -2994,6 +3006,7 @@ void vlc_input_decoder_Drain( vlc_input_decoder_t *p_owner )
 void vlc_input_decoder_Flush( vlc_input_decoder_t *p_owner )
 {
     vlc_fifo_Lock( p_owner->p_fifo );
+    if(p_owner->vista_hold187){atomic_store(&p_owner->vista_hold187->cancel,true);vhr_release(p_owner->vista_hold187);p_owner->vista_hold187=NULL;}
     if (p_owner->vista_preroll_changes || p_owner->vista_preroll_drops)
         VistaPreroll(p_owner, 4, p_owner->i_preroll_end, VLC_TICK_INVALID, 0, 0);
     p_owner->vista_buffer_parent = VFParent();
@@ -3437,4 +3450,39 @@ int vlc_input_decoder_SetSpuHighlight( vlc_input_decoder_t *p_owner,
 
     vlc_fifo_Unlock(p_owner->p_fifo);
     return VLC_SUCCESS;
+}
+
+/* Preserve decoder state while the input coordinator supplies on demand. */
+bool vista_hold187_decoder_begin(vlc_input_decoder_t *o,VHRRequest *r) {
+ vlc_fifo_Lock(o->p_fifo);
+ bool ok=o->cat==VIDEO_ES && o->dec.fmt_in->i_codec==VLC_CODEC_HEVC &&
+   !o->paused && !o->flushing && !o->aborting && !o->b_waiting &&
+   o->video.started && o->video.vout && !o->vista_hold187 &&
+   !vlc_input_decoder_IsSynchronous(o);
+ if(ok){vhr_retain(r);o->vista_hold187=r;vlc_fifo_Signal(o->p_fifo);}
+ vlc_fifo_Unlock(o->p_fifo);return ok;
+}
+void vista_hold187_decoder_end(vlc_input_decoder_t *o,VHRRequest *r) {
+ vlc_fifo_Lock(o->p_fifo);
+ if(o->vista_hold187==r){o->vista_hold187=NULL;vhr_release(r);vlc_fifo_Signal(o->p_fifo);}
+ vlc_fifo_Unlock(o->p_fifo);
+}
+bool vista_hold187_decoder_paused(vlc_input_decoder_t *o) {
+ vlc_fifo_Lock(o->p_fifo);
+ bool yes=o->paused && o->output_paused && o->pause_date==o->output_pause_date;
+ vlc_fifo_Unlock(o->p_fifo);return yes;
+}
+
+/* 0: no demand; 1: empty input FIFO; 2: drain completed and worker idle.
+ * The coordinator asks this only for its current request under es_out lock.
+ * Do not wait while holding either lock; no output/PCM queue is rewritten. */
+int vista_hold_forward_input_state(vlc_input_decoder_t *o,VHRRequest *r)
+{
+    vlc_fifo_Lock(o->p_fifo);
+    int state=0;
+    if(o->vista_hold187==r && !o->flushing && !o->aborting &&
+       o->paused && o->output_paused && vlc_fifo_IsEmpty(o->p_fifo))
+        state=!o->b_draining && o->b_idle ? 2:1;
+    vlc_fifo_Unlock(o->p_fifo);
+    return state;
 }

@@ -434,6 +434,7 @@ actor VLCAppEngine {
     private var pointer:OpaquePointer?
     nonisolated let context:AsyncInputContext
     private var closing=false
+    private let catchup187Enabled=true
     private let visiblePixels=VLCVisiblePixels()
     private var mediaStats=VLCVistaMediaStats(),lastStatsAt:Int64=0
     private var lastQueuePressureAt:Int64=0
@@ -541,7 +542,7 @@ actor VLCAppEngine {
         guard receipt.status==0 else{return nil}
         return ManualSeekReceipt(commandClock:VLCVistaClock(),observationID:receipt.command_id)
     }
-    struct ResyncReceipt { let target:Double, commandClock:Int64, watchFloor:UInt64 }
+    struct ResyncReceipt { let target:Double, commandClock:Int64, watchFloor:UInt64; var catchup187=false }
     /// Read the clock and submit the precise seek in ONE serialized actor call.
     /// No trigger-time target survives renderer/source awaits.
     func seekCurrentTime(expectedNormal:UInt64,minimumLateDrop:UInt64,early:VLCClockResyncPolicy.EarlyDispatchEvidence?=nil,
@@ -594,8 +595,58 @@ actor VLCAppEngine {
                 clockID:d.drop_clock_id,contextValid:d.drop_context_valid,
                 contextRate:d.drop_context_rate,reference:d.drop_reference_generation) else{return nil}
         }
-        } // Direct194 skips repeated lateness proof; live safety remains.
+        } // Direct194 uses live timer/intent safety, never delayed late-drop proof.
         gate=5;target=state.timer_time_us
+        // Forward recovery: preserve current decode state, supply on demand.
+        // Explicit control cancellation or actual source exhaustion ends waiting.
+        if catchup187Enabled,expectedRate<=3,state.video_codec==0x63766568,state.has_audio {
+            let oldParent=VFSetParent(flow.id)
+            let started=VLCVistaCatchupStart(pointer,flowCommand,target,state.timer_now_us,expectedRate)
+            _=VFSetParent(oldParent)
+            if started {
+                while true {
+                    if let permits {
+                        let intent=await permits()
+                        guard !closing,self.pointer==pointer else{return nil}
+                        if intent != 0 {
+                            VLCVistaCatchupCancel(pointer,intent==1)
+                            // Native finishes only after the input pause state has
+                            // adopted user intent; avoid a rapid unpause racing it.
+                            while true {
+                                guard !closing,self.pointer==pointer else{return nil}
+                                if VLCVistaCatchupPoll(pointer).state>=4 {break}
+                                try? await Task.sleep(for:.milliseconds(10))
+                            }
+                            gate=7;return nil
+                        }
+                    }
+                    guard !closing,self.pointer==pointer,!Task.isCancelled else {
+                        if !closing,self.pointer==pointer {VLCVistaCatchupCancel(pointer,false)}
+                        return nil
+                    }
+                    let held=VLCVistaCatchupPoll(pointer)
+                    if held.state==4 {
+                        gate=0;status=0;target=held.target_us;commandClock=held.ended_us
+                        return ResyncReceipt(target:Double(target)/1e6,commandClock:commandClock,watchFloor:state.watch_updates,catchup187:true)
+                    }
+                    if held.state>=5 {
+                        if held.state==6 || held.reason==5 {gate=7;return nil}
+                        break
+                    }
+                    try? await Task.sleep(for:.milliseconds(10))
+                }
+                guard !closing,self.pointer==pointer else{return nil}
+                VLCVistaCatchupCancel(pointer,false)
+                if let permits,await permits() != 0 {gate=7;return nil}
+                guard !closing,self.pointer==pointer else{return nil}
+                // Original seek fallback, with a new rate/clock snapshot. There
+                // is no second catch-up attempt and no retained trigger target.
+                guard let receipt=fallbackAfterCatchup187(expectedRate:expectedRate,flow:flow) else{return nil}
+                target=Int64((receipt.target*1e6).rounded());commandClock=receipt.commandClock;gate=0;status=0
+                pair(16,target,commandClock)
+                return receipt
+            }
+        }
         pair(15,target,VLCVistaClock())
         let previousFlowParent=VFSetParent(flow.id)
         status=Int64(VLCVistaSeek(pointer,target));commandClock=VLCVistaClock()
@@ -603,6 +654,29 @@ actor VLCAppEngine {
         guard status==0 else{return nil}
         gate=0
         return ResyncReceipt(target:Double(target)/1e6,commandClock:commandClock,watchFloor:state.watch_updates)
+    }
+    func fallbackAfterCatchup187(expectedRate:Double,flow:PlaybackFlowToken = .none,expectedNormal:UInt64?=nil,minimumLateDrop:UInt64=0)->ResyncReceipt? {
+        guard !closing,let pointer else{return nil}
+        let state=VLCVistaGetState(pointer)
+        guard state.timer_valid,!state.timer_paused,!state.paused,!state.buffering,!state.timer_seeking,
+              state.timer_time_us>=0,state.timer_time_us<state.length_us,
+              abs(Double(state.rate)-expectedRate)<0.01 else{return nil}
+        if let expectedNormal {
+            let d=VLCVistaGetNativeDiagnostics(pointer),now=VLCVistaClock()
+            guard d.available,d.version==2,d.ticks_per_second==1_000_000,
+                  d.render_normal==expectedNormal,d.late_drop>=minimumLateDrop,
+                  d.sample_clock_us>0,now>=d.sample_clock_us,now-d.sample_clock_us<=250_000,
+                  d.drop_tick>0,now>=d.drop_tick,now-d.drop_tick<=250_000,
+                  d.drop_context_valid,abs(d.drop_context_rate-expectedRate)<0.01,
+                  abs(d.drop_rate-expectedRate)<0.01,
+                  d.drop_system_delta < -max(50_000,2*d.drop_threshold) else{return nil}
+        }
+        // Native queued seek cancels any outstanding hold before resetting PCR.
+        let previous=VFSetParent(flow.id)
+        let status=VLCVistaSeek(pointer,state.timer_time_us)
+        _=VFSetParent(previous)
+        guard status==0 else{return nil}
+        return ResyncReceipt(target:Double(state.timer_time_us)/1e6,commandClock:VLCVistaClock(),watchFloor:state.watch_updates)
     }
     func close()async throws {
         guard !closing else{return};closing=true;context.invalidate()
@@ -803,6 +877,8 @@ struct VLCControlDiagnostics {
     private(set) var diagnosticsText="VLC 候選／等待硬體解碼確認"
     private var controlDiagnostics=VLCControlDiagnostics()
     private var displayPolicy=VLCDisplayRecoveryPolicy()
+    private var catchupWatch189=VLCCatchupRecovery189()
+    private var catchupEpoch189:UInt64?
     private var displayEvents=0,displaySuppressed=0,displayEpisodeEvents=0
     private var lastDisplayResult:VLCDisplayRecoveryPolicy.Result?
     private var controlEvents=0,controlSuppressed=0
@@ -986,7 +1062,9 @@ struct VLCControlDiagnostics {
         PlaybackLogStore.shared.enqueue(PlaybackLogRecord(automaticRecovery:record,session:speedSession))
     }
     private func interruptAutomatic(_ reason:PlaybackAutomaticRecoveryDiagnostics.EndReason,resumeEnd:Bool=true) {
-        if reason == .seek || reason == .stopped {resumeSeekIdentity.clear()}
+        if reason == .seek || reason == .stopped {
+            catchupWatch189.cancel();resumeSeekIdentity.clear()
+        }
         if resumeEnd {
             switch reason {case .pause,.background:resumeInterruption = .pause;case .seek:resumeInterruption = .seek;case .stopped:resumeInterruption = .stopped;default:resumeInterruption = .source}
         }
@@ -1273,6 +1351,21 @@ struct VLCControlDiagnostics {
             dropDeltaMS:Double(d.drop_system_delta)/scale*1000,dropThresholdMS:Double(d.drop_threshold)/scale*1000,dropRate:d.drop_rate,
             dropPTS:d.drop_pts,dropClockID:d.drop_clock_id,dropContextValid:d.drop_context_valid && d.ticks_per_second==1_000_000,
             dropContextRate:d.drop_context_rate,dropReference:d.drop_reference_generation)
+        if catchupWatch189.active,catchupEpoch189 != currentSourceEpoch {
+            catchupWatch189.cancel()
+        }
+        let fallback189=catchupWatch189.observe(input,revision:automatic.revision,published:publishedPTS != nil)
+        if fallback189 {
+            let target=Double(poll.state.timer_time_us)/1e6
+            if target.isFinite,target>=0,target<duration,let request=seekGate?.request(Int64((target*1e6).rounded())) {
+                clockResync.consumeFallback187();resumeSeekIdentity.clear();presentationTicket=request.request.nonce
+                pendingSeek=Seek(target:target,nonce:presentationTicket,continuation:nil,isResync:true,intentRevision:automatic.revision,
+                    expectedNormal:d.render_normal,minimumLateDrop:d.late_drop,sourceEpoch:currentSourceEpoch,
+                    authorizedRate:selectedSpeed,catchupFallback189:true)
+                resyncTarget = -1;resyncObservedMS=0;recordResync(1);onState?(.seeking)
+            }
+            return
+        }
         if let pts=publishedPTS {recordCostPublication(nowUS:input.nowUS,pts:pts,poll:poll)}
         let heldBeforeObservation=healthyRecovery.holding
         observeHealthyRecovery(input,publishedPTS:publishedPTS)
@@ -1488,6 +1581,8 @@ struct VLCControlDiagnostics {
         var authorizedRate:Double=2
         var dispatched=false,updates:UInt64=0,started=0.0,commandClock:Int64=0
         var observationID:UInt64=0
+        var catchup187=false
+        var catchupFallback189=false
     }
     private var pendingSeek:Seek?,currentSeek:Seek?
     private var seekGate:SerializedSeekGate?
@@ -1708,14 +1803,21 @@ struct VLCControlDiagnostics {
                         }
                         // Mark in flight before awaiting: an accepted native command cannot be revoked by a later intent.
                         currentSeek?.dispatched=true
-                        guard let receipt=await core.seekCurrentTime(expectedNormal:next.expectedNormal,minimumLateDrop:next.minimumLateDrop,early:next.earlyEvidence,flowCommand:audioCommand,flowRevision:next.intentRevision,flowNonce:next.nonce,expectedRate:next.authorizedRate,direct194:next.direct194,permits:{ @MainActor [weak self] in
+                        let receipt:VLCAppEngine.ResyncReceipt?
+                        if next.catchupFallback189 {
+                            receipt=await core.fallbackAfterCatchup187(expectedRate:next.authorizedRate,
+                                expectedNormal:next.expectedNormal,minimumLateDrop:next.minimumLateDrop)
+                        } else {
+                        receipt=await core.seekCurrentTime(expectedNormal:next.expectedNormal,minimumLateDrop:next.minimumLateDrop,early:next.earlyEvidence,flowCommand:audioCommand,flowRevision:next.intentRevision,flowNonce:next.nonce,expectedRate:next.authorizedRate,direct194:next.direct194,permits:{ @MainActor [weak self] in
                             guard let self else{return 2}
                             self.refreshSourceState()
                             if self.paused || !self.sceneActive {self.appliedPause=nil;return 1}
                             return self.active && self.engine===core && self.currentSeek?.nonce==next.nonce &&
                                 self.pendingSeek==nil && next.intentRevision==self.automatic.revision &&
                                 next.sourceEpoch==self.currentSourceEpoch && !self.sourceRecovering ? 0:2
-                        }) else {
+                        })
+                        }
+                        guard let receipt else {
                             _ = seekGate?.cancelUnaccepted(nonce:next.nonce);if currentSeek?.nonce==next.nonce{currentSeek=nil}
                             healthyRecovery.dispatchRejected();emitHealthyRecovery()
                             recordResync(4);onPrefetchActivityChanged?();continue
@@ -1723,6 +1825,16 @@ struct VLCControlDiagnostics {
                         guard active else{break}
                         guard seekGate?.retargetRecovery(nonce:next.nonce,targetUS:Int64((receipt.target*1e6).rounded()))==true else{throw VLCPlaybackError.seek}
                         currentSeek?.target=receipt.target;currentSeek?.updates=receipt.watchFloor
+                        currentSeek?.catchup187=receipt.catchup187
+                        if receipt.catchup187 {
+                            catchupEpoch189=currentSourceEpoch
+                            catchupWatch189.arm(now:ProcessInfo.processInfo.systemUptime,revision:automatic.revision)
+                            // A hold replaces no more than one provisional recovery;
+                            // retain the original one-seek allowance with fresh proof.
+                            clockResync.restoreAfterCatchup187(now:ProcessInfo.processInfo.systemUptime,rate:next.authorizedRate)
+                            resyncSampling.beginNewArmedChain();resyncSample=nil;resyncLastInput=nil
+                        }
+                        if !receipt.catchup187,catchupWatch189.active {catchupWatch189.consume()}
                         currentSeek?.started=ProcessInfo.processInfo.systemUptime;currentSeek?.commandClock=receipt.commandClock
                         resyncTarget=receipt.target;resyncCommandClock=Double(receipt.commandClock)/1e6
                         if engine===core,currentSeek?.nonce==next.nonce,next.intentRevision==automatic.revision,
@@ -1749,6 +1861,19 @@ struct VLCControlDiagnostics {
                 if let seek=currentSeek {
                     if !seek.isResync,seekObservations.due(nonce:seek.nonce,now:now) {
                         observeSeek(.progress,nonce:seek.nonce,poll:poll,seek:seek)
+                    }
+                    if seek.catchup187,now-seek.started>1.0,!paused,sceneActive,!sourceRecovering,
+                       pendingSeek==nil,seek.intentRevision==automatic.revision,seek.sourceEpoch==currentSourceEpoch {
+                        guard let fallback=await core.fallbackAfterCatchup187(expectedRate:seek.authorizedRate) else{throw VLCPlaybackError.seek}
+                        guard active,currentSeek?.nonce==seek.nonce else{continue}
+                        guard seekGate?.retargetRecovery(nonce:seek.nonce,targetUS:Int64((fallback.target*1e6).rounded()))==true else{throw VLCPlaybackError.seek}
+                        catchupWatch189.consume()
+                        currentSeek?.catchup187=false;currentSeek?.target=fallback.target;currentSeek?.updates=fallback.watchFloor
+                        currentSeek?.commandClock=fallback.commandClock;currentSeek?.started=ProcessInfo.processInfo.systemUptime
+                        resyncTarget=fallback.target;resyncCommandClock=Double(fallback.commandClock)/1e6
+                        displayPolicy.command(at:fallback.commandClock,preserveTimeline:false)
+                        PlaybackFlowTrace.mark(.resyncMilestones,a:187,b:2,c:fallback.commandClock)
+                        clockResync.consumeFallback187();continue
                     }
                     let expired=seek.isResync ? (!paused && sceneActive && now-lastFrameAt>30):now-seek.started>8
                     if expired{_ = seekGate?.finish(nonce:seek.nonce,observed:false);if seek.isResync{recordResync(6)};throw seek.isResync ? VLCPlaybackError.timeout:VLCPlaybackError.seek}

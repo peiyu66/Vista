@@ -80,3 +80,8 @@ typedef struct {
 VLCVistaResumeRateReceipt VLCVistaResumeRate(VLCProbeEngine *,float,uint64_t,uint64_t,uint64_t,uint64_t,bool);
 vista_resume_snapshot_data VLCVistaResumeSnapshot(VLCProbeEngine *);
 vista_resume_snapshot_data VLCVistaResumeFinish(VLCProbeEngine *,uint32_t,int *);
+
+#include "vista_hold187.h"
+bool VLCVistaCatchupStart(VLCProbeEngine*,uint64_t,int64_t,int64_t,double);
+VHRResult VLCVistaCatchupPoll(VLCProbeEngine*);
+void VLCVistaCatchupCancel(VLCProbeEngine*,bool);

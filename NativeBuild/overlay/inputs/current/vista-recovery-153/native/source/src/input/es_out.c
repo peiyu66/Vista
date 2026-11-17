@@ -50,6 +50,7 @@
 #include "../clock/input_clock.h"
 #include "../clock/clock.h"
 #include "decoder.h"
+#include "vista_hold187_internal.h"
 #include "es_out.h"
 #include "event.h"
 #include "resource.h"
@@ -224,6 +225,11 @@ typedef struct
     /* */
     bool        b_paused;
     bool        b_rebuffering;
+    bool vista_forward_source_buffering,vista_forward_source_ended;
+    uint64_t vista_forward_input_requests,vista_forward_source_waits;
+    VHRRequest *vista_hold187;
+    bool vista_hold187_attempted;
+    uint64_t vista_hold187_flow;
     es_out_id_t *p_next_frame_es;
     vlc_tick_t  i_pause_date;
 
@@ -274,6 +280,18 @@ static void EsOutChangePosition(es_out_sys_t *out, es_out_id_t *p_next_frame_es)
 static void EsOutProgramChangePause(es_out_sys_t *out, bool b_paused, vlc_tick_t i_date);
 static void EsOutProgramsChangeRate(es_out_sys_t *out);
 static void EsOutDecodersStopBuffering(es_out_sys_t *out, bool b_forced);
+static void EsOutChangeRebuffer(es_out_sys_t*,bool,vlc_tick_t);
+/* Source rebuffer ownership is independent of the recovery pause.
+ * A successful demux must not resume audio before video reaches the target. */
+static void VistaSourceRebuffer(es_out_sys_t *p_sys,bool buffering,vlc_tick_t date)
+{
+ p_sys->vista_forward_source_buffering=buffering;
+ if(p_sys->vista_hold187){if(buffering)p_sys->vista_forward_source_waits++;return;}
+ EsOutChangeRebuffer(p_sys,buffering,date);
+}
+
+static void VistaHoldEnd(es_out_sys_t*,unsigned,unsigned,bool,bool);
+static int VistaHoldTick(es_out_sys_t*);
 static void EsOutDrainDecoder(es_out_sys_t *p_sys, es_out_id_t *es, bool wait);
 static void EsOutGlobalMeta(es_out_sys_t *p_out, const vlc_meta_t *p_meta);
 static void EsOutMeta(es_out_sys_t *p_out, const vlc_meta_t *p_meta, const vlc_meta_t *p_progmeta);
@@ -873,6 +891,7 @@ static void ProgramDelete( es_out_pgrm_t *p_pgrm )
 
 static void EsOutTerminate(es_out_sys_t *p_sys)
 {
+    VistaHoldEnd(p_sys,VHR_CANCELLED,8,false,true);
     es_out_id_t *es;
 
     if( p_sys->p_sout_record )
@@ -1192,6 +1211,83 @@ static void EsOutChangeRebuffer(es_out_sys_t *p_sys, bool b_rebuffering, vlc_tic
         input_SendEventCache(p_sys->p_input, b_rebuffering ? 0.0 : 1.0);
 }
 
+static void VistaHoldEnd(es_out_sys_t *p_sys,unsigned state,unsigned reason,bool keep_pause,bool dispose) {
+ VHRRequest *r=p_sys->vista_hold187;if(!r)return;
+ p_sys->vista_hold187=NULL;
+ es_out_id_t *es;foreach_es_then_es_slaves(es)if(es->p_dec)vista_hold187_decoder_end(es->p_dec,r);
+ if(!dispose){
+  if(keep_pause)EsOutChangePause(p_sys,true,vlc_tick_now());
+  const vlc_tick_t resumed=vlc_tick_now();
+  EsOutChangeRebuffer(p_sys,p_sys->vista_forward_source_buffering,resumed);
+  const bool still_paused=EsOutIsPaused(p_sys) || p_sys->b_buffering;
+  const bool sent=vista_hold189_resume_timer(p_sys->p_input,resumed,still_paused);
+  pthread_mutex_lock(&r->lock);
+  r->result.resume_requested=!still_paused;
+  r->result.timer_resume_sent=sent;
+  pthread_mutex_unlock(&r->lock);
+ }
+ vhr_finish(r,state,reason,vlc_tick_now());VHRResult x=vhr_read(r);
+ VFEmit(p_sys->vista_hold187_flow,620,VF_END,0,state,reason,x.command);
+ VFEmit(p_sys->vista_hold187_flow,621,VF_POINT,0,x.target_us,x.started_us,x.ended_us);
+ VFEmit(p_sys->vista_hold187_flow,622,VF_POINT,0,x.ready_pts,x.frames,x.discarded);
+ VFEmit(p_sys->vista_hold187_flow,623,VF_POINT,0,p_sys->vista_forward_input_requests,p_sys->vista_forward_source_waits,p_sys->vista_forward_source_ended);
+ vhr_release(r);
+}
+static int VistaHoldBegin(es_out_sys_t *p_sys,VHRRequest *r) {
+ const vlc_tick_t now=vlc_tick_now();es_out_id_t *es,*video=NULL;unsigned videos=0,audios=0;
+ if(p_sys->vista_hold187||p_sys->b_paused||p_sys->b_buffering||p_sys->b_rebuffering||p_sys->p_next_frame_es||p_sys->p_sout_record||!p_sys->p_pgrm||fabs(p_sys->rate-r->input.rate)>0.01)goto reject;
+ foreach_es_then_es_slaves(es)if(es->p_dec){
+  if(es->fmt.i_cat==VIDEO_ES){video=es;videos++;}
+  if(es->fmt.i_cat==AUDIO_ES)audios++;
+ }
+ if(videos!=1||audios!=1||!video||video->fmt.i_codec!=VLC_CODEC_HEVC||!vhr_begin(r,now))goto reject;
+ if(!vista_hold187_decoder_begin(video->p_dec,r))goto reject;
+ vhr_retain(r);p_sys->vista_hold187=r;p_sys->vista_hold187_attempted=true;
+ p_sys->vista_forward_source_buffering=p_sys->vista_forward_source_ended=false;
+ p_sys->vista_forward_input_requests=p_sys->vista_forward_source_waits=0;
+ p_sys->vista_hold187_flow=VFNew(620,VF_BEGIN,VFParent(),r->input.command,(int64_t)(p_sys->rate*1000000),0);
+ EsOutChangeRebuffer(p_sys,true,now);
+ return VLC_SUCCESS;
+reject:vhr_finish(r,VHR_FAILED,1,now);return VLC_EGENERIC;
+}
+static int VistaHoldTick(es_out_sys_t *p_sys) {
+ VHRRequest *r=p_sys->vista_hold187;if(!r)return 0;
+ VHRResult x=vhr_read(r);
+ if(atomic_load(&r->cancel)){
+  if(atomic_load(&r->preserve_pause))return 2; /* Input must transfer the user pause through its actual state machine. */
+  VistaHoldEnd(p_sys,VHR_CANCELLED,2,false,false);return 0;
+ }
+ /* No elapsed-time fallback. Explicit EOF/error/cancel ends the experiment. */
+ if(x.state==VHR_READY){
+  es_out_id_t *es;bool ack=true;unsigned count=0;
+  unsigned mask=0;
+  foreach_es_then_es_slaves(es)if(es->p_dec){
+   bool paused= vista_hold187_decoder_paused(es->p_dec);ack=ack&&paused;count++;
+   if(paused)mask|=es->fmt.i_cat==VIDEO_ES ? 1:es->fmt.i_cat==AUDIO_ES ? 2:4;
+  }
+  pthread_mutex_lock(&r->lock);r->result.pause_ack_mask=mask;pthread_mutex_unlock(&r->lock);
+  if(ack&&count>=2&&!p_sys->vista_forward_source_buffering){VistaHoldEnd(p_sys,VHR_RESUMED,0,false,false);return 0;}
+ }
+ /* Supply only while a current recovery needs input. Decoder readiness and
+  * both pause acknowledgements remain prerequisites; no free-running demux. */
+ es_out_id_t *es;vlc_input_decoder_t *video=NULL;bool ack=true;unsigned count=0;
+ foreach_es_then_es_slaves(es)if(es->p_dec){
+  ack=ack&&vista_hold187_decoder_paused(es->p_dec);count++;
+  if(es->fmt.i_cat==VIDEO_ES)video=es->p_dec;
+ }
+ if(ack&&count>=2&&video){
+  int input_state=vista_hold_forward_input_state(video,r);
+  if(p_sys->vista_forward_source_ended && x.state==VHR_HOLDING && input_state==2){
+   VistaHoldEnd(p_sys,VHR_FAILED,5,false,false);return 0;
+  }
+  if(!p_sys->vista_forward_source_ended){
+   if(p_sys->vista_forward_source_buffering)return 4;
+   if(x.state==VHR_HOLDING&&input_state)return 3;
+  }
+ }
+ return 1;
+}
+
 static void EsOutChangeRate(es_out_sys_t *p_sys, float rate)
 {
     es_out_id_t *es;
@@ -1208,6 +1304,7 @@ static void EsOutChangePosition(es_out_sys_t *p_sys,
                                 es_out_id_t *p_next_frame_es)
 {
     es_out_id_t *p_es;
+    VistaHoldEnd(p_sys,VHR_CANCELLED,5,false,false);
     VistaBufferEnd(p_sys, 1);
     p_sys->vista_buffer_episode = VFNew(VF_BUFFER_EPISODE, VF_BEGIN,
         VFParent(), 1, p_sys->b_buffering, p_next_frame_es != NULL);
@@ -2816,6 +2913,7 @@ static void EsOutDestroyDecoder(es_out_sys_t *sys,
 
     assert( p_es->p_pgrm );
 
+    VistaHoldEnd(sys,VHR_CANCELLED,6,false,false);
     EsOutDeleteSubESes(sys, p_es);
 
     if (!vlc_input_decoder_IsDrained(p_es->p_dec))
@@ -4152,6 +4250,11 @@ static int EsOutVaPrivControlLocked(es_out_sys_t *p_sys, input_source_t *source,
 
     switch (query)
     {
+    case VHR_ES_BEGIN:return VistaHoldBegin(p_sys,va_arg(args,VHRRequest*));
+    case VHR_ES_TICK:return VistaHoldTick(p_sys);
+    case VHR_ES_INPUT_REQUEST:if(p_sys->vista_hold187)p_sys->vista_forward_input_requests++;return VLC_SUCCESS;
+    case VHR_ES_SOURCE_END:p_sys->vista_forward_source_ended=true;return VLC_SUCCESS;
+    case VHR_ES_CANCEL:{int keep=va_arg(args,int);VistaHoldEnd(p_sys,VHR_CANCELLED,4,keep==1,keep==2);return VLC_SUCCESS;}
     case ES_OUT_PRIV_SET_MODE:
     {
         const int i_mode = va_arg( args, int );
@@ -4336,7 +4439,7 @@ static int EsOutVaPrivControlLocked(es_out_sys_t *p_sys, input_source_t *source,
         const bool b_rebuffering = (bool)va_arg( args, int );
         const vlc_tick_t i_date = va_arg( args, vlc_tick_t );
 
-        EsOutChangeRebuffer(p_sys, b_rebuffering, i_date);
+        VistaSourceRebuffer(p_sys, b_rebuffering, i_date);
         return VLC_SUCCESS;
     }
     case ES_OUT_PRIV_SET_RATE:
@@ -4584,6 +4687,9 @@ input_EsOutNew(input_thread_t *p_input, input_source_t *main_source, float rate,
     p_sys->rate = rate;
     p_sys->b_paused = false;
     p_sys->b_rebuffering = false;
+    p_sys->vista_forward_source_buffering=p_sys->vista_forward_source_ended=false;
+    p_sys->vista_forward_input_requests=p_sys->vista_forward_source_waits=0;
+    p_sys->vista_hold187=NULL;p_sys->vista_hold187_attempted=false;p_sys->vista_hold187_flow=0;
 
     p_sys->b_buffering = true;
     p_sys->vista_buffer_episode = VFNew(VF_BUFFER_EPISODE, VF_BEGIN,

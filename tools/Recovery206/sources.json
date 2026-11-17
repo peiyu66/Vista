@@ -1,0 +1,20 @@
+{
+  "src/input/input.c": "NativeBuild/overlay/inputs/current/vista-recovery-145/native/source/src/input/input.c",
+  "src/input/es_out.c": "NativeBuild/overlay/inputs/current/vista-recovery-153/native/source/src/input/es_out.c",
+  "src/input/decoder.c": "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/src/input/decoder.c",
+  "src/clock/input_clock.c": "NativeBuild/overlay/inputs/legacy/vista-resume-observer-native-20261112/source/src/clock/input_clock.c",
+  "src/clock/clock.c": "NativeBuild/overlay/inputs/current/vista-flow-141/native/source/src/clock/clock.c",
+  "coreaudio_common.c": "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/coreaudio_common.c",
+  "vista_hold187_internal.h": "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/vista_hold187_internal.h",
+  "vista_hold187.h": "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/vista_hold187.h",
+  "vista_hold187_player.c": "NativeBuild/overlay/inputs/current/vista-recovery-206/native/source/vista_hold187_player.c",
+  "coreaudio_common.h": "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/coreaudio_common.h",
+  "vista_frame_stage.h": "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/vista_frame_stage.h",
+  "vista_audio_flow144.h": "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/vista_audio_flow144.h",
+  "vista_queue_trace.h": "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/vista_queue_trace.h",
+  "vista_resume_observer.h": "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/vista_resume_observer.h",
+  "vista_audio_boundary162.h": "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/vista_audio_boundary162.h",
+  "vista_audio_producer164.h": "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/vista_audio_producer164.h",
+  "vista_frame_stage_internal.h": "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/vista_frame_stage_internal.h",
+  "vista_resume_observer_internal.h": "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/vista_resume_observer_internal.h"
+}

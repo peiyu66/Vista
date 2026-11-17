@@ -19,5 +19,5 @@ def compile(x):
  f=out/x['object'];h=hashlib.sha256(f.read_bytes()).hexdigest() if p.returncode==0 else None
  return {'object':x['object'],'exit':p.returncode,'sha256':h,'matchesOriginalObject':h==x['originalObjectSHA256']}
 with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:rows=list(pool.map(compile,recipes))
-(out/'receipt.json').write_text(json.dumps({'objects':rows,'allCompiled':all(x['exit']==0 for x in rows),'scope':'34 modified/new objects only; not full library or final App'},indent=2))
+(out/'receipt.json').write_text(json.dumps({'objects':rows,'allCompiled':all(x['exit']==0 for x in rows),'scope':f'{len(rows)} modified/new objects only; not full library or final App'},indent=2))
 print(json.dumps({'jobs':len(rows),'compiled':sum(x['exit']==0 for x in rows),'failed':[x['object'] for x in rows if x['exit']],'byteIdentical':sum(x['matchesOriginalObject'] for x in rows)},indent=2));raise SystemExit(0 if all(x['exit']==0 for x in rows) else 1)

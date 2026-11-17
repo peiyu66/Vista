@@ -369,6 +369,14 @@ struct VLCClockResyncPolicy {
         return true
     }
 
+    // The held decode path did not spend the existing seek.
+    // Discard pre-hold samples; a repeat failure must qualify with fresh evidence.
+    mutating func restoreAfterCatchup187(now:Double,rate:Double) {
+        guard Self.validRecoveryRate(rate),now.isFinite else{return}
+        armed=true;spent=false;armedAt=now;recoveryRate=rate
+        previous=nil;earlyPrevious=nil;earlyTooSoonCache=nil;earlyDispatchEvidence=nil;clearHealth()
+    }
+    mutating func consumeFallback187(){spent=true;armed=false;previous=nil;earlyPrevious=nil;earlyTooSoonCache=nil;earlyDispatchEvidence=nil;clearHealth()}
     private mutating func spend(_ path:TriggerPath)->Bool {
         spent=true;armed=false;previous=nil;earlyPrevious=nil;earlyTooSoonCache=nil;clearHealth()
         triggerPath=path
@@ -893,6 +901,64 @@ struct VLCNotSevereRetryWitness {
         let error=Double(x.dropTick-old.dropTick)/1000+x.dropDeltaMS-old.dropDeltaMS -
             Double(x.dropPTS-old.dropPTS)/(1000*x.selectedRate)
         return error.isFinite && abs(error)<=VLCClockResyncPolicy.earlyMaximumMappingErrorMS
+    }
+}
+
+/// Post-hold progress recovery. Keeps the one fallback allowance after
+/// first publication; never changes speed and never reuses proof across intent.
+struct VLCCatchupRecovery189 {
+    private(set) var active=false,consumed=false,healthy=false
+    private(set) var stallMS=0.0
+    private var floor=0.0,revision:UInt64=0
+    private var previous:VLCClockResyncPolicy.Input?
+    private var healthyStart:Double?,healthyFrames=0
+    mutating func arm(now:Double,revision:UInt64) {
+        guard !consumed,now.isFinite else{return}
+        active=true;floor=now;self.revision=revision;previous=nil
+        healthy=false;healthyStart=nil;healthyFrames=0
+    }
+    mutating func cancel(){active=false;previous=nil}
+    mutating func consume(){active=false;consumed=true;previous=nil}
+    mutating func observe(_ x:VLCClockResyncPolicy.Input,revision:UInt64,published:Bool)->Bool {
+        guard active,!consumed,x.now.isFinite else{return false}
+        if revision != self.revision {self.revision=revision;floor=x.now;previous=nil;healthyStart=nil;healthyFrames=0}
+        guard x.eligible,x.rateConfirmed,x.selectedRate.isFinite,x.selectedRate>=1,x.selectedRate<=5,
+              abs(x.effectiveRate-x.selectedRate)<0.01 else {
+            floor=x.now;previous=nil;healthyStart=nil;healthyFrames=0;return false
+        }
+        if published {
+            floor=x.now;previous=nil
+            if healthyStart==nil {healthyStart=x.now};healthyFrames+=1
+            if let start=healthyStart,x.now-start>=0.5,healthyFrames>=10 {healthy=true}
+            return false
+        }
+        stallMS=max(0,(x.now-max(floor,x.lastFrameAt))*1000)
+        guard stallMS>=1000 else{return false}
+        healthyStart=nil;healthyFrames=0
+        guard x.sampleUS>0,x.nowUS>=x.sampleUS,x.nowUS-x.sampleUS<=250_000,
+              x.dropTick>0,x.dropTick<=x.sampleUS,x.sampleUS-x.dropTick<=250_000,
+              x.queueTick>0,x.queueTick<=x.sampleUS,x.sampleUS-x.queueTick<=250_000,
+              x.dropContextValid,abs(x.dropContextRate-x.selectedRate)<0.01,
+              abs(x.dropRate-x.selectedRate)<0.01,x.dropDeltaMS.isFinite,
+              x.dropThresholdMS.isFinite,x.dropThresholdMS>=0,
+              x.dropDeltaMS < -max(50,2*x.dropThresholdMS),x.queuePTS>=0 else {previous=nil;return false}
+        if let old=previous,x.sampleUS==old.sampleUS {return false}
+        defer {previous=x}
+        guard let old=previous,x.sampleUS>old.sampleUS,x.sampleUS-old.sampleUS>=50_000,x.sampleUS-old.sampleUS<=1_500_000,
+              x.selectedRate==old.selectedRate,x.errors==old.errors,x.dropClockID==old.dropClockID,
+              x.dropReference>=old.dropReference,x.dropPTS>old.dropPTS,
+              x.renderNormal==old.renderNormal,x.queueInvalid==old.queueInvalid,
+              x.queueRepeat==old.queueRepeat,x.queueBackward==old.queueBackward,
+              x.queueCount>old.queueCount,x.queueValid>old.queueValid,
+              x.queuePTS>old.queuePTS,x.queueTick>old.queueTick,
+              x.admitted>old.admitted,x.pop>=old.pop,x.pop-old.pop>=6,
+              x.lateDrop>=old.lateDrop,x.lateDrop-old.lateDrop>=6 else{return false}
+        let improvement=old.dropDeltaMS.distance(to:x.dropDeltaMS)
+        if improvement>0 {
+            let remainingMS=(-x.dropDeltaMS-x.dropThresholdMS)*Double(x.sampleUS-old.sampleUS)/1000/improvement
+            if remainingMS<1000 {return false}
+        }
+        consume();return true
     }
 }
 

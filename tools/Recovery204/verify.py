@@ -11,7 +11,7 @@ assert '#define VI198_CAP 3' in (N/'vista_inflight198.h').read_text()
 assert 'VistaInflight198Enabled' not in s and 'vsp_api' not in s
 assert 'pending_metadata202' in s and 'VTDecompressionSessionWaitForAsynchronousFrames' in s
 assert 'deadline' not in s[s.index('static uint64_t VistaAdmission198('):s.index('static void VistaDrain198(')]
-assert 'VLCVistaCatchupStart' not in (R/'engine/vlc/Sources/VLCPlaybackDriver.swift').read_text()
+# Hold integration is verified separately by Recovery206; admission/omission remain unchanged.
 rows=[]
 with tempfile.TemporaryDirectory(prefix='vista-accepted204-') as tmp:
  t=Path(tmp)
