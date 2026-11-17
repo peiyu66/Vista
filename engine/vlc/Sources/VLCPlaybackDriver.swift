@@ -545,7 +545,7 @@ actor VLCAppEngine {
     /// Read the clock and submit the precise seek in ONE serialized actor call.
     /// No trigger-time target survives renderer/source awaits.
     func seekCurrentTime(expectedNormal:UInt64,minimumLateDrop:UInt64,early:VLCClockResyncPolicy.EarlyDispatchEvidence?=nil,
-                         flowCommand:UInt64,flowRevision:UInt64,flowNonce:UInt64,expectedRate:Double=2)->ResyncReceipt? {
+                         flowCommand:UInt64,flowRevision:UInt64,flowNonce:UInt64,expectedRate:Double=2,direct194:Bool=false,permits:(@MainActor @Sendable ()->Int)?=nil)async->ResyncReceipt? {
         let flow=PlaybackFlowTrace.begin(.resyncDispatch,a:VLCRecoveryFlow.integer(flowCommand),b:VLCRecoveryFlow.integer(flowRevision),c:VLCRecoveryFlow.integer(flowNonce))
         var gate:Int64=1,status:Int64=Int64.min,target:Int64=Int64.min,commandClock:Int64=0
         defer {
@@ -554,6 +554,8 @@ actor VLCAppEngine {
         }
         func pair(_ tag:Int64,_ a:Int64,_ b:Int64){PlaybackFlowTrace.point(flow,.resyncDispatchData,a:tag,b:a,c:b)}
         pair(1,VLCRecoveryFlow.integer(expectedNormal),VLCRecoveryFlow.integer(minimumLateDrop))
+        let direct=direct194
+        if direct {guard let permits,await permits()==0 else{gate=8;return nil}}
         guard !closing,let pointer else{return nil}
         gate=2
         guard VLCClockResyncPolicy.validRecoveryRate(expectedRate),early == nil || abs(early!.rate-expectedRate)<=0.001 else{return nil}
@@ -564,6 +566,7 @@ actor VLCAppEngine {
         guard state.timer_valid,!state.timer_paused,!state.timer_seeking,!state.paused,!state.buffering,
               state.timer_time_us>=0,state.length_us>state.timer_time_us,
               abs(Double(state.rate)-expectedRate)<0.01,abs(state.watch_rate-expectedRate)<0.01 else{return nil}
+        if !direct {
         // This is fresh dispatch evidence, distinct from the triggering packet.
         gate=3
         let d=VLCVistaGetNativeDiagnostics(pointer),now=VLCVistaClock()
@@ -591,6 +594,7 @@ actor VLCAppEngine {
                 clockID:d.drop_clock_id,contextValid:d.drop_context_valid,
                 contextRate:d.drop_context_rate,reference:d.drop_reference_generation) else{return nil}
         }
+        } // Direct194 skips repeated lateness proof; live safety remains.
         gate=5;target=state.timer_time_us
         pair(15,target,VLCVistaClock())
         let previousFlowParent=VFSetParent(flow.id)
@@ -754,6 +758,7 @@ struct VLCControlDiagnostics {
     private var audioOrigin=VLCAudioBoundaryRecord.Origin.manual
     private var audioInterruption:VLCAudioBoundaryRecord.Outcome?
     private var clockResync=VLCClockResyncPolicy()
+    private var directRecovery194=VLCDirectRecovery194()
     private struct ResyncCostScope {
         let engine:ObjectIdentifier,epoch:UInt64?,nonce:UInt64,rate:Double
     }
@@ -1089,6 +1094,9 @@ struct VLCControlDiagnostics {
             let wasArmed=clockResync.armed
             let knownReturn=healthyRecovery.beginReturn(nowUS:t.timer_now_us,rate:decision.nextSpeed)
             clockResync.automaticDrop(now:now,authorizedRate:knownReturn ? decision.nextSpeed:2)
+            directRecovery194.arm(revision:automatic.revision,source:currentSourceEpoch,rate:decision.nextSpeed,
+                authorized:clockResync.recoveryRate,video:decision.reason == .sparseOutput || decision.reason == .queuePressure,
+                available:clockResync.armed && !clockResync.spent)
             emitHealthyRecovery()
             if !wasArmed,clockResync.armed {resyncSampling.beginNewArmedChain();resyncSample=nil;earlyEvidenceRecords=0;resyncLastInput=nil;resyncBaselineJournal.newChain()}
             emitRecovery(automaticRecovery.begin(sequence:decision.sequence,now:now,previousSpeed:previous,
@@ -1175,6 +1183,7 @@ struct VLCControlDiagnostics {
         healthyRecovery.interrupt();emitHealthyRecovery()
     }
     private func resetRecoveryIntent(preserveHealthy:Bool=false) {
+        directRecovery194.cancel()
         resyncCostScope=nil
         healthyRecovery.interrupt(preserveProof:preserveHealthy);emitHealthyRecovery()
         clockResync.interrupt();emitResyncCost()
@@ -1228,6 +1237,21 @@ struct VLCControlDiagnostics {
     private func updateClockResync(now:Double,poll:VLCAppPoll,publishedPTS:Double?,eligible:Bool,supplementalFresh:Bool=false) {
         let allowed=eligible && ready && !paused && sceneActive && !sourceRecovering &&
             pendingSeek==nil && currentSeek==nil && !poll.state.timer_paused && !poll.state.timer_seeking && !poll.state.buffering
+        if directRecovery194.take(revision:automatic.revision,source:currentSourceEpoch,rate:selectedSpeed,
+            effective:automatic.effectiveRate,confirmed:automatic.rateConfirmed,eligible:allowed),
+           clockResync.requestDirect194(eligible:allowed,confirmed:automatic.rateConfirmed,
+            selected:selectedSpeed,effective:automatic.effectiveRate) {
+            resyncSampling.cancel();resyncSample=nil;resyncLastInput=nil
+            let target=Double(poll.state.timer_time_us)/1e6
+            guard poll.state.timer_valid,target.isFinite,target>=0,target<duration,
+                  let request=seekGate?.request(Int64((target*1e6).rounded())) else{recordResync(4);return}
+            resumeSeekIdentity.clear();presentationTicket=request.request.nonce
+            pendingSeek=Seek(target:target,nonce:presentationTicket,continuation:nil,isResync:true,
+                intentRevision:automatic.revision,sourceEpoch:currentSourceEpoch,
+                direct194:true,authorizedRate:clockResync.recoveryRate)
+            resyncTriggerClock=target;resyncTarget = -1;resyncCommandClock=0;resyncObservedMS=0
+            recordResync(1);onState?(.seeking);return
+        }
         let beforeFrame=clockResync.baselines
         if !allowed || !automatic.rateConfirmed {
             clockResync.observedFrame(now:now,pts:publishedPTS ?? -1,eligible:false)
@@ -1460,6 +1484,7 @@ struct VLCControlDiagnostics {
         var expectedNormal:UInt64=0,minimumLateDrop:UInt64=0
         var sourceEpoch:UInt64?=nil,sourceInvalidated=false
         var earlyEvidence:VLCClockResyncPolicy.EarlyDispatchEvidence?
+        var direct194=false
         var authorizedRate:Double=2
         var dispatched=false,updates:UInt64=0,started=0.0,commandClock:Int64=0
         var observationID:UInt64=0
@@ -1678,12 +1703,19 @@ struct VLCControlDiagnostics {
                         currentSeek?.continuation?.resume(throwing:CancellationError());currentSeek=nil;continue
                     }
                     if next.isResync {
-                        guard currentSeek?.nonce==next.nonce,next.intentRevision==automatic.revision,!paused,sceneActive,!sourceRecovering else {
+                        guard currentSeek?.nonce==next.nonce,next.intentRevision==automatic.revision,next.sourceEpoch==currentSourceEpoch,!paused,sceneActive,!sourceRecovering else {
                             _ = seekGate?.cancelUnaccepted(nonce:next.nonce);if currentSeek?.nonce==next.nonce{currentSeek=nil};recordResync(5);continue
                         }
                         // Mark in flight before awaiting: an accepted native command cannot be revoked by a later intent.
                         currentSeek?.dispatched=true
-                        guard let receipt=await core.seekCurrentTime(expectedNormal:next.expectedNormal,minimumLateDrop:next.minimumLateDrop,early:next.earlyEvidence,flowCommand:audioCommand,flowRevision:next.intentRevision,flowNonce:next.nonce,expectedRate:next.authorizedRate) else {
+                        guard let receipt=await core.seekCurrentTime(expectedNormal:next.expectedNormal,minimumLateDrop:next.minimumLateDrop,early:next.earlyEvidence,flowCommand:audioCommand,flowRevision:next.intentRevision,flowNonce:next.nonce,expectedRate:next.authorizedRate,direct194:next.direct194,permits:{ @MainActor [weak self] in
+                            guard let self else{return 2}
+                            self.refreshSourceState()
+                            if self.paused || !self.sceneActive {self.appliedPause=nil;return 1}
+                            return self.active && self.engine===core && self.currentSeek?.nonce==next.nonce &&
+                                self.pendingSeek==nil && next.intentRevision==self.automatic.revision &&
+                                next.sourceEpoch==self.currentSourceEpoch && !self.sourceRecovering ? 0:2
+                        }) else {
                             _ = seekGate?.cancelUnaccepted(nonce:next.nonce);if currentSeek?.nonce==next.nonce{currentSeek=nil}
                             healthyRecovery.dispatchRejected();emitHealthyRecovery()
                             recordResync(4);onPrefetchActivityChanged?();continue

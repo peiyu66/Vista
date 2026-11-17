@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "acceptedBehavior": "Direct automatic video recovery after effective-rate confirmation, accepted from194 experiment",
+  "sourceBuild": 196,
+  "publicBase": "131045c79555b6b87ec63e2d6d2a09b5e20c0fbb",
+  "productHashes": {
+    "engine/vlc/Sources/VLCClockResyncPolicy.swift": "dc5bd23bf7ae1292f4374691f63b9989c7138d7e892d315b595da04f788f63e7",
+    "engine/vlc/Sources/VLCPlaybackDriver.swift": "aab377c20eb933a76e9ce53f604f3b409038224d6eadaf519d465874956b1924",
+    "VistaBrowser.xcodeproj/project.pbxproj": "8354a3b1b0916975d29390fb46edfcbb7fef263e0db33850289e9a55053e342d"
+  },
+  "newValidation": {
+    "policyChecksPerMode": 255,
+    "policyModes": [
+      "Onone",
+      "O"
+    ],
+    "focusedTests": 98,
+    "suites": 4,
+    "unsignedReleaseBuild": true,
+    "deviceInstalled": false,
+    "deviceLaunched": false
+  },
+  "nativeArtifacts": [
+    {
+      "path": "engine/vlc/Vendor/libvlc-vista-cache-xros.a",
+      "sha256": "bc3a4b03e430a5ad3c979600b4c2770eaa6cc7a0d4eab7e41e51f76c9d5d63a5"
+    },
+    {
+      "path": "engine/libs/xros/libgpac_static.a",
+      "sha256": "98e7ca4104436792e6785b00c81c4bb1deffca7ed8c521407a78149c5ac7e845"
+    },
+    {
+      "path": "engine/libs/xros/parser.o",
+      "sha256": "b629c1e075edbf7fff288b25b7c175d3e635ca3922af7769006d0eefacca2a47"
+    },
+    {
+      "path": "engine/libs/xros/budget.o",
+      "sha256": "3ec99cc28bb23caece18b21d481c597a4d54756b52cf48979c28aff3c44251bf"
+    },
+    {
+      "path": "engine/libs/xros/MKVProducer.o",
+      "sha256": "651cd864a3c0d19ced53339a19a6efa058ffd4c67412022f1b48e7a5deddd584"
+    }
+  ],
+  "nativeRecompiled": false,
+  "excluded": [
+    "unrelated integration commits",
+    "hold experiment",
+    "audio reserve experiment",
+    "195 presentation cleanup",
+    "197 provenance diagnostics"
+  ],
+  "limitations": [
+    "194 device evidence is not a device validation of196 public integration",
+    "source dispatch audit is static, not runtime actor scheduling",
+    "no claim that stalls are solved"
+  ],
+  "publication": "commit and remote verification reported separately"
+}

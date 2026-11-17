@@ -71,7 +71,7 @@ struct VLCClockResyncPolicy {
     static let earlyMinimumLateMS = 100.0
     static let earlyMinimumRemainingMS = 600.0
     static let earlyMaximumMappingErrorMS = 10.0
-    enum TriggerPath: Int { case none=0, legacy=1, earlySevere=2 }
+    enum TriggerPath: Int { case none=0, legacy=1, earlySevere=2, direct194=3 }
     enum EarlyReason: Int {
         case none=0, baseline=1, ineligible=2, stale=3, context=4, notSevere=5
         case repeatedPTS=6, mappingChanged=7, counterReset=8, outputProgress=9
@@ -203,6 +203,16 @@ struct VLCClockResyncPolicy {
         if early {earlyDispatchEvidence=EarlyDispatchEvidence(value)}
         else if recoveryRate>2 {earlyDispatchEvidence=EarlyDispatchEvidence(value,minimumLateMS:50,severityMultiplier:1)}
         return spend(early ? .earlySevere:.legacy)
+    }
+
+    // No frame-gap, native late sample, pair or cost-estimate dependency.
+    // The allowance is spent BEFORE any actor/renderer/source await; refusal
+    // cannot restart this attempt. Existing post-hold fallback is separate.
+    mutating func requestDirect194(eligible:Bool,confirmed:Bool,selected:Double,effective:Double)->Bool {
+        guard armed,!spent,eligible,confirmed,selected.isFinite,effective.isFinite,
+              abs(selected-recoveryRate)<=0.001,abs(effective-recoveryRate)<=0.01 else{return false}
+        earlyDispatchEvidence=nil
+        return spend(.direct194)
     }
 
     private mutating func observeEarly(_ value: Input, armedAt: Double) -> Bool {
@@ -883,5 +893,22 @@ struct VLCNotSevereRetryWitness {
         let error=Double(x.dropTick-old.dropTick)/1000+x.dropDeltaMS-old.dropDeltaMS -
             Double(x.dropPTS-old.dropPTS)/(1000*x.selectedRate)
         return error.isFinite && abs(error)<=VLCClockResyncPolicy.earlyMaximumMappingErrorMS
+    }
+}
+
+/// One eligible automatic video decision; never armed by manual or buffering changes.
+struct VLCDirectRecovery194 {
+    struct Intent:Equatable {let revision:UInt64;let source:UInt64?;let rate:Double}
+    private(set) var intent:Intent?
+    mutating func arm(revision:UInt64,source:UInt64?,rate:Double,authorized:Double,video:Bool,available:Bool) {
+        intent = video && available && rate.isFinite && abs(rate-authorized)<=0.001
+            ? Intent(revision:revision,source:source,rate:rate):nil
+    }
+    mutating func cancel(){intent=nil}
+    mutating func take(revision:UInt64,source:UInt64?,rate:Double,effective:Double,confirmed:Bool,eligible:Bool)->Bool {
+        guard let i=intent else{return false}
+        guard i.revision==revision,i.source==source,rate.isFinite,abs(rate-i.rate)<=0.001 else{intent=nil;return false}
+        guard eligible,confirmed,effective.isFinite,abs(effective-i.rate)<=0.01 else{return false}
+        intent=nil;return true
     }
 }
