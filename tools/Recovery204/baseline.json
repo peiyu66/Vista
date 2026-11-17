@@ -1,0 +1,161 @@
+{
+  "schema": 1,
+  "baseCommit": "a36b06cb88528ec8b8036a3384be3817dff0cc8e",
+  "acceptedExperiment": 204,
+  "sourceIntegrationBuild": 205,
+  "scope": "Three in-flight decoder inputs, no timeout bypass, narrowly eligible HEVC nonreference preroll omission; no hold/audio-reserve/forward-state strategy",
+  "productHashes": {
+    "NativeBuild/overlay/inputs-manifest.json": "fc5e82a2893e4afa761c1cd6fa5af2d0961c18e82b87360f1f80180d9dc9f314",
+    "NativeBuild/overlay/inputs/current/vista-recovery-164/native/source/src/input/decoder.c": "32eb681e7559d15a0cee1bb8ce86ec69a66b7ddec153508de52c9b8aa417d386",
+    "NativeBuild/overlay/inputs/current/vista-recovery-168/native/source/modules/codec/videotoolbox/decoder.c": "df8b268e0243c617169b5987d17ff2aff116a87df90b7cd7357af56a3f55ba95",
+    "NativeBuild/overlay/recipes.json": "aed7a07fedf75f6130f78031e9d23c0aa0487dd2d273f59541b5629de9787078",
+    "VistaBrowser.xcodeproj/project.pbxproj": "09c8f14129d543b3bbdc82190b0bead84f79e8af38003153189d696eb97ee89d",
+    "NativeBuild/overlay/inputs/current/vista-recovery-168/native/source/vista_decode204_trace.h": "f38359e51955a13a9c491ac08295405eb8356e7dd49e5686eb734c945cf732c7",
+    "NativeBuild/overlay/inputs/current/vista-recovery-168/native/source/vista_inflight198.h": "8231cc9184cede75c32b824b305b271a9dc3ef3d25bd35b1f143d5d009200258",
+    "NativeBuild/overlay/inputs/current/vista-recovery-168/native/source/vista_omit202.h": "62327ffb407a9bac0c626638d8f0fe37ab1c6364a3f3205c55065b038b7fc1f5",
+    "engine/source/producer/MKVProducer.cpp": "82d3af0f1f440fc3c6d776da0f1e986c4ff94bc8a7f32d8751bd4a5f9d395a69",
+    "engine/source/producer/MKVProducer.h": "461ffedab6792b6db93b15b00e259fae0031e02c2617bf4ee150b821860760d5",
+    "engine/vlc/Sources/VistaVLCBridge.c": "ac3d4663f5b758fa269c31dce2e5c5ccfb04ec347cdbbfb8c0bcc78359ea56c3",
+    "Sources/VistaCore/LifecycleDiagnostics.swift": "ce5ff3ca5e073f52576fcda55482f7b5e4fd21f7b9fe3619c2207de270d365e8",
+    "Sources/VistaCore/PlaybackFlowTrace.swift": "c98493c34ab240489c61d0e684d651dcb0ed10f62e8e3635d045551bbb0f0209",
+    "Sources/VistaMedia/PlaybackMetrics.swift": "536fc63ca5ef3aaa7591f6c3f0cf0628b2c2c19c7cc8ff314230760a6a8e31e6"
+  },
+  "equivalence": {
+    "sourceFunctionsExactlyEqualToTested204": {
+      "FillReorderInfoHEVC": true,
+      "VistaAdmission198": true,
+      "VistaDrain198": true,
+      "VistaTryOmit202": true,
+      "VistaMetadataScheduled202": true,
+      "VistaMetadataFinished202": true,
+      "vista_inflight198.h": true,
+      "vista_omit202.h": true
+    },
+    "intentionalChanges": [
+      "Enable accepted cap/omission in both Release and Diagnostic instead of experimental runtime toggle",
+      "Route scalar metrics to existing bounded Flow; no provenance recorder or payload hashing",
+      "Remove seek-phase191-only instrumentation dependency"
+    ],
+    "excluded": [
+      "hold",
+      "audio reserve192",
+      "presentation cleanup195",
+      "forward-state recovery research"
+    ]
+  },
+  "host": [
+    {
+      "test": "gate198",
+      "mode": "release",
+      "passed": true,
+      "cap": 3,
+      "cases": 115,
+      "ringWrapCalls": 30000,
+      "noTimeoutObservedMS": 300,
+      "exactAdmissionHelper": true
+    },
+    {
+      "test": "gate198",
+      "mode": "asan-ubsan",
+      "passed": true,
+      "cap": 3,
+      "cases": 115,
+      "ringWrapCalls": 30000,
+      "noTimeoutObservedMS": 300,
+      "exactAdmissionHelper": true
+    },
+    {
+      "test": "gate198",
+      "mode": "tsan",
+      "passed": true,
+      "cap": 3,
+      "cases": 115,
+      "ringWrapCalls": 30000,
+      "noTimeoutObservedMS": 300,
+      "exactAdmissionHelper": true
+    },
+    {
+      "test": "omit202",
+      "mode": "release",
+      "passed": true,
+      "cases": 118,
+      "metadataCommits": 5000,
+      "pauseWaitMS": 300,
+      "exactHelpers": true,
+      "actualPacer": true
+    },
+    {
+      "test": "omit202",
+      "mode": "asan-ubsan",
+      "passed": true,
+      "cases": 118,
+      "metadataCommits": 5000,
+      "pauseWaitMS": 300,
+      "exactHelpers": true,
+      "actualPacer": true
+    },
+    {
+      "test": "omit202",
+      "mode": "tsan",
+      "passed": true,
+      "cases": 118,
+      "metadataCommits": 5000,
+      "pauseWaitMS": 300,
+      "exactHelpers": true,
+      "actualPacer": true
+    }
+  ],
+  "nativeCompile": {
+    "overlayUnits": 34,
+    "allPassed": true,
+    "mergedChangedObjects": [
+      "libvideotoolbox_plugin_la-decoder.o",
+      "libvlccore_la-decoder.o"
+    ],
+    "producerRecompiledFromCurrentSource": true,
+    "otherLibraryObjectsInheritedFromVerifiedBase": true
+  },
+  "artifactHashes": {
+    "engine/vlc/Vendor/libvlc-vista-cache-xros.a": "de307e986cbbcac7b15fa38e34ee3b2bd10fc6e4f9d30d887d3a9758994b3a05",
+    "engine/libs/xros/MKVProducer.o": "e96467a281c7be7f0e616369de9e012445f5ac956bd0b256a395a6729df1036b",
+    "engine/libs/xros/parser.o": "b629c1e075edbf7fff288b25b7c175d3e635ca3922af7769006d0eefacca2a47",
+    "engine/libs/xros/budget.o": "3ec99cc28bb23caece18b21d481c597a4d54756b52cf48979c28aff3c44251bf",
+    "engine/libs/xros/libgpac_static.a": "98e7ca4104436792e6785b00c81c4bb1deffca7ed8c521407a78149c5ac7e845"
+  },
+  "builds": [
+    {
+      "configuration": "Release",
+      "version": "205",
+      "unsigned": true,
+      "binarySHA256": "d9a6e26ac259240de723ad95fd0d1893ec741ef7804e2307e0e5dca793409938",
+      "installed": false
+    },
+    {
+      "configuration": "Diagnostic",
+      "version": "205",
+      "unsigned": true,
+      "binarySHA256": "600379c2163bd4775535d504b7494201a7c35db9ed0329936707c87226b2ae26",
+      "installed": false
+    }
+  ],
+  "regressions": {
+    "direct194SourceUnchanged": true,
+    "direct194ChecksPerMode": 255,
+    "direct194Modes": [
+      "Onone",
+      "O"
+    ],
+    "optimizedLoggingReleaseAndDiagnostic": true,
+    "rendererZeroFlowIdentityFallback": true,
+    "producerEventASanUBSan": true
+  },
+  "limitations": [
+    "Integrated build205 not installed or played on device; experiment204 is a different artifact and includes other isolated strategies.",
+    "No claim that stutters are solved.",
+    "Full dependency source rebuild not repeated; verified current base archives plus 34 overlay compile checks and two changed decoder object replacements.",
+    "Gate/metadata tests use callback and FIFO/provider shims; hardware quality evidence belongs to prior isolated experiment.",
+    "Diagnostic uses existing bounded scalar Flow, not experimental197 read-provenance writer.",
+    "Historical source196 project-hash verifier is not applicable after later logging/config/version changes; policy source hashes separately verified.",
+    "Xcode/Swift cache writes required normal sandbox escalation; final authorized runs passed."
+  ]
+}

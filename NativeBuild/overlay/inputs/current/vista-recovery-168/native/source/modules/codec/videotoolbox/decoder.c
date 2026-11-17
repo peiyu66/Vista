@@ -1,3 +1,6 @@
+#include "vista_decode204_trace.h"
+#include "vista_inflight198.h"
+#include "vista_omit202.h"
 #include "flow/vista_flow_trace.h"
 #include "vista_frame_stage_internal.h"
 /*****************************************************************************
@@ -45,7 +48,7 @@
 #import "pacer.h"
 #import "dpb.h"
 /* Private allocation prefix preserves the untouched DPB ABI and its free(). */
-typedef struct {frame_info_t info;uint64_t flow_id;bool suppress_output;uint32_t input_flags;} vista_flow_frame;
+typedef struct {frame_info_t info;uint64_t flow_id;bool suppress_output;uint32_t input_flags;bool omit_candidate202;} vista_flow_frame;
 #include "vista_vt_preroll145.h"
 #include "vista_vt_diagnostics165.h"
 _Static_assert(offsetof(vista_flow_frame,info)==0,"unchanged DPB prefix");
@@ -145,6 +148,14 @@ typedef struct decoder_sys_t
 
     /* Decoder Callback Synchronization */
     vlc_mutex_t                 lock;
+    vlc_mutex_t inflight_lock198;
+    vlc_cond_t inflight_cond198;
+    vi198_state inflight198;
+    bool inflight_enabled198;
+    bool omit_enabled202;
+    unsigned pending_metadata202; /* Includes callbacks until DPB/pacer completion. */
+    vlc_cond_t metadata_cond202;
+    uint64_t inflight_trace198;
     bool                        b_discard_decoder_output;
 
     struct dpb_s                dpb;
@@ -164,6 +175,35 @@ typedef struct decoder_sys_t
     struct pic_pacer           *pic_pacer;
 } decoder_sys_t;
 
+
+extern unsigned VistaDecoderControl198(decoder_t *);
+/* No FIFO/decoder lock held while waiting or calling VT. No deadline or cap
+ * bypass: success/error/drop callbacks release a credit. The 2ms condition wait
+ * only notices real flush/abort requests on the owner FIFO; it does not reject,
+ * reset or relax the cap. Pause alone does not cancel compressed input. */
+static uint64_t VistaAdmission198(decoder_t*d,frame_info_t*info,uint64_t provenance,bool*cancel){
+ decoder_sys_t*s=d->p_sys;*cancel=false;if(!s->inflight_enabled198)return 0;
+ if(!s->inflight_trace198)s->inflight_trace198=VP197New(778,0,s->codec,VI198_CAP,0);
+ vlc_tick_t begin=vlc_tick_now();int reason=0;uint64_t token=0,epoch;
+ for(;;){
+  unsigned control=VistaDecoderControl198(d);
+  vlc_mutex_lock(&s->inflight_lock198);
+  if(control&3){*cancel=true;reason=1;}
+  else if(s->inflight198.outstanding<VI198_CAP){token=vi198_reserve(&s->inflight198,info,provenance);assert(token);}
+  else {vlc_cond_timedwait(&s->inflight_cond198,&s->inflight_lock198,vlc_tick_now()+VLC_TICK_FROM_MS(2));vlc_mutex_unlock(&s->inflight_lock198);continue;}
+  epoch=s->inflight198.epoch;unsigned depth=s->inflight198.outstanding;
+  vlc_mutex_unlock(&s->inflight_lock198);
+  VP197Emit(provenance,780,3,s->inflight_trace198,epoch,token);
+  VP197Emit(provenance,781,3,begin,vlc_tick_now(),reason);
+  VP197Emit(provenance,782,3,token,epoch,depth);break;
+ }
+ return token;
+}
+static void VistaDrain198(decoder_t*d){
+ decoder_sys_t*s=d->p_sys;if(!s->inflight_enabled198)return;
+ vlc_mutex_lock(&s->inflight_lock198);bool quiet=vi198_epoch(&s->inflight198);uint64_t epoch=s->inflight198.epoch;unsigned left=s->inflight198.outstanding;vlc_mutex_unlock(&s->inflight_lock198);
+ VP197Emit(s->inflight_trace198,785,3,epoch,quiet,left);
+}
 #pragma mark - start & stop
 
 static OSType GetBestChroma(uint8_t i_chroma_format, uint8_t i_depth_luma,
@@ -736,6 +776,15 @@ static bool FillReorderInfoHEVC(decoder_t *p_dec, const block_t *p_block,
             GetxPSHEVC(hevc_get_slice_pps_id(p_sli), hevcctx, &p_pps, &p_sps, &p_vps);
             if (p_sps)
             {
+                const struct hxxx_helper_nal *sps202 =
+                    &hevcctx->hh.hevc.sps_list[hevc_get_pps_sps_id(p_pps)];
+                const struct hxxx_helper_nal *vps202 =
+                    &hevcctx->hh.hevc.vps_list[hevc_get_sps_vps_id(p_sps)];
+                ((vista_flow_frame*)p_info)->omit_candidate202 = !hevcctx->b_dovi &&
+                    vo202_single_trail_n(p_block->p_buffer,p_block->i_buffer,
+                                         hevcctx->hh.i_output_nal_length_size) &&
+                    sps202->b && vo202_single_temporal_sps(sps202->b->p_buffer,sps202->b->i_buffer) &&
+                    p_vps && vps202->b && vo202_single_layer_vps(vps202->b->p_buffer,vps202->b->i_buffer);
                 struct hevc_sei_callback_s sei;
                 sei.p_sps = p_sps;
                 sei.p_timing = NULL;
@@ -1249,6 +1298,52 @@ static void OnDecodedFrame(decoder_t *p_dec, frame_info_t *p_info)
     VistaPipeline(p_dec, VISTA_PIPE_DPB_INSERT, p_info->p_picture == NULL, 0, p_sys->dpb.i_size, 0);
     vfs_ref(p_info,VFS_DPB_INSERT,vlc_tick_now(),0,0);VFEmit(flow_frame_id(p_info),VF_DPB_INSERT,VF_POINT,0,0,0,0);
     InsertIntoDPB(&p_sys->dpb, p_info);
+}
+
+/* Only the omitted-input path needs this dependency: prior real callbacks
+ * must finish their DPB/time updates first. No VT drain, copied picture queue,
+ * deadline, or bypass. The condition wait observes real FIFO flush/abort just
+ * like admission198; pause is not a cancellation. Caller owns info throughout. */
+static int VistaTryOmit202(decoder_t *d,frame_info_t *info,uint64_t provenance)
+{
+    decoder_sys_t *s=d->p_sys;
+    const vlc_tick_t begin=vlc_tick_now();
+    for(;;){
+        unsigned control=VistaDecoderControl198(d);
+        vlc_mutex_lock(&s->lock);
+        if(control&3){
+            vlc_mutex_unlock(&s->lock);
+            VP197Emit(provenance,800,3,begin,vlc_tick_now(),2);
+            return 2;
+        }
+        if(s->pending_metadata202){
+            vlc_cond_timedwait(&s->metadata_cond202,&s->lock,vlc_tick_now()+VLC_TICK_FROM_MS(2));
+            vlc_mutex_unlock(&s->lock);
+            continue;
+        }
+        if(s->vtsession_status!=VTSESSION_STATUS_OK || s->b_discard_decoder_output){
+            vlc_mutex_unlock(&s->lock);
+            VP197Emit(provenance,800,3,begin,vlc_tick_now(),0);
+            return 0;
+        }
+        const int poc=info->i_poc;const vlc_tick_t pts=info->pts;
+        OnDecodedFrame(d,info); /* NULL picture; original DPB and date update. */
+        vlc_mutex_unlock(&s->lock);
+        VP197Emit(provenance,801,3,poc,pts,1);
+        VP197Emit(provenance,800,3,begin,vlc_tick_now(),1);
+        return 1;
+    }
+}
+static void VistaMetadataScheduled202(decoder_t *d)
+{
+    decoder_sys_t *s=d->p_sys;if(!s->omit_enabled202)return;
+    vlc_mutex_lock(&s->lock);++s->pending_metadata202;vlc_mutex_unlock(&s->lock);
+}
+static void VistaMetadataFinished202(decoder_t *d)
+{
+    decoder_sys_t *s=d->p_sys;if(!s->omit_enabled202)return;
+    vlc_mutex_lock(&s->lock);assert(s->pending_metadata202);
+    --s->pending_metadata202;vlc_cond_broadcast(&s->metadata_cond202);vlc_mutex_unlock(&s->lock);
 }
 
 static CMVideoCodecType CodecPrecheck(decoder_t *p_dec)
@@ -1780,6 +1875,13 @@ static int OpenDecoder(vlc_object_t *p_this)
     }
 
     vlc_mutex_init(&p_sys->lock);
+    vlc_mutex_init(&p_sys->inflight_lock198);
+    vlc_cond_init(&p_sys->metadata_cond202);
+    p_sys->pending_metadata202=0;
+    vlc_cond_init(&p_sys->inflight_cond198);
+    vi198_init(&p_sys->inflight198);
+    p_sys->inflight_enabled198=(p_dec->fmt_in->i_codec==VLC_CODEC_H264 || p_dec->fmt_in->i_codec==VLC_CODEC_HEVC);
+    p_sys->omit_enabled202=p_sys->inflight_enabled198 && p_dec->fmt_in->i_codec==VLC_CODEC_HEVC;
 
     p_dec->pf_decode = DecodeBlock;
     p_dec->pf_flush  = RequestFlush;
@@ -2203,7 +2305,9 @@ static void Drain(decoder_t *p_dec, bool flush)
     if (p_sys->session && p_sys->decoder_state == STATE_DECODER_STARTED)
         VF_VOID(VF_VT_DRAIN,VTDecompressionSessionWaitForAsynchronousFrames(p_sys->session));
 
+    VistaDrain198(p_dec); /* VT callback fence completed; old tickets cannot enter new epoch. */
     vlc_mutex_lock(&p_sys->lock);
+    assert(!p_sys->pending_metadata202); /* Original VT fence finished callbacks. */
     DrainDPBLocked(p_dec, flush);
     assert(p_sys->dpb.i_size == 0);
     assert(p_sys->dpb.p_entries == NULL);
@@ -2214,6 +2318,7 @@ static void Drain(decoder_t *p_dec, bool flush)
 
 static int DecodeBlock(decoder_t *p_dec, block_t *p_block)
 {
+    uint64_t provenance197 = 0;
     decoder_sys_t *p_sys = p_dec->p_sys;
 
     if (p_block == NULL)
@@ -2321,6 +2426,8 @@ static int DecodeBlock(decoder_t *p_dec, block_t *p_block)
     }
 
     bool b_config_changed = false;
+    if (p_block && VP197Enabled())
+        provenance197=VP197Packet(710,0,0,p_block->i_flags,p_block->p_buffer,p_block->i_buffer,p_block->i_pts,p_block->i_dts);
     if (p_sys->pf_process_block)
     {
         p_block = p_sys->pf_process_block(p_dec, p_block, &b_config_changed);
@@ -2385,14 +2492,6 @@ static int DecodeBlock(decoder_t *p_dec, block_t *p_block)
         p_sys->sync_state = STATE_BITSTREAM_SYNCED;
     }
 
-    CMSampleBufferRef sampleBuffer =
-        VTSampleBufferCreate(p_dec, p_sys->videoFormatDescription, p_block);
-    if (unlikely(!sampleBuffer))
-    {
-        free(p_info);
-        goto skip;
-    }
-
     vlc_mutex_lock(&p_sys->lock);
     const bool vista_format_ready=p_sys->b_format_propagated;
     vlc_mutex_unlock(&p_sys->lock);
@@ -2410,15 +2509,34 @@ static int DecodeBlock(decoder_t *p_dec, block_t *p_block)
     const vlc_tick_t vista_pts=p_info->pts;
     const bool vista_suppress=vista_reason==0;
     const bool vista_keyframe=p_info->b_keyframe;
-    ((vista_flow_frame*)p_info)->flow_id=VFNew(VF_FRAME,VF_POINT,VFParent(),p_info->pts,0,0);
+    ((vista_flow_frame*)p_info)->flow_id=VFNew(VF_FRAME,VF_POINT,VFParent(),p_info->pts,p_block->i_dts,(int64_t)p_block->i_buffer);
     VFEmit(flow_frame_id(p_info),VVP_DECISION,VF_POINT,0,p_block->i_flags,vista_pts,vista_reason);
     const uint64_t vista_frame_id = vfs_begin(p_dec,p_info,p_info->pts,vlc_tick_now());
+    if(p_sys->omit_enabled202 && vista_suppress && ((vista_flow_frame*)p_info)->omit_candidate202){
+        const int omitted=VistaTryOmit202(p_dec,p_info,provenance197);
+        if(omitted){if(omitted==2)free(p_info);goto skip;}
+    }
+    CMSampleBufferRef sampleBuffer =
+        VTSampleBufferCreate(p_dec, p_sys->videoFormatDescription, p_block);
+    if (unlikely(!sampleBuffer))
+    {
+        free(p_info);
+        goto skip;
+    }
+
     const uint64_t flowFrame=flow_frame_id(p_info);VFEmit(flowFrame,VF_PACER,VF_BEGIN,0,0,0,0);
     const vlc_tick_t pressure_pacer_begin=vlc_tick_now();
     pic_pacer_WaitAllocatableSlot(p_sys->pic_pacer, p_info->b_field);
-    vfs_pressure_pacer(p_dec,vlc_tick_now()-pressure_pacer_begin);
+    const vlc_tick_t pressure_pacer_end198=vlc_tick_now();
+    vfs_pressure_pacer(p_dec,pressure_pacer_end198-pressure_pacer_begin);
+    if(p_sys->inflight_enabled198)VP197Emit(provenance197,787,3,pressure_pacer_begin,pressure_pacer_end198,0);
     vfs_id(vista_frame_id,VFS_PACER_END,vlc_tick_now(),0,0);VFEmit(flowFrame,VF_PACER,VF_END,0,0,0,0);
 
+    bool vista_cancel198=false;
+    const uint64_t vista_ticket198=VistaAdmission198(p_dec,p_info,provenance197,&vista_cancel198);
+    if(vista_cancel198){free(p_info);CFRelease(sampleBuffer);goto skip;}
+    /* Tagged integer refcon: no dereference of freed memory on duplicate/stale callback. */
+    void *vista_ref198=vista_ticket198?(void*)(uintptr_t)((vista_ticket198<<1)|1):p_info;
     VTDecodeInfoFlags flagOut = 0;
     VTDecodeFrameFlags decoderFlags = kVTDecodeFrame_EnableAsynchronousDecompression;
     if(vista_suppress)decoderFlags |= kVTDecodeFrame_DoNotOutputFrame;
@@ -2426,6 +2544,7 @@ static int DecodeBlock(decoder_t *p_dec, block_t *p_block)
         VFEmit(flowFrame,VVP_SUBMIT,VF_POINT,0,decoderFlags,vista_keyframe,vista_suppress);
     /* Reserve before VT: its success callback is allowed to run synchronously.
      * Error returns have no callback (VTDecompressionSession.h contract). */
+    VistaMetadataScheduled202(p_dec);
     pic_pacer_AccountScheduledDecode(p_sys->pic_pacer, vista_field);
 
     vfs_id(vista_frame_id,VFS_SUBMIT_BEGIN,vlc_tick_now(),0,0);VFEmit(flowFrame,VF_SUBMIT,VF_BEGIN,0,0,0,0);
@@ -2433,12 +2552,22 @@ static int DecodeBlock(decoder_t *p_dec, block_t *p_block)
      * p_info before DecodeFrame returns. No logging inside the wall interval. */
     const uint64_t vista_submit_thread = flowFrame ? vvtd_thread() : 0;
     const int64_t vista_cpu_begin = flowFrame ? vvtd_cpu_ns() : -1;
-    const vlc_tick_t vista_api_begin = flowFrame ? vlc_tick_now() : 0;
+    const vlc_tick_t vista_api_begin = (flowFrame || provenance197) ? vlc_tick_now() : 0;
     OSStatus status =
         VTDecompressionSessionDecodeFrame(p_sys->session, sampleBuffer,
-                                          decoderFlags, p_info, &flagOut);
-    const vlc_tick_t vista_api_end = flowFrame ? vlc_tick_now() : 0;
+                                          decoderFlags, vista_ref198, &flagOut);
+    const vlc_tick_t vista_api_end = (flowFrame || provenance197) ? vlc_tick_now() : 0;
     const int64_t vista_cpu_end = flowFrame ? vvtd_cpu_ns() : -1;
+    bool vista_error_owner198=true;
+    if(vista_ticket198){
+        vlc_mutex_lock(&p_sys->inflight_lock198);
+        void*owned=vi198_return(&p_sys->inflight198,vista_ticket198,status!=noErr);
+        vista_error_owner198=owned!=NULL;unsigned depth=p_sys->inflight198.outstanding;
+        vlc_cond_broadcast(&p_sys->inflight_cond198);vlc_mutex_unlock(&p_sys->inflight_lock198);
+        VP197Emit(provenance197,784,3,vista_api_end,depth,status);
+    }
+    VP197Emit(provenance197,714,3,vista_api_begin,vista_api_end,status);
+    VP197Emit(provenance197,715,3,p_block->i_buffer,decoderFlags,p_block->i_pts);
     vfs_pressure_submit(p_dec,status);
     /* Immutable stack ID: callback may already have consumed p_info. */
     vfs_id(vista_frame_id,VFS_SUBMIT_RETURN,vlc_tick_now(),status,flagOut);VFEmit(flowFrame,VF_SUBMIT,VF_END,0,status,flagOut,0);
@@ -2467,9 +2596,9 @@ static int DecodeBlock(decoder_t *p_dec, block_t *p_block)
     }
     else
     {
-        pic_pacer_AccountFinishedDecode(p_sys->pic_pacer, vista_field);
+        if(vista_error_owner198)pic_pacer_AccountFinishedDecode(p_sys->pic_pacer, vista_field);
         VFEmit(flowFrame,VVP_FALLBACK,VF_POINT,0,1,status,vista_suppress);
-        free(p_info); /* Error: VT guarantees that no callback will own it. */
+        if(vista_error_owner198){free(p_info);VistaMetadataFinished202(p_dec);} /* Error without callback owns frame exactly once. */
         msg_Dbg(p_dec, "session rejected frame %"PRId64" with status %d", vista_pts, (int)status);
         p_sys->sync_state = p_sys->start_sync_state;
         vlc_mutex_lock(&p_sys->lock);
@@ -2622,6 +2751,18 @@ static void DecoderCallback(void *decompressionOutputRefCon,
                             CMTime duration)
 {
     const vlc_tick_t vista_callback_entry = vlc_tick_now();
+    decoder_t *gate_dec198=(decoder_t*)decompressionOutputRefCon;
+    decoder_sys_t *gate_sys198=gate_dec198->p_sys;
+    uint64_t gate_ticket198=((uintptr_t)sourceFrameRefCon&1)?((uintptr_t)sourceFrameRefCon>>1):0;
+    if(gate_ticket198){
+        uint64_t provenance=0;vlc_mutex_lock(&gate_sys198->inflight_lock198);
+        sourceFrameRefCon=vi198_callback(&gate_sys198->inflight198,gate_ticket198,&provenance);
+        unsigned depth=gate_sys198->inflight198.outstanding;
+        vlc_cond_broadcast(&gate_sys198->inflight_cond198);vlc_mutex_unlock(&gate_sys198->inflight_lock198);
+        if(!sourceFrameRefCon)return; /* duplicate/stale: no ownership, no second decrement */
+        VP197Emit(provenance,783,3,vista_callback_entry,depth,status);
+    }
+
     const uint64_t flowCallback=flow_frame_id(sourceFrameRefCon);
     const uint64_t vista_callback_thread = flowCallback ? vvtd_thread() : 0;
     VFEmit(flowCallback,VF_CALLBACK,VF_BEGIN,vista_callback_entry,status,infoFlags,vista_callback_thread);
@@ -2789,6 +2930,7 @@ end:
     free(p_info);
     vlc_mutex_unlock(&p_sys->lock);
     pic_pacer_AccountFinishedDecode(p_sys->pic_pacer, b_field);
+    VistaMetadataFinished202(p_dec);
     const vlc_tick_t vista_callback_finished = flowCallback ? vlc_tick_now() : 0;
     vvtd_callback_emit(flowCallback, vista_callback_thread,
                        vista_callback_lock_begin, vista_callback_locked,

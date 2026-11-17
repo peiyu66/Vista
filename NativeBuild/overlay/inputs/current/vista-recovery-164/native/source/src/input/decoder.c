@@ -2129,6 +2129,18 @@ static void Decoder_VideoDrained(vlc_input_decoder_t *owner)
     }
 }
 
+/* In-flight admission must observe actual seek/exit cancellation without
+ * holding the owner FIFO lock while calling or waiting for VideoToolbox. */
+unsigned VistaDecoderControl198(decoder_t *dec);
+unsigned VistaDecoderControl198(decoder_t *dec)
+{
+    vlc_input_decoder_t *owner=dec_get_owner(dec);
+    vlc_fifo_Lock(owner->p_fifo);
+    unsigned control=(owner->flushing?1u:0u)|(owner->aborting?2u:0u);
+    vlc_fifo_Unlock(owner->p_fifo);
+    return control;
+}
+
 /**
  * The decoding main loop
  *

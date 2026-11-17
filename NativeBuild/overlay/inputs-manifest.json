@@ -1501,7 +1501,7 @@
   },
   {
     "path": "inputs/current/vista-recovery-164/native/source/src/input/decoder.c",
-    "sha256": "183d9bb6bf8d8fe52a7ad2d02a7a539a7aa4569e684967915f26b5e125d8910f"
+    "sha256": "32eb681e7559d15a0cee1bb8ce86ec69a66b7ddec153508de52c9b8aa417d386"
   },
   {
     "path": "inputs/current/vista-recovery-164/native/source/src/video_output/vout_internal.h",
@@ -1673,7 +1673,7 @@
   },
   {
     "path": "inputs/current/vista-recovery-168/native/source/modules/codec/videotoolbox/decoder.c",
-    "sha256": "078615d2e371fe73e8def08b22dffc89e872de3627168ebde1c984dd57b07f5c"
+    "sha256": "df8b268e0243c617169b5987d17ff2aff116a87df90b7cd7357af56a3f55ba95"
   },
   {
     "path": "inputs/current/vista-recovery-168/native/source/vista_frame_stage.h",
@@ -2610,5 +2610,17 @@
   {
     "path": "inputs/legacy/vista-vlc-pitch-preserve-20261111/source/scaletempo.c",
     "sha256": "bb6ec4858fede7f9fe182ac09768ea425e8c33739d82dc48dd397e850f7d2be1"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/native/source/vista_inflight198.h",
+    "sha256": "8231cc9184cede75c32b824b305b271a9dc3ef3d25bd35b1f143d5d009200258"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/native/source/vista_omit202.h",
+    "sha256": "62327ffb407a9bac0c626638d8f0fe37ab1c6364a3f3205c55065b038b7fc1f5"
+  },
+  {
+    "path": "inputs/current/vista-recovery-168/native/source/vista_decode204_trace.h",
+    "sha256": "f38359e51955a13a9c491ac08295405eb8356e7dd49e5686eb734c945cf732c7"
   }
 ]
