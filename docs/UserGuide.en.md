@@ -28,7 +28,7 @@ Returning the controller to its default position samples the headset’s current
 
 HEVC and VP9 have been tested through the MKV playback path, but this does not mean every MKV, codec, audio channel layout, or HDR combination is supported. Seeking or reducing playback speed may still cause a pause. If a problem occurs, note the video format and the operation you performed.
 
-There is currently no App Store download. For the public source and development validation scope, see the [development documents](development/開發文件入口.md).
+Vista is now available on the [App Store](https://apps.apple.com/us/app/vista/id6835254123). For the public source and development validation scope, see the [development documents](development/開發文件入口.md).
 
 ## Report a problem
 

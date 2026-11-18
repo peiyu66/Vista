@@ -11,7 +11,7 @@ Vista is a VR video player for Apple Vision Pro. Choose videos from your own SMB
 - Play, pause, drag the timeline, seek backward or forward, switch videos, and adjust playback speed within the range available for each video.
 - Move, hide, or bring back the playback controller. Reposition the controller, reset the video direction, and adjust angles to find a comfortable viewing position.
 
-Start by adding an SMB connection or authorizing a local folder, then select a video. If the image layout is incorrect, adjust the projection and stereo layout in the playback controller. See the [user guide and compatibility information](docs/UserGuide.en.md) for format support and differences in operation. There is currently no App Store download.
+Start by adding an SMB connection or authorizing a local folder, then select a video. If the image layout is incorrect, adjust the projection and stereo layout in the playback controller. See the [user guide and compatibility information](docs/UserGuide.en.md) for format support and differences in operation. Vista is now available on the [App Store](https://apps.apple.com/us/app/vista/id6835254123).
 
 ## More information
 
