@@ -58,7 +58,11 @@ actor SMBMediaReader: MediaByteSource {
         let operation=diagnostics.begin(.rangeRead,session:diagnosticSession)
         activeCalls += 1;defer{activeCalls -= 1};var returned=false
         do {
+            #if DEBUG || VISTA_DIAGNOSTICS
+            let data = try await seekObservedRead(file, range:range, request:operation.request)
+            #else
             let data = try await transport.read(at: file.relativePath, range: range)
+            #endif
             returned=true;diagnostics.finish(operation)
             try Task.checkCancellation()
             guard !closed, UInt64(data.count) == range.upperBound - range.lowerBound else { throw MediaInspectionError.invalidResponse }
@@ -129,7 +133,11 @@ actor SMBMediaReader: MediaByteSource {
         let operation = diagnostics.begin(.rangeRead, session: diagnosticSession)
         activeCalls += 1; defer { activeCalls -= 1 }; var returned = false
         do {
+            #if DEBUG || VISTA_DIAGNOSTICS
+            let data = try await seekObservedRead(file, range:range, request:operation.request)
+            #else
             let data = try await transport.read(at: file.relativePath, range: range)
+            #endif
             returned = true; diagnostics.finish(operation)
             try Task.checkCancellation()
             guard !closed else { throw SMBPlaybackReadFailure.retired }
@@ -146,5 +154,27 @@ actor SMBMediaReader: MediaByteSource {
             throw SMBPlaybackSession.recoveryDisposition(for: error)
         }
     }
+    #if DEBUG || VISTA_DIAGNOSTICS
+    /// Library API boundaries, not packet-level network time. Inherits the exact
+    /// bridge chunk through recovery/cache assembly; never records paths or payloads.
+    private func seekObservedRead(_ file:MediaFile,range:Range<UInt64>,request:UInt64) async throws -> Data {
+        let trace=MP4SeekDiagnosticContext.trace,link=PlaybackReadDiagnosticContext.correlation
+        var fields=MP4SeekDiagnostics.rangeFields(range)
+        fields[.sourceCallID]=Double(request);fields[.session]=Double(diagnosticSession)
+        fields[.startedAt]=ProcessInfo.processInfo.systemUptime
+        trace?.record(.smbStarted,fields:fields,correlation:link)
+        do {
+            let data=try await transport.read(at:file.relativePath,range:range)
+            fields[.finishedAt]=ProcessInfo.processInfo.systemUptime;fields[.bytes]=Double(data.count)
+            trace?.record(.smbReturned,fields:fields,correlation:link)
+            return data
+        } catch {
+            fields[.finishedAt]=ProcessInfo.processInfo.systemUptime
+            fields.merge(LifecycleFailure(error).fields){_,new in new}
+            trace?.record(.smbFailed,fields:fields,correlation:link)
+            throw error
+        }
+    }
+    #endif
     func close() {diagnostics.record(.readerClosed,[.session:Double(diagnosticSession),.active:Double(activeCalls)]);closed=true}
 }

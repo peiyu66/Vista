@@ -161,7 +161,11 @@ final class LocalOperationSource: SourceOperationOwner, @unchecked Sendable {
         try await readDemand(stamp: stamp, file: file, range: range, maximumBytes: 262_144)
     }
     func readVLCInput(stamp: BridgeStamp, file: MediaFile, range: Range<UInt64>) async throws -> Data {
+        #if VISTA_READ_PHASE216
+        try await readDemand(stamp: stamp, file: file, range: range, maximumBytes: Int(PlaybackReadReference216.continuousBytes))
+        #else
         try await readDemand(stamp: stamp, file: file, range: range, maximumBytes: 524_288)
+        #endif
     }
     private func readDemand(stamp: BridgeStamp, file: MediaFile, range: Range<UInt64>, maximumBytes: Int) async throws -> Data {
         try await perform { try self.coordinated {

@@ -218,6 +218,34 @@ public struct PlaybackReport: Sendable {
 
 }
 
+#if VISTA_SEEK_CHUNK_1M
+/// Isolated 215 experiment. Existing reads keep their original range; only the
+/// next chunk changes size. A superseded seek cannot restore a newer seek's limit.
+struct SeekChunkSizing {
+    private(set) var seek: UUID?
+    private(set) var delivered = false
+    mutating func begin(_ id: UUID) { seek = id; delivered = false }
+    mutating func cancel(_ id: UUID) { if seek == id { reset() } }
+    mutating func frame(_ id: UUID, paused: Bool) {
+        guard seek == id else { return }
+        delivered = true
+        if !paused { reset() }
+    }
+    mutating func resume() { if delivered { reset() } }
+    mutating func reset() { seek = nil; delivered = false }
+    func limit(normal: UInt64) -> UInt64 {
+        #if VISTA_READ_PHASE216
+        seek == nil ? normal : min(normal, PlaybackReadReference216.startupBytes)
+        #else
+        seek == nil ? normal : min(normal, 1_048_576)
+        #endif
+    }
+    func range(cursor: UInt64, end: UInt64, normal: UInt64) -> Range<UInt64> {
+        cursor..<(cursor + min(limit(normal: normal), end-cursor))
+    }
+}
+#endif
+
 /// AVFoundation receives only a session-local opaque URL, never SMB credentials or paths.
 @MainActor final class ResourceBridge: NSObject, AVAssetResourceLoaderDelegate {
     let source: any MediaByteSource
@@ -227,6 +255,34 @@ public struct PlaybackReport: Sendable {
     private var tasks: [ObjectIdentifier: Task<Void, Never>] = [:]
     private var stopped = false
     private var cleanup = false
+    #if VISTA_SEEK_CHUNK_1M
+    private var seekSizing = SeekChunkSizing()
+    var currentDemandChunkLimit: UInt64 { seekSizing.limit(normal: chunkBytes) }
+    private func recordChunkLimit(_ reason: Int) {
+        #if DEBUG || VISTA_DIAGNOSTICS
+        seekDiagnostics?.record(.readChunkLimit, fields: [.bytes: Double(currentDemandChunkLimit), .detail: Double(reason)])
+        #if VISTA_READ_PHASE216
+        LifecycleDiagnostics.shared.record(.playbackReadPhase,[.scope:1,.phase:currentDemandChunkLimit == PlaybackReadReference216.startupBytes ? 1:2,.cause:Double(reason),.bytes:Double(currentDemandChunkLimit)],priority:false)
+        #endif
+        #endif
+    }
+    func beginSeekChunks(_ id: UUID) { seekSizing.begin(id); recordChunkLimit(1) }
+    #if VISTA_READ_PHASE216
+    func beginReadPhase216(_ id: UUID, reason: Int) {seekSizing.begin(id);recordChunkLimit(reason)}
+    #endif
+    func cancelSeekChunks(_ id: UUID) {
+        guard seekSizing.seek == id else { return }
+        seekSizing.cancel(id); recordChunkLimit(3)
+    }
+    func deliveredSeekFrame(_ id: UUID, paused: Bool) {
+        guard seekSizing.seek == id, !seekSizing.delivered else { return }
+        seekSizing.frame(id, paused: paused); recordChunkLimit(paused ? 4 : 2)
+    }
+    func resumeSeekChunks() {
+        guard seekSizing.delivered else { return }
+        seekSizing.resume(); recordChunkLimit(5)
+    }
+    #endif
     /// Live task ownership, including cancelled tasks until their defer drains.
     /// Counters detect work that starts and ends between two main-loop samples.
     struct RecoveryActivity: Equatable {
@@ -247,10 +303,17 @@ public struct PlaybackReport: Sendable {
     private let diagnosticSession: UInt64
     private var diagnosticRequest: UInt64 = 0, diagnosticChunk: UInt64 = 0
     private var rangeDiagnostics = PlaybackBridgeDiagnostics()
+    #if DEBUG || VISTA_DIAGNOSTICS
+    var seekDiagnostics:MP4SeekDiagnostics?
+    #endif
     func rangeDiagnosticSnapshot() -> PlaybackBridgeDiagnostics.Snapshot { rangeDiagnostics.snapshot(session: diagnosticSession) }
     private let trace:ReadCancellationTrace?
     private let chunkBytes:UInt64
+    #if VISTA_SEEK_CHUNK_1M
+    var demandChunkLimit: UInt64 { currentDemandChunkLimit }
+    #else
     var demandChunkLimit: UInt64 { chunkBytes }
+    #endif
     private(set) var rawDataRequests = 0, rawRequestsAtLeast512 = 0, rawRequestsToEnd = 0
     private(set) var rawMaximumBytes: UInt64 = 0
     private(set) var smallDemandReads = 0, largeDemandReads = 0, maximumDemandReads = 0
@@ -306,7 +369,11 @@ public struct PlaybackReport: Sendable {
                     var cursor = plan.range.lowerBound
                     while cursor < plan.range.upperBound {
                         try Task.checkCancellation()
+                        #if VISTA_SEEK_CHUNK_1M
+                        let range = seekSizing.range(cursor: cursor, end: plan.range.upperBound, normal: chunkBytes)
+                        #else
                         let range = cursor..<(cursor + min(chunkBytes, plan.range.upperBound - cursor))
+                        #endif
                         if range.count == Int(MediaReadPlan.nativeChunkBytes) { maximumDemandReads += 1 }
                         if range.count > Int(262_144) { largeDemandReads += 1 }
                         else { smallDemandReads += 1 }
@@ -316,11 +383,31 @@ public struct PlaybackReport: Sendable {
                         diagnosticChunk &+= 1
                         let correlation = PlaybackReadCorrelation(bridge: diagnosticSession, request: requestID, chunk: diagnosticChunk, seek: epoch)
                         rangeDiagnostics.began(correlation, range: range, now: started)
+                        #if DEBUG || VISTA_DIAGNOSTICS
+                        let seekTrace=seekDiagnostics
+                        var seekFields=MP4SeekDiagnostics.rangeFields(range)
+                        seekFields[.queuedAt]=rangeDiagnostics.requests.first{$0.id==requestID}?.accepted
+                        seekTrace?.record(.bridgeStarted,fields:seekFields,correlation:correlation)
+                        var seekResponded=false
+                        defer {
+                            if !seekResponded {
+                                (seekDiagnostics ?? seekTrace)?.record(.bridgeFailed,fields:[.startedAt:started,
+                                    .cancelled:Task.isCancelled || stopped || request.isCancelled ? 1:0],correlation:correlation)
+                            }
+                        }
+                        #endif
                         #if VISTA_ANON_IO_EXPERIMENT
                         let anonymousID=onAnonymousBegin?()
                         #endif
                         do {
+                            #if DEBUG || VISTA_DIAGNOSTICS
+                            data=try await MP4SeekDiagnosticContext.$trace.withValue(seekTrace) {
+                                try await PlaybackReadDiagnosticContext.$correlation.withValue(correlation) { try await source.read(file,range:range) }
+                            }
+                            (seekDiagnostics ?? seekTrace)?.record(.bridgeReturned,fields:[.startedAt:started,.bytes:Double(data.count)],correlation:correlation)
+                            #else
                             data=try await PlaybackReadDiagnosticContext.$correlation.withValue(correlation) { try await source.read(file,range:range) }
+                            #endif
                             recoveryReturns &+= 1
                             rangeDiagnostics.returned(correlation, bytes: data.count, now: ProcessInfo.processInfo.systemUptime)
                         }
@@ -341,6 +428,10 @@ public struct PlaybackReport: Sendable {
                         guard !stopped,!request.isCancelled else{throw CancellationError()}
                         guard data.count == Int(range.upperBound - range.lowerBound) else { throw PlaybackFailure.readFailed }
                         dataRequest.respond(with: data)
+                        #if DEBUG || VISTA_DIAGNOSTICS
+                        seekResponded=true
+                        (seekDiagnostics ?? seekTrace)?.record(.bridgeResponded,fields:[.bytes:Double(data.count)],correlation:correlation)
+                        #endif
                         recoveryResponses &+= 1
                         rangeDiagnostics.responded(correlation, bytes: data.count, now: ProcessInfo.processInfo.systemUptime)
                         deliveredBytes += UInt64(data.count)
@@ -378,6 +469,9 @@ public struct PlaybackReport: Sendable {
         cleanup=true
         for id in traceIDs.values {trace?.cancel(id,cleanup:true)}
         stopped = true
+        #if VISTA_SEEK_CHUNK_1M
+        seekSizing.reset()
+        #endif
         let pending = Array(tasks.values)
         pending.forEach { $0.cancel() }
         tasks.removeAll()

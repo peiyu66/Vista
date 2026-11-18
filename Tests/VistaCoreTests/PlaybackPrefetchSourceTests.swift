@@ -484,9 +484,14 @@ import Testing
         #expect(source.metrics.totalCacheBytes == 6 * mib)
         let firstRange = UInt64(anchor - 1216 * kib)..<UInt64(anchor + 832 * kib)
         let first = Task { try await source.read(file, range: firstRange) }
-        await until { source.metrics.speculativeWaitCount == 1 }
-        base.blockSpeculationAt = nil; base.release()
+        // Accepted direct full-cache replies do not queue behind unrelated prefetch.
+        // The earlier Build82 test waited for a queue event that no longer occurs.
+        await until { source.metrics.directCacheReplyCount == 1 }
+        #expect(source.metrics.speculativeWaitCount == 0 && base.gate != nil)
         #expect(try await first.value == base.bytes.subdata(in: Int(firstRange.lowerBound)..<Int(firstRange.upperBound)))
+        base.blockSpeculationAt = nil; base.release()
+        // This part tests consuming a completed second block, not joining it.
+        await until { source.supplyDiagnosticSnapshot().lastReturn?.call.work.id == 2 && source.supplyDiagnosticSnapshot().lastReturn?.call.kind == .prefetch }
         #expect(base.reads.count == 2 && base.speculative.count == 2)
         #expect(source.metrics.historyHitBytes == 1216 * kib)
         #expect(source.metrics.hitBytes == 832 * kib && source.metrics.joinedBytes == 0)

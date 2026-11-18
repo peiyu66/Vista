@@ -2,10 +2,28 @@ import Foundation
 @preconcurrency import AVFoundation
 import CoreVideo
 import VideoToolbox
+#if VISTA_EARLY_SEEK_PLAY
+/// Keeps seek submission and playback intent ordered without waiting for completion.
+@MainActor enum SeekPlaybackSubmission216 {
+ static func perform(submit: (@escaping @Sendable (Bool)->Void)->Void,
+                     afterSubmission: ()->Void,
+                     completionObserved: @escaping @Sendable (Bool)->Void) async ->Bool {
+  await withCheckedContinuation { continuation in
+   submit { finished in
+    completionObserved(finished)
+    continuation.resume(returning:finished)
+   }
+   afterSubmission()
+  }
+ }
+}
+#endif
 #if os(visionOS)
 import UIKit
 
 /// Latest display deadline only; never accumulate a queue of refresh callbacks.
+
+
 @MainActor private final class NativeDisplayClock:NSObject {
  private var link:CADisplayLink?
  private var pending:CFTimeInterval?
@@ -314,6 +332,9 @@ struct NativeVideoDeliveryDiagnostics {
  var experimentPlayerTime:Double?{player?.currentTime().seconds}
  #if SWIFT_PACKAGE
  var experimentPlayer:AVPlayer?{player}
+ #if VISTA_EARLY_SEEK_PLAY
+ var experimentSeekPending:Bool{seeking}
+ #endif
  private(set) var experimentIntentLastRecord:PlaybackIntentRecoveryDiagnostics.Record?
  var experimentPendingDataStall:Bool{stallRecovery.pending}
  var experimentAutomaticWait:Bool?{player?.automaticallyWaitsToMinimizeStalling}
@@ -601,6 +622,9 @@ struct NativeVideoDeliveryDiagnostics {
  // Baseline comparison only; production always uses the fixed native demand ceiling.
  var experimentDemandChunkBytes:UInt64 = MediaReadPlan.nativeChunkBytes
  var experimentDemandChunkLimit:UInt64? {bridge?.demandChunkLimit}
+ #if VISTA_SEEK_CHUNK_1M
+ var experimentCurrentDemandChunkLimit:UInt64? {bridge?.currentDemandChunkLimit}
+ #endif
  var experimentRecoveryActivity:ResourceBridge.RecoveryActivity? {bridge?.recoveryActivity}
  var experimentOutputQueryValidity:Int {latestOutput.validity}
  var experimentDemandProbeSourceSupported:Bool {demandOnlyLocalSource || prefetchSource != nil}
@@ -631,6 +655,9 @@ struct NativeVideoDeliveryDiagnostics {
   #endif
   #if VISTA_LOCAL_MKV_CANDIDATE
   if let mkvDriver {prefetchSource?.setPrefetchEnabled(mkvDriver.prefetchAllowed,reason:mkvDriver.prefetchInvalidation);return}
+  #endif
+  #if VISTA_READ_PHASE216
+  if let bridge {prefetchSource?.setReadReference216(bridge.demandChunkLimit)}
   #endif
   let enabled = active && prepared && sceneActive && !paused && !seeking
   let reason:PrefetchInvalidationReason = !active ? .playbackInactive : !sceneActive ? .sceneInactive : seeking ? .seek : paused ? .pause : !prepared ? .notReady : .disabled
@@ -709,6 +736,20 @@ struct NativeVideoDeliveryDiagnostics {
   #endif
  }
  private var seekGeneration=UUID(),frameSession=UUID()
+ #if DEBUG || VISTA_DIAGNOSTICS
+ private var mp4SeekTrace:MP4SeekDiagnostics?
+ private var mp4SeekFrameSession:UUID?
+ #if SWIFT_PACKAGE
+ var mp4SeekWriterForTesting:LifecycleDiagnostics?
+ #endif
+ private func finishMP4SeekTrace(_ reason:Int) {
+  // Outstanding work is reported, never treated as drained at the observation boundary.
+  mp4SeekTrace?.record(.closingState,fields:[.active:Double(bridge?.recoveryActivity.activeRequests ?? 0),
+   .pending:Double(prefetchSource?.recoveryActivity.queued ?? 0),.worker:Double(prefetchSource?.recoveryActivity.busy ?? 0)],boundary:true)
+  mp4SeekTrace?.close(reason);mp4SeekTrace=nil;mp4SeekFrameSession=nil
+  bridge?.seekDiagnostics=nil;prefetchSource?.seekDiagnostics=nil
+ }
+ #endif
  private var lastProgress=0.0
  private let stallLimit:Double
  private let muted:Bool
@@ -850,9 +891,19 @@ struct NativeVideoDeliveryDiagnostics {
   acceptIntentCommand(.manual)
   interruptAutomaticRecovery(.manualRate)
   automaticSpeedPolicy.manualSpeedDidChange(now:ProcessInfo.processInfo.systemUptime);bufferingPlaybackProgress.reset()
+  #if VISTA_READ_PHASE216
+  if requested < selectedSpeed {bridge?.beginReadPhase216(seekGeneration,reason:7);updatePrefetchActivity()}
+  #endif
   selectedSpeed=requested;player.defaultRate=Float(requested)
+  #if VISTA_EARLY_SEEK_PLAY
+  let issued = !paused
+  #else
   let issued = !paused && !seeking
+  #endif
   if issued {observeWait(.beforeResume);recordWaitResume(cause:2);player.play()}
+  #if VISTA_EARLY_SEEK_PLAY
+  if seeking,issued {mp4SeekTrace?.record(.earlyPlayCommand,fields:[.rate:selectedSpeed,.detail:3])}
+  #endif
   emitIntent(.command,before:before,issued:issued)
   return true
  }
@@ -896,6 +947,9 @@ struct NativeVideoDeliveryDiagnostics {
    lastFramePTS:waitEpisodes.lastFramePTS,healthyReferenceFPS:decision.healthyReferenceFPS))
   automaticRecoverySourceEpoch=prefetchSource?.diagnosticObservedEpoch
   let before=automaticRecovery.isObserving ? probeSnapshot():nil
+  #if VISTA_READ_PHASE216
+  if next < previous {bridge?.beginReadPhase216(seekGeneration,reason:8);updatePrefetchActivity()}
+  #endif
   selectedSpeed=next;player.defaultRate=Float(next)
   // Preserve the original post-defaultRate conditional evaluation order.
   // 0=default only, 1=waiting transport rate, 2=playing sparse-output rate.
@@ -931,7 +985,17 @@ struct NativeVideoDeliveryDiagnostics {
   interruptIntent(3);acceptIntentCommand(.resume);finishStallProbe(.superseded);interruptAutomaticRecovery(.manualRate)
   abortWait(.userResume);interruptBufferingWait();paused=false;stallRecovery.interrupt(userInitiated:true)
   lastProgress=ProcessInfo.processInfo.systemUptime;updatePrefetchActivity()
+  #if VISTA_SEEK_CHUNK_1M
+  bridge?.resumeSeekChunks()
+  #endif
+  #if VISTA_EARLY_SEEK_PLAY
+  let issued=active && player != nil
+  if issued {player?.play()}
+  if seeking,issued {mp4SeekTrace?.record(.earlyPlayCommand,fields:[.rate:selectedSpeed,.detail:2])}
+  emitIntent(.command,before:before,issued:issued)
+  #else
   if !seeking {player?.play()};emitIntent(.command,before:before,issued:!seeking && player != nil)
+  #endif
  }
  public func seek(to target:Double,maximumBackward:Double=1,maximumForward:Double=0,presentationID:UUID?=nil)async throws {
   #if VISTA_VLC_CANDIDATE
@@ -944,6 +1008,30 @@ struct NativeVideoDeliveryDiagnostics {
   if let mkvDriver{try await mkvDriver.seek(to:target);presentedSeekID=presentationID;return}
   #endif
   guard target.isFinite,target>=0,let player,let item,active else{throw Failure.unsupported}
+  #if DEBUG || VISTA_DIAGNOSTICS
+  finishMP4SeekTrace(2)
+  #if SWIFT_PACKAGE
+  let seekWriter=mp4SeekWriterForTesting ?? MP4SeekDiagnostics.writer
+  #else
+  let seekWriter=MP4SeekDiagnostics.writer
+  #endif
+  let seekTrace=MP4SeekDiagnostics(epoch:requestMetrics.epoch+1,target:target,sourceKind:demandOnlyLocalSource ? 1:prefetchSource != nil ? 2:0,writer:seekWriter)
+  mp4SeekTrace=seekTrace;bridge?.seekDiagnostics=seekTrace;prefetchSource?.seekDiagnostics=seekTrace
+  if let snapshot=bridge?.rangeDiagnosticSnapshot() {
+   for request in snapshot.requests {
+    var values:[LifecycleField:Double]=[.bridgeID:Double(snapshot.session),.request:Double(request.id),.queuedAt:request.accepted]
+    if let r=request.range {values[.rangeLower]=Double(r.lower);values[.rangeUpper]=Double(r.upper)}
+    seekTrace.record(.initialRequest,fields:values)
+   }
+   for c in snapshot.active {
+    seekTrace.record(.initialBridge,fields:[.rangeLower:Double(c.range.lower),.rangeUpper:Double(c.range.upper),.startedAt:c.started],correlation:c.correlation)
+   }
+  }
+  if let snapshot=prefetchSource?.rangeDiagnosticSnapshot() {
+   if let current=snapshot.current {seekTrace.work(.initialSource,current)}
+   for work in snapshot.queued {seekTrace.work(.initialQueuedWork,work)}
+  }
+  #endif
   let ranges=item.loadedTimeRanges.map(\.timeRangeValue).compactMap { range -> Range<Double>? in
    let start=range.start.seconds,end=CMTimeRangeGetEnd(range).seconds
    guard start.isFinite,end.isFinite,end>start else{return nil};return start..<end
@@ -953,14 +1041,53 @@ struct NativeVideoDeliveryDiagnostics {
   interruptAutomaticRecovery(.seek)
   interruptBufferingWait()
   abortWait(.seek)
-  let id=UUID();seekGeneration=id;seeking=true;stallRecovery.interrupt(userInitiated:true);prefetchSource?.invalidatePrefetch(reason:.seek);updatePrefetchActivity();player.pause();item.cancelPendingSeeks()
+  let id=UUID();seekGeneration=id;
+  #if VISTA_SEEK_CHUNK_1M
+  bridge?.beginSeekChunks(id)
+  #endif
+  seeking=true;stallRecovery.interrupt(userInitiated:true);prefetchSource?.invalidatePrefetch(reason:.seek);updatePrefetchActivity();player.pause();item.cancelPendingSeeks()
   requestMetrics.begin(VistaL10n.text("跳轉"),now:ProcessInfo.processInfo.systemUptime)
   #if VISTA_ANON_IO_EXPERIMENT
   anonymousIO.beginEpoch(now:ProcessInfo.processInfo.systemUptime);anonymousStages=[:]
   #endif
   requestMetrics.target=target;requestMetrics.targetBuffered=NativeRequestMetrics.isBuffered(target,ranges:ranges)
   maxClockDifference=0;diagnosticUpdate=0
+  #if DEBUG || VISTA_DIAGNOSTICS
+  seekTrace.record(.seekIssued,fields:[.rate:selectedSpeed,.paused:paused ? 1:0,
+   .toleranceBefore:min(1,max(0,maximumBackward)),.toleranceAfter:min(1,max(0,maximumForward))],boundary:true)
+  #endif
+  #if VISTA_EARLY_SEEK_PLAY
+  // Submit synchronously, then express the current playback intent immediately.
+  // The completion callback is still the boundary for accepting this seek's frames.
+  let finished=await SeekPlaybackSubmission216.perform(submit:{ completion in
+   player.seek(to:CMTime(seconds:target,preferredTimescale:60000),
+    toleranceBefore:CMTime(seconds:min(1,max(0,maximumBackward)),preferredTimescale:60000),
+    toleranceAfter:CMTime(seconds:min(1,max(0,maximumForward)),preferredTimescale:60000),completionHandler:completion)
+  },afterSubmission:{
+   guard self.active,self.seekGeneration==id else{return}
+   let before=self.probeSnapshot();self.acceptIntentCommand(.seek)
+   let issued = !self.paused
+   if issued {player.play();seekTrace.record(.earlyPlayCommand,fields:[.rate:self.selectedSpeed,.detail:1])}
+   self.emitIntent(.command,before:before,issued:issued)
+  },completionObserved:{ finished in
+   // Captured at the callback, before MainActor continuation scheduling.
+   seekTrace.record(.seekCompletionCallback,fields:[.outcome:finished ? 1:0],boundary:true)
+  })
+  #else
   let finished=await player.seek(to:CMTime(seconds:target,preferredTimescale:60000),toleranceBefore:CMTime(seconds:min(1,max(0,maximumBackward)),preferredTimescale:60000),toleranceAfter:CMTime(seconds:min(1,max(0,maximumForward)),preferredTimescale:60000))
+  #endif
+  #if DEBUG || VISTA_DIAGNOSTICS
+  // This includes resuming the Swift continuation on MainActor, not raw decoder completion.
+  #if VISTA_EARLY_SEEK_PLAY
+  seekTrace.record(.seekAwaitReturned,fields:[.outcome:finished ? 1:0,.playerTime:player.currentTime().seconds,.rate:Double(player.rate)],boundary:true)
+  #else
+  seekTrace.record(.seekAwaitReturned,fields:[.outcome:finished ? 1:0],boundary:true)
+  #endif
+  if !finished,mp4SeekTrace === seekTrace {finishMP4SeekTrace(4)}
+  #endif
+  #if VISTA_SEEK_CHUNK_1M
+  if !finished || !active { bridge?.cancelSeekChunks(id) }
+  #endif
   guard active,seekGeneration==id else{throw CancellationError()}
   seeking=false;interruptBufferingWait();lastProgress=ProcessInfo.processInfo.systemUptime
   guard finished else{throw CancellationError()}
@@ -969,13 +1096,26 @@ struct NativeVideoDeliveryDiagnostics {
   anonymousStages["seek"]=anonymousIO.snapshot()
   #endif
   frameSession=UUID();presentedSeekID=presentationID
+  #if DEBUG || VISTA_DIAGNOSTICS
+  mp4SeekFrameSession=frameSession
+  #endif
   updatePrefetchActivity()
+  #if VISTA_EARLY_SEEK_PLAY
+  // Play/pause/rate commands were applied when issued, including during the seek.
+  // Do not replay an old playback intent after completion.
+  #else
   let commandBefore=probeSnapshot();acceptIntentCommand(.seek)
   if !paused {player.play()};emitIntent(.command,before:commandBefore,issued:!paused)
+  #endif
  }
  public func recordPresentation(session:UUID) {
   guard active,session==frameSession else{return}
   requestMetrics.present(now:ProcessInfo.processInfo.systemUptime)
+  #if DEBUG || VISTA_DIAGNOSTICS
+  if session==mp4SeekFrameSession {
+   mp4SeekTrace?.record(.presentationNotified,boundary:true);finishMP4SeekTrace(1)
+  }
+  #endif
   #if VISTA_ANON_IO_EXPERIMENT
   if anonymousStages[VistaL10n.text("呈現")]==nil {anonymousStages[VistaL10n.text("呈現")]=anonymousIO.snapshot()}
   // Presentation can arrive while paused, without another video frame to refresh the text.
@@ -987,6 +1127,9 @@ struct NativeVideoDeliveryDiagnostics {
   #endif
  }
  public func stop(){
+  #if DEBUG || VISTA_DIAGNOSTICS
+  finishMP4SeekTrace(3)
+  #endif
   presentedSeekID=nil
   #if VISTA_VLC_CANDIDATE
   vlcDriver?.stop()
@@ -1236,6 +1379,10 @@ struct NativeVideoDeliveryDiagnostics {
    guard size>0,size<=Int64.max else{throw Failure.source}
    let loader=ResourceBridge(source:source,file:file,size:size,contentType:ext=="mov" ? "com.apple.quicktime-movie":"public.mpeg-4",chunkBytes:demandChunkBytes)
    bridge=loader
+   #if VISTA_READ_PHASE216
+   loader.beginReadPhase216(seekGeneration,reason:6)
+   prefetchSource?.setReadReference216(loader.demandChunkLimit)
+   #endif
    #if VISTA_ANON_IO_EXPERIMENT
    anonymousIO=AnonymousIOAggregate();anonymousIO.beginEpoch(now:ProcessInfo.processInfo.systemUptime);anonymousStages=[:]
    let aggregate=anonymousIO
@@ -1336,6 +1483,16 @@ struct NativeVideoDeliveryDiagnostics {
     if let hostLead,hostLead.isFinite {latestOutput.validity |= 16;latestOutput.hostLead=hostLead}
     var returnedFramePTS:Double?
     var outputPolled=false,copiedFramePTS:Double?
+    #if VISTA_EARLY_SEEK_PLAY
+    if seeking,let outputTime {
+     // Non-consuming observation only. A positive result has no seek-generation
+     // identity and must not be treated as a valid frame for the requested target.
+     let available=output.hasNewPixelBuffer(forItemTime:outputTime)
+     let fields:[LifecycleField:Double]=[.queryPTS:outputTime.seconds,.playerTime:time.seconds,.available:available ? 1:0]
+     mp4SeekTrace?.record(.pendingOutputProbe,fields:fields,boundary:true)
+     if available {mp4SeekTrace?.record(.pendingOutputAvailable,fields:fields,boundary:true)}
+    }
+    #endif
     if !seeking,let outputTime {
      outputPolled=true;latestOutput.validity |= 64
      videoDeliveryDiagnostics.recordOutputPoll()
@@ -1343,7 +1500,17 @@ struct NativeVideoDeliveryDiagnostics {
       latestOutput.validity |= 128
       videoDeliveryDiagnostics.recordOutputHasNew()
       var display=CMTime.invalid
+      #if DEBUG || VISTA_DIAGNOSTICS
+      mp4SeekTrace?.record(.outputAvailable,fields:[.queryPTS:outputTime.seconds],boundary:true)
+      mp4SeekTrace?.record(.copyStarted,fields:[.queryPTS:outputTime.seconds],boundary:true)
+      let seekCopyStarted=ProcessInfo.processInfo.systemUptime
+      #endif
       let copiedPixel=output.copyPixelBuffer(forItemTime:outputTime,itemTimeForDisplay:&display)
+      #if DEBUG || VISTA_DIAGNOSTICS
+      let seekCopyFinished=ProcessInfo.processInfo.systemUptime
+      mp4SeekTrace?.record(.copyReturned,fields:[.framePTS:display.seconds,.available:copiedPixel == nil ? 0:1,
+       .startedAt:seekCopyStarted,.finishedAt:seekCopyFinished],boundary:true)
+      #endif
       returnedFramePTS=display.seconds.isFinite ? display.seconds:nil
       if copiedPixel == nil {latestOutput.validity |= 256;videoDeliveryDiagnostics.recordOutputCopyNil()}
       if let pixel=copiedPixel,display.seconds.isFinite {
@@ -1375,6 +1542,19 @@ struct NativeVideoDeliveryDiagnostics {
         diagnosticsText += "\n"+aggregateLines.joined(separator:"\n")
         #endif
        }
+       #if DEBUG || VISTA_DIAGNOSTICS
+       #if VISTA_EARLY_SEEK_PLAY
+       mp4SeekTrace?.record(.frameDelivered,fields:[.framePTS:display.seconds,.queryPTS:outputTime.seconds,.playerTime:native.currentTime().seconds,.rate:Double(native.rate),.startedAt:seekCopyStarted,.finishedAt:seekCopyFinished],boundary:true)
+       #else
+       mp4SeekTrace?.record(.frameDelivered,fields:[.framePTS:display.seconds,.startedAt:seekCopyStarted,.finishedAt:seekCopyFinished],boundary:true)
+       #endif
+       #endif
+       #if VISTA_SEEK_CHUNK_1M
+       bridge?.deliveredSeekFrame(seekGeneration, paused: paused)
+       #if VISTA_READ_PHASE216
+       updatePrefetchActivity()
+       #endif
+       #endif
        onFrame(DecodedVideoFrame(pixel:pixel,time:display.seconds,transform:transform,session:frameSession))
       }
      }

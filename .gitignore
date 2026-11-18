@@ -79,3 +79,7 @@ engine/vendor/gpac-26.07.0/
 engine/vlc/Vendor/config/
 engine/vlc/Vendor/*.a
 !Resources/LocalMKVDemo/MKVDemo12s_mono.mkv
+
+# Local validation output and Python bytecode
+validation216/
+__pycache__/

@@ -18,6 +18,9 @@ import Foundation
     private var closed = false, retiring = false
     // VLC-only bounded candidate. Other parser owners retain exact demand reads.
     private let vlcReadAheadEnabled: Bool
+    #if VISTA_READ_PHASE216
+    func setReadReference216(_ bytes:UInt64) {cache.setReadReference216(bytes)}
+    #endif
     private var previousVLC: (end: UInt64, epoch: UInt64, generation: UInt64, count: Int)?
     private var adjacentVLCCount = 0
     private var readAheadEnd: UInt64?
@@ -97,7 +100,11 @@ import Foundation
         try await readDemand(stamp: stamp, file: file, range: range, maximumBytes: 262_144)
     }
     func readVLCInput(stamp: BridgeStamp, file: MediaFile, range: Range<UInt64>) async throws -> Data {
+        #if VISTA_READ_PHASE216
+        try await readDemand(stamp: stamp, file: file, range: range, maximumBytes: Int(PlaybackReadReference216.continuousBytes), vlc: true)
+        #else
         try await readDemand(stamp: stamp, file: file, range: range, maximumBytes: 524_288, vlc: true)
+        #endif
     }
     private func readDemand(stamp: BridgeStamp, file: MediaFile, range: Range<UInt64>, maximumBytes: Int, vlc: Bool = false) async throws -> Data {
         await acquireOperation(); defer { releaseOperation() }
@@ -112,7 +119,11 @@ import Foundation
         let previousMatches = previousVLC.map { $0.end == range.lowerBound && $0.epoch == scope.epoch && $0.generation == scope.generation && $0.count >= 262_144 } ?? false
         if !vlc || !previousMatches { adjacentVLCCount = 0; previousVLC = nil; readAheadEnd = nil }
         let expanded = vlcReadAheadEnabled && vlc && range.count >= 262_144 && previousMatches && adjacentVLCCount >= 2 && scope.available && (readAheadEnd == nil || range.upperBound > readAheadEnd!)
+        #if VISTA_READ_PHASE216
+        let end = expanded ? min(knownSize, range.lowerBound + cache.readReferenceBytes216) : range.upperBound
+        #else
         let end = expanded ? min(knownSize, range.lowerBound + 1_048_576) : range.upperBound
+        #endif
         let requested = range.lowerBound..<max(range.upperBound, end)
         if requested != range { vlcReadAheadRequests += 1; vlcReadAheadRequestedExtra += requested.count - range.count }
         let bytes: Data

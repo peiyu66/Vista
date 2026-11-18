@@ -3,6 +3,8 @@ import OSLog
 
 /// A local anonymous timeline. No file names, paths, accounts, URLs, or arbitrary text enter records.
 public enum LifecycleEvent:String,Codable,Sendable {
+    case playbackReadPhase
+    case mp4Seek
     case shortcutInput
     case processStart,applicationNotification,scenePhase,viewAppear,viewDisappear
     case browseIntent,cancelRequested,requestStart,resultApplied,resultDiscarded,requestError
@@ -12,6 +14,10 @@ public enum LifecycleEvent:String,Codable,Sendable {
     case playbackBoundary,playbackSourceRecovery,playbackAudioBoundary,videoRecenter,progressInput,progressVisibility
 }
 public enum LifecycleField:String,Codable,Sendable {
+    case bridgeID,chunkID,readSeekEpoch,rangeLower,rangeUpper,queuedAt,startedAt,finishedAt,bytes,usedCacheBytes
+    case cacheBeforeBytes,cacheAfterBytes,cacheHoleBytes,cacheOverlapBytes,cacheEmpty,cacheMin,cacheMax,selectedCacheBytes
+    case toleranceBefore,toleranceAfter,playerTime
+    case sourceCallKind,sourceCallID,seekTarget,framePTS,queryPTS,diagnosticCount,diagnosticSuppressed,initialActive,initialQueued
     case handleFrame,targetDiameter,targetInset
     case orderOutcome,fromOrdinal,requestedOrdinal,appliedOrdinal,gazeObservable,physicalAttemptObservable
     case capture,inputKind,row,firstSequence,lastSequence,firstMS,lastMS,sampleCount,firstOffset,offset,ordinal,inputX,inputY,contentHeight,about,removing,playback,rowX,rowY,rowWidth,rowHeight,viewportWidth,viewportHeight,firstX,firstY

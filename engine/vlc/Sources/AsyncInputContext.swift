@@ -11,6 +11,11 @@ final class AsyncInputContext: @unchecked Sendable {
     let stamp: BridgeStamp
     private let condition = NSCondition()
     private var accepting = true, inFlight = 0, calls = 0, returns = 0, peak = 0, published = 0, discarded = 0, failures = 0
+    #if VISTA_READ_PHASE216
+    private var readPhase216:PlaybackReadPhase216 = .startup
+    func setReadPhase216(_ phase:PlaybackReadPhase216) {condition.lock();readPhase216=phase;condition.unlock()}
+    var readLimit216:UInt64 {condition.lock();defer{condition.unlock()};return readPhase216.bytes}
+    #endif
     private var reply: Reply?
     private var lastTask: Task<Void, Never>?
     init(window: LocalWindowByteSource) { self.window = window; self.source = window.owner; self.file = window.owner.file; self.stamp = window.stamp }
@@ -63,7 +68,13 @@ final class AsyncInputContext: @unchecked Sendable {
         return value.valid ? 0 : -1
     }
     func read(offset: UInt64, count: Int, output: UnsafeMutablePointer<UInt8>) -> Int {
+        #if VISTA_READ_PHASE216
+        guard count >= 0 else{return -1}
+        let count=min(count,Int(readLimit216))
+        guard offset <= UInt64.max - UInt64(count) else{return -1}
+        #else
         guard count >= 0, count <= 524_288, offset <= UInt64.max - UInt64(count) else { return -1 }
+        #endif
         let value = perform { [source, stamp, file] in
             var data = Data()
             do {

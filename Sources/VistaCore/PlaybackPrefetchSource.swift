@@ -13,7 +13,7 @@ import Foundation
         public let lowWatermarkBytes: Int?
         public init(lowWatermarkBytes: Int = 8 * 1_048_576,
                     highWatermarkBytes: Int = 16 * 1_048_576,
-                    chunkBytes: Int = 2 * 1_048_576,
+                    chunkBytes: Int = Int(MediaReadPlan.nativeChunkBytes),
                     totalCapacityBytes: Int = 160 * 1_048_576) {
             precondition(lowWatermarkBytes > 0 && lowWatermarkBytes < highWatermarkBytes
                 && highWatermarkBytes <= 16 * 1_048_576 && chunkBytes > 0
@@ -24,7 +24,7 @@ import Foundation
             self.historyCapacityBytes = totalCapacityBytes
         }
         /// Explicit legacy fixed-credit configuration for compatibility, never the production default.
-        public init(capacityBytes: Int, chunkBytes: Int = 2 * 1_048_576,
+        public init(capacityBytes: Int, chunkBytes: Int = Int(MediaReadPlan.nativeChunkBytes),
                     totalCapacityBytes: Int = 160 * 1_048_576) {
             precondition(capacityBytes > 0 && capacityBytes <= 4 * 1_048_576 && chunkBytes > 0
                 && UInt64(chunkBytes) <= MediaReadPlan.maximumChunkBytes && chunkBytes <= capacityBytes
@@ -111,7 +111,14 @@ import Foundation
             guard !value else { return false }; accepted = true; return true
         } }
     }
+    #if DEBUG || VISTA_DIAGNOSTICS
+    public var seekDiagnostics:MP4SeekDiagnostics?
+    private var seekSourceCallID:UInt64=0
+    #endif
     private final class Request {
+        #if DEBUG || VISTA_DIAGNOSTICS
+        let seekTrace=MP4SeekDiagnosticContext.trace
+        #endif
         var readAheadEnd: UInt64?
         var flow=PlaybackFlowToken.none
         let id: UInt64, generation: UInt64, operation: Operation, cancellation: Cancellation
@@ -272,8 +279,13 @@ import Foundation
     /// Retains the old bounded-operation guard: at most one high window per genuine
     /// advancing demand, even if metadata admission fails or ring churn removes data.
     private var forwardReadLimit: Int {
+        #if VISTA_READ_PHASE216
+        configuration.lowWatermarkBytes == nil ? 2 :
+            (configuration.capacityBytes + prefetchChunkBytes216 - 1) / prefetchChunkBytes216
+        #else
         configuration.lowWatermarkBytes == nil ? 2 :
             (configuration.capacityBytes + configuration.chunkBytes - 1) / configuration.chunkBytes
+        #endif
     }
     private func needsForwardRefill(_ window: ForwardWindow, start: UInt64) -> Bool {
         guard start < window.target, window.reads < forwardReadLimit else { return false }
@@ -368,6 +380,17 @@ import Foundation
         var flowOutcome:Int64=0,flowBytes:Int64=0
         defer{PlaybackFlowTrace.end(flowCall,.sourceCall,a:flowOutcome,b:flowBytes)}
         let callStart = ProcessInfo.processInfo.systemUptime
+        #if DEBUG || VISTA_DIAGNOSTICS
+        // Prefetch is identified as prefetch, not attributed to a loading request.
+        let seekTrace=seekDiagnostics ?? (kind == .prefetch ? nil:MP4SeekDiagnosticContext.trace)
+        let seekLink=rangeDiagnostics.current?.correlation
+        seekSourceCallID &+= 1
+        let seekCallID=seekSourceCallID
+        var seekFields:[LifecycleField:Double]=[.sourceCallID:Double(seekCallID),.sourceCallKind:Double(kind.rawValue),.startedAt:callStart,
+            .generation:Double(generation),.session:Double(metrics.diagnostics.sessionID)]
+        if let work=rangeDiagnostics.current {seekFields[.ticket]=Double(work.id);seekFields[.operation]=Double(work.kind.rawValue)}
+        seekTrace?.record(.sourceStarted,fields:seekFields,correlation:seekLink)
+        #endif
         let demand = rangeDiagnostics.current?.kind == .demand ? activeRequest : nil
         defer {
             demand?.sourceCallCount &+= 1
@@ -376,7 +399,15 @@ import Foundation
         supplyDiagnostics.beginCall(kind: kind, now: callStart, observedEpoch: epoch, generation: generation)
         rangeDiagnostics.current?.callKind = kind; rangeDiagnostics.current?.callStarted = callStart
         do {
+            #if DEBUG || VISTA_DIAGNOSTICS
+            let value=try await MP4SeekDiagnosticContext.$trace.withValue(seekTrace) {
+                try await PlaybackReadDiagnosticContext.$correlation.withValue(seekLink) {try await operation()}
+            }
+            seekFields[.bytes]=Double(bytes(value));seekFields[.finishedAt]=ProcessInfo.processInfo.systemUptime
+            (seekDiagnostics ?? seekTrace)?.record(.sourceReturned,fields:seekFields,correlation:seekLink)
+            #else
             let value = try await operation()
+            #endif
             flowBytes=Int64(bytes(value))
             let finished = ProcessInfo.processInfo.systemUptime
             supplyDiagnostics.endCall(result: .returned, bytes: bytes(value), now: finished)
@@ -386,6 +417,10 @@ import Foundation
         } catch {
             let finished = ProcessInfo.processInfo.systemUptime
             flowOutcome=error is CancellationError ? 2:3
+            #if DEBUG || VISTA_DIAGNOSTICS
+            seekFields.merge(LifecycleFailure(error).fields){_,new in new};seekFields[.finishedAt]=finished
+            (seekDiagnostics ?? seekTrace)?.record(.sourceFailed,fields:seekFields,correlation:seekLink)
+            #endif
             supplyDiagnostics.endCall(result: error is CancellationError ? .cancelled : .failed, bytes: 0, now: finished)
             rangeDiagnostics.current?.callFinished = finished
             rangeDiagnostics.current?.callResult = error is CancellationError ? .cancelled : .failed
@@ -489,6 +524,9 @@ import Foundation
             var diagnostic = request.rangeDiagnostic
             diagnostic.finished = ProcessInfo.processInfo.systemUptime; diagnostic.result = .cancelled
             diagnostic.completionEpoch = epoch; diagnostic.bytes = 0; rangeDiagnostics.append(diagnostic)
+            #if DEBUG || VISTA_DIAGNOSTICS
+            (seekDiagnostics ?? request.seekTrace)?.completed(diagnostic)
+            #endif
             if case .read(let range) = request.operation, !range.isEmpty { metrics.diagnostics.demandCancelledCount &+= 1 }
             request.continuation.resume(throwing: CancellationError())
         }
@@ -567,11 +605,26 @@ import Foundation
     }
     // 158: optional non-recovering tail request. The original demand alone owns fallback/recovery.
     public func readVLCInput(_ file: MediaFile, range: Range<UInt64>, readAheadEnd: UInt64) async throws -> Data {
+        #if VISTA_READ_PHASE216
+        // Validate the maximum, not today's phase: a previously submitted request
+        // retains its original range across a phase transition.
+        guard file == self.file, !range.isEmpty, range.count <= Int(PlaybackReadReference216.continuousBytes),
+              readAheadEnd >= range.upperBound, readAheadEnd - range.lowerBound <= PlaybackReadReference216.continuousBytes else { throw PlaybackSourceRecoveryError.invalidRange }
+        #else
         guard file == self.file, !range.isEmpty, range.count <= 524_288,
               readAheadEnd >= range.upperBound, readAheadEnd - range.lowerBound <= 1_048_576 else { throw PlaybackSourceRecoveryError.invalidRange }
+        #endif
         guard case .bytes(let data) = try await enqueue(.read(range), readAheadEnd: readAheadEnd) else { throw PlaybackSourceRecoveryError.invalidResponse }
         return data
     }
+    #if VISTA_READ_PHASE216
+    public private(set) var readReferenceBytes216:UInt64 = PlaybackReadReference216.continuousBytes
+    public func setReadReference216(_ bytes:UInt64) {
+        precondition(bytes == PlaybackReadReference216.startupBytes || bytes == PlaybackReadReference216.continuousBytes)
+        readReferenceBytes216=bytes // In-flight requests keep their captured ranges.
+    }
+    private var prefetchChunkBytes216:Int {min(configuration.chunkBytes,Int(readReferenceBytes216))}
+    #endif
     public private(set) var readAheadAttempts = 0, readAheadFailures = 0, readAheadBytes = 0
     private func optionalReadAhead(_ request: Request, range: Range<UInt64>, token: UInt64?) async throws -> Data? {
         guard let end = request.readAheadEnd, end > range.upperBound, let token,
@@ -704,6 +757,14 @@ import Foundation
         diagnostic.completionEpoch = token; diagnostic.result = .returned
         diagnostic.bytes = data.count; diagnostic.usedCachedBytes = data.count
         rangeDiagnostics.append(diagnostic)
+        #if DEBUG || VISTA_DIAGNOSTICS
+        let seekTrace=seekDiagnostics ?? request.seekTrace
+        if let seekTrace,seekTrace.wantsDetail {
+            seekTrace.record(.cacheSelection,fields:MP4SeekDiagnostics.cacheFields(range:range,spans:readySpans+historySpans)
+                .merging([.selectedCacheBytes:Double(data.count),.detail:1]){_,new in new},correlation:diagnostic.correlation)
+        } else {seekTrace?.record(.cacheSelection)}
+        seekTrace?.completed(diagnostic)
+        #endif
         cacheCompletions.append(.init(id: request.id, generation: request.generation, epoch: token, range: range))
         updateCacheCompletionCount()
         request.continuation.resume(returning: .bytes(data))
@@ -727,6 +788,9 @@ import Foundation
             var diagnostic = removed.rangeDiagnostic
             diagnostic.finished = ProcessInfo.processInfo.systemUptime; diagnostic.result = .cancelled
             diagnostic.completionEpoch = epoch; diagnostic.bytes = 0; rangeDiagnostics.append(diagnostic)
+            #if DEBUG || VISTA_DIAGNOSTICS
+            (seekDiagnostics ?? removed.seekTrace)?.completed(diagnostic)
+            #endif
             if case .read(let range) = removed.operation, !range.isEmpty { metrics.diagnostics.demandCancelledCount &+= 1 }
             removed.continuation.resume(throwing: CancellationError())
         } else if let activeRequest, activeRequest.id == id {
@@ -763,6 +827,9 @@ import Foundation
                     var diagnostic = request.rangeDiagnostic
                     diagnostic.finished = ProcessInfo.processInfo.systemUptime; diagnostic.result = .cancelled
                     diagnostic.completionEpoch = epoch; diagnostic.bytes = 0; rangeDiagnostics.append(diagnostic)
+            #if DEBUG || VISTA_DIAGNOSTICS
+            (seekDiagnostics ?? request.seekTrace)?.completed(diagnostic)
+            #endif
                     if case .read(let range) = request.operation, !range.isEmpty { metrics.diagnostics.demandCancelledCount &+= 1 }
                     request.continuation.resume(throwing: CancellationError()); continue
                 }
@@ -777,7 +844,13 @@ import Foundation
                 if request.waitedForPrefetch { record(.demandDequeued, reason: .none, request: request) }
                 metrics.demandWaitSeconds += max(0, ProcessInfo.processInfo.systemUptime - request.submitted)
                 let task = Task(priority: .userInitiated) {
+                    #if DEBUG || VISTA_DIAGNOSTICS
+                    try await MP4SeekDiagnosticContext.$trace.withValue(request.seekTrace) {
+                        try await PlaybackFlowTrace.$parent.withValue(flowWork) {try await PlaybackReadDiagnosticContext.$correlation.withValue(request.rangeDiagnostic.correlation) {try await self.perform(request)}}
+                    }
+                    #else
                     try await PlaybackFlowTrace.$parent.withValue(flowWork) {try await PlaybackReadDiagnosticContext.$correlation.withValue(request.rangeDiagnostic.correlation) { try await self.perform(request) }}
+                    #endif
                 }
                 activeDemand = task
                 let result = await task.result
@@ -812,6 +885,9 @@ import Foundation
                     }
                 }
                 rangeDiagnostics.finish(result: outcome, bytes: returnedBytes, epoch: epoch, now: ProcessInfo.processInfo.systemUptime)
+                #if DEBUG || VISTA_DIAGNOSTICS
+                if let work=rangeDiagnostics.recent.last {(seekDiagnostics ?? request.seekTrace)?.completed(work)}
+                #endif
                 PlaybackFlowTrace.point(request.flow,.sourceAccept,a:outcome == .returned ? 0:outcome == .cancelled ? 2:3,b:Int64(returnedBytes),c:Int64(request.usedCachedBytes))
                 supplyDiagnostics.endWork()
                 activeDemand = nil
@@ -890,6 +966,16 @@ import Foundation
             rangeDiagnostics.current?.select(available: available.map(\.range),
                 selected: cachedBytes == range.count && !range.isEmpty ? [range] : segments.map(\.range),
                 epoch: token, fragmented: tooFragmented, validation: requiresValidation)
+            #if DEBUG || VISTA_DIAGNOSTICS
+            let seekTrace=seekDiagnostics ?? request.seekTrace
+            if let seekTrace,seekTrace.wantsDetail {
+                seekTrace.record(.cacheSelection,fields:MP4SeekDiagnostics.cacheFields(range:range,spans:readySpans+historySpans)
+                    .merging([.selectedCacheBytes:Double(cachedBytes),.detail:0,.requiresFlush:tooFragmented ? 1:0,.available:requiresValidation ? 0:1]){_,new in new},correlation:request.rangeDiagnostic.correlation)
+                for span in segments {
+                    seekTrace.record(.cacheSpan,fields:MP4SeekDiagnostics.rangeFields(span.range),correlation:request.rangeDiagnostic.correlation)
+                }
+            } else {seekTrace?.record(.cacheSelection)}
+            #endif
             metrics.demandSnapshotBytes = available.reduce(0) { $0 + $1.data.count }
             metrics.maxDemandSnapshotBytes = max(metrics.maxDemandSnapshotBytes, metrics.demandSnapshotBytes)
             defer { metrics.demandSnapshotBytes = 0 }
@@ -1268,12 +1354,23 @@ import Foundation
         guard room > 0, window.reads < forwardReadLimit else {
             metrics.diagnostics.noAdmissionFilledOrBudget &+= 1; return false
         }
+        #if VISTA_READ_PHASE216
+        let chunk = prefetchChunkBytes216
+        let length = min(chunk, room, Int(target - start))
+        #else
         let length = min(configuration.chunkBytes, room, Int(target - start))
+        #endif
         // Do not repeatedly top up tiny holes at every short demand boundary. The
         // next full read needs a real idle window and enough budget; EOF may be short.
+        #if VISTA_READ_PHASE216
+        guard length == chunk || start + UInt64(length) == size else {
+            metrics.diagnostics.noAdmissionFilledOrBudget &+= 1; return false
+        }
+        #else
         guard length == configuration.chunkBytes || start + UInt64(length) == size else {
             metrics.diagnostics.noAdmissionFilledOrBudget &+= 1; return false
         }
+        #endif
         let range = start..<(start + UInt64(length))
         let admitted = admission, version = generation
         // ResourceLoader often submits its next chunk immediately after the prior completion.
@@ -1317,6 +1414,9 @@ import Foundation
         supplyDiagnostics.beginWork(kind: .prefetch, id: context.id, generation: version, epoch: token, now: started)
         defer {
             rangeDiagnostics.finish(result: diagnosticResult, bytes: returnedBytes, epoch: epoch, now: ProcessInfo.processInfo.systemUptime)
+            #if DEBUG || VISTA_DIAGNOSTICS
+            if let work=rangeDiagnostics.recent.last {seekDiagnostics?.completed(work)}
+            #endif
             supplyDiagnostics.endWork()
             metrics.speculativeSeconds += max(0, ProcessInfo.processInfo.systemUptime - started)
             inFlight = nil

@@ -59,7 +59,10 @@ static ptrdiff_t input_read(void *opaque,unsigned char *bytes,size_t count) {
     Cursor *c=opaque; VLCProbeEngine *s=c->owner;
     if(c->offset>s->size)return -1;
     /* Exact caller demand only: no read-ahead or extra source bytes. */
+#if !defined(VISTA_READ_PHASE216)
     if(count>524288)count=524288;
+#endif
+    /* The experimental Swift context clamps to its shared current phase. */
     if(count>s->size-c->offset)count=(size_t)(s->size-c->offset);
     if(!count)return s->verify_eof(s->context)==0?0:-1;
 

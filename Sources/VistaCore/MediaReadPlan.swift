@@ -1,10 +1,26 @@
 import Foundation
 
+#if VISTA_READ_PHASE216
+/// Shared byte-size references, not a shared playback/recovery state machine.
+public enum PlaybackReadReference216 {
+    public static let startupBytes: UInt64 = 1_048_576
+    public static let continuousBytes: UInt64 = 2_097_152
+}
+public enum PlaybackReadPhase216: Int, Sendable {
+    case startup = 1, continuous = 2
+    public var bytes: UInt64 { self == .startup ? PlaybackReadReference216.startupBytes : PlaybackReadReference216.continuousBytes }
+}
+#endif
+
 /// Validated AVFoundation request bounds; iteration never allocates a list of all chunks.
 public struct MediaReadPlan: Sequence, Sendable {
     public static let chunkLimit: UInt64 = 65_536
     /// Native AVPlayer candidate: fixed demand ceiling, always clipped to the request and EOF.
+    #if VISTA_READ_PHASE216
+    public static let maximumChunkBytes: UInt64 = PlaybackReadReference216.continuousBytes
+    #else
     public static let maximumChunkBytes: UInt64 = 2_097_152
+    #endif
     public static let nativeChunkBytes: UInt64 = maximumChunkBytes
     public let range: Range<UInt64>
     public let chunkBytes:UInt64

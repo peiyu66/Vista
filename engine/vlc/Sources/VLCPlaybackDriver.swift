@@ -871,6 +871,19 @@ struct VLCControlDiagnostics {
     private var seekObservationPollAt=0.0
     private var seekObservationLastReject:[PlaybackVLCSeekDiagnostics.Scalar:Double]=[:]
     var onPrefetchActivityChanged:(()->Void)?
+    #if VISTA_READ_PHASE216
+    private var readPhase216:PlaybackReadPhase216 = .startup
+    private func readPhase216(_ phase:PlaybackReadPhase216,reason:Int) {
+        readPhase216=phase
+        engine?.context.setReadPhase216(phase)
+        (engine?.context.source as? SMBOperationSource)?.setReadReference216(phase.bytes)
+        LifecycleDiagnostics.shared.record(.playbackReadPhase,[.scope:2,.phase:Double(phase.rawValue),.cause:Double(reason),.bytes:Double(phase.bytes),.rate:selectedSpeed],priority:false)
+    }
+    private func acceptedReadFrame216() {
+        guard readPhase216 == .startup,!paused,automatic.rateConfirmed,pendingSeek==nil,currentSeek==nil else{return}
+        readPhase216(.continuous,reason:2)
+    }
+    #endif
     var clearPresentation:(()->Void)?
     var drainPresentation:((Bool)async throws->Void)?
     private(set) var failureMessage:String?
@@ -1053,6 +1066,9 @@ struct VLCControlDiagnostics {
         guard active,ready,speedStatus.accepts(rate) else{return false}
         interruptClockResync(preserveHealthy:true)
         emitRecovery(automaticRecovery.interrupt(.manualRate,now:ProcessInfo.processInfo.systemUptime))
+        #if VISTA_READ_PHASE216
+        if rate < selectedSpeed {readPhase216(.startup,reason:7)}
+        #endif
         audioOrigin = .manual
         automatic.manualRate(rate,now:ProcessInfo.processInfo.systemUptime);onSpeed?(speedStatus);return true
     }
@@ -1166,6 +1182,9 @@ struct VLCControlDiagnostics {
         }
         offerNotSevereQueue(queueSample,nowUS:pressureNow)
         if let decision {
+            #if VISTA_READ_PHASE216
+            if decision.nextSpeed < previous {readPhase216(.startup,reason:8)}
+            #endif
             VLCRecoveryFlow.automaticDecision(decision,previous:previous)
             PlaybackFlowTrace.trigger(2)
             audioOrigin = .automatic
@@ -1594,6 +1613,9 @@ struct VLCControlDiagnostics {
         seekObservationLastReject.removeAll(keepingCapacity:true)
         seekObservations.begin(session:speedSession,nonce:request.request.nonce,target:target,now:ProcessInfo.processInfo.systemUptime)
         interruptAutomatic(.seek);presentationTicket=request.request.nonce
+        #if VISTA_READ_PHASE216
+        readPhase216(.startup,reason:1)
+        #endif
         try await withCheckedThrowingContinuation { continuation in
             pendingSeek?.continuation?.resume(throwing:CancellationError())
             pendingSeek=Seek(target:target,nonce:presentationTicket,continuation:continuation)
@@ -1667,6 +1689,9 @@ struct VLCControlDiagnostics {
             let window=try await owner.beginWindow(generation:1)
             resetRecoverySource()
             let core=VLCAppEngine(window:window);engine=core
+            #if VISTA_READ_PHASE216
+            readPhase216(.startup,reason:6)
+            #endif
             resumeSeekIdentity.clear()
             emitControl(1)
             try await core.start()
@@ -1771,6 +1796,9 @@ struct VLCControlDiagnostics {
                 if currentSeek==nil,let next=pendingSeek {
                     guard seekGate?.begin()?.nonce==next.nonce else{throw VLCPlaybackError.seek}
                     pendingSeek=nil;currentSeek=next
+                    #if VISTA_READ_PHASE216
+                    readPhase216(.startup,reason:1)
+                    #endif
                     guard let drainPresentation else{throw VLCPlaybackError.renderer}
                     do {
                         let flow=PlaybackFlowTrace.begin(.controlPresentationDrain,a:VLCRecoveryFlow.integer(next.nonce),b:VLCRecoveryFlow.integer(next.intentRevision),c:next.isResync ? 1:0)
@@ -1911,6 +1939,9 @@ struct VLCControlDiagnostics {
                         if pendingSeek==nil,seek.nonce==presentationTicket,(!seek.isResync || (!paused && sceneActive)) {
                             displayPolicy.acceptSeek(frame.displayEvidence)
                             if seek.isResync {clockResync.costGuard.firstPublication(nonce:seek.nonce,pts:frame.seconds)}
+                            #if VISTA_READ_PHASE216
+                            acceptedReadFrame216()
+                            #endif
                             frameSession=UUID();controlDiagnostics.didPublish(pts:frame.seconds,now:now);automaticRecovery.published(now:now,pts:frame.seconds);PlaybackFlowTrace.measure(.publish,parent:frame.flow){onFrame(.init(pixel:frame.pixel,time:frame.seconds,session:frameSession,flow:frame.flow))};lastFrameAt=now
                         }
                     } else if poll.frame != nil {
@@ -1944,6 +1975,9 @@ struct VLCControlDiagnostics {
                     let decision=displayDecision(frame,poll:poll,ticket:ticket)
                     observeDisplay(decision,poll:poll)
                     if decision.accepted {
+                        #if VISTA_READ_PHASE216
+                        acceptedReadFrame216()
+                        #endif
                         publishedPTS=frame.seconds;controlDiagnostics.didPublish(pts:frame.seconds,now:now);automaticRecovery.published(now:now,pts:frame.seconds);PlaybackFlowTrace.measure(.publish,parent:frame.flow){onFrame(.init(pixel:frame.pixel,time:frame.seconds,session:frameSession,flow:frame.flow))};lastFrameAt=now;ready=true
                     }else{PlaybackFlowTrace.mark(.discard,parent:frame.flow,a:3);controlDiagnostics.rejectedClock(now:now)}
                 }

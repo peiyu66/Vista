@@ -142,16 +142,24 @@ struct NativeVideoDeliveryDiagnosticsTests {
   let root=URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
   let source=try String(contentsOf:root.appendingPathComponent("Sources/VistaMedia/NativePlaybackSession.swift"),encoding:.utf8)
   func occurrences(_ text:String)->Int {source.components(separatedBy:text).count-1}
-  #expect(occurrences("output.hasNewPixelBuffer(")==1 && occurrences("output.copyPixelBuffer(")==1)
+  #expect(occurrences("output.hasNewPixelBuffer(")==2 && occurrences("output.copyPixelBuffer(")==1)
   #expect(source.contains("while true {\n    try check()\n    videoDeliveryDiagnostics.recordLoop(now:ProcessInfo.processInfo.systemUptime)"))
   // Build98 query-outcome bits remain beside the same real API boundaries.
   // Build92's observational flag and the existing counter cadence are retained.
-  #expect(source.contains("var outputPolled=false,copiedFramePTS:Double?\n    if !seeking,let outputTime {\n     outputPolled=true;latestOutput.validity |= 64\n     videoDeliveryDiagnostics.recordOutputPoll()\n     if output.hasNewPixelBuffer(forItemTime:outputTime) {\n      latestOutput.validity |= 128\n      videoDeliveryDiagnostics.recordOutputHasNew()"))
+  #expect(source.contains("    if !seeking,let outputTime {\n     outputPolled=true;latestOutput.validity |= 64\n     videoDeliveryDiagnostics.recordOutputPoll()\n     if output.hasNewPixelBuffer(forItemTime:outputTime) {\n      latestOutput.validity |= 128\n      videoDeliveryDiagnostics.recordOutputHasNew()"))
   #expect(occurrences("outputPolled=true")==1 && occurrences("videoDeliveryDiagnostics.recordOutputPoll()")==1)
   #expect(source.contains("if let pixel=copiedPixel,display.seconds.isFinite {\n       copiedFramePTS=display.seconds"))
   #expect(occurrences("copiedFramePTS=display.seconds")==1)
   #expect(occurrences("updateBufferingSpeed(now:ProcessInfo.processInfo.systemUptime,duration:duration,outputPolled:outputPolled,copiedFramePTS:copiedFramePTS)")==1)
-  #expect(source.contains("let copiedPixel=output.copyPixelBuffer(forItemTime:outputTime,itemTimeForDisplay:&display)\n      returnedFramePTS=display.seconds.isFinite ? display.seconds:nil\n      if copiedPixel == nil {latestOutput.validity |= 256;videoDeliveryDiagnostics.recordOutputCopyNil()}\n      if let pixel=copiedPixel,display.seconds.isFinite {"))
+  // Passive timestamps may sit between API return and its unchanged consumers.
+  // Check one API call (above) and ordering, not incidental adjacent source lines.
+  var copyRemainder=source[...]
+  for call in ["let copiedPixel=output.copyPixelBuffer(forItemTime:outputTime,itemTimeForDisplay:&display)",
+               "returnedFramePTS=display.seconds.isFinite ? display.seconds:nil",
+               "if copiedPixel == nil {latestOutput.validity |= 256;videoDeliveryDiagnostics.recordOutputCopyNil()}",
+               "if let pixel=copiedPixel,display.seconds.isFinite {"] {
+   let boundary=try #require(copyRemainder.range(of:call));copyRemainder=copyRemainder[boundary.upperBound...]
+  }
   #expect(source.contains("frames += 1\n       videoDeliveryDiagnostics.recordFrame(now:lastProgress,presentationTime:display.seconds)"))
   #expect(occurrences("videoDeliveryDiagnostics.recordFrame(")==1)
   #expect(source.contains("loader.onReadProgress={ [weak self] in\n    let now=ProcessInfo.processInfo.systemUptime;self?.lastProgress=now;self?.lastDeliveryAt=now\n   }"))
