@@ -3,6 +3,7 @@ import OSLog
 
 /// A local anonymous timeline. No file names, paths, accounts, URLs, or arbitrary text enter records.
 public enum LifecycleEvent:String,Codable,Sendable {
+    case shortcutInput
     case processStart,applicationNotification,scenePhase,viewAppear,viewDisappear
     case browseIntent,cancelRequested,requestStart,resultApplied,resultDiscarded,requestError
     case taskCreated,taskEntered,taskExited,providerWillCall,providerEntered,providerExited
@@ -11,6 +12,9 @@ public enum LifecycleEvent:String,Codable,Sendable {
     case playbackBoundary,playbackSourceRecovery,playbackAudioBoundary,videoRecenter,progressInput,progressVisibility
 }
 public enum LifecycleField:String,Codable,Sendable {
+    case handleFrame,targetDiameter,targetInset
+    case orderOutcome,fromOrdinal,requestedOrdinal,appliedOrdinal,gazeObservable,physicalAttemptObservable
+    case capture,inputKind,row,firstSequence,lastSequence,firstMS,lastMS,sampleCount,firstOffset,offset,ordinal,inputX,inputY,contentHeight,about,removing,playback,rowX,rowY,rowWidth,rowHeight,viewportWidth,viewportHeight,firstX,firstY
     case scope,phase,previousPhase,notification,navigation,request,parentRequest,session,operation,outcome
     case errorDomain,errorCode,errorOrigin,timeout,durationMS,sampledStart,sourceKind,generation,active,cancelled
     case trace,epoch,cause,detail,playing,paused,preparing,frameAvailable,requiresFlush,rendererFailed,acceptsSamples,pending,worker,ticket

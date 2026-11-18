@@ -722,10 +722,30 @@ import Observation
         browse(source:sourceID,path:Array(components.dropLast())+[entry.name])
     }
     func insertShortcut(_ id:UUID,at index:Int) {
+
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+        let inputProbeFrom=saved.shortcuts.firstIndex(where:{$0.id==id}).map{$0+1} ?? 0
+        var inputProbeOutcome:ShortcutInputMemoryProbe.OrderOutcome = editing ? .storageUnavailable:.notEditing
+        defer {ShortcutInputMemoryProbe.shared.order(id:id,outcome:inputProbeOutcome,from:inputProbeFrom,requested:index+1,applied:saved.shortcuts.firstIndex(where:{$0.id==id}).map{$0+1} ?? 0)}
+#endif
+// INPUT_PROBE_END
         guard editing,storageHealthy else{return}
         var candidate=saved;candidate.insertShortcut(id,at:index)
-        do {try store.save(candidate);saved=candidate}
-        catch {notice=VistaL10n.text("無法保存捷徑順序；原順序保留。")}
+        do {try store.save(candidate);saved=candidate
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+inputProbeOutcome = inputProbeFrom == (saved.shortcuts.firstIndex(where:{$0.id==id}).map{$0+1} ?? 0) ? .savedUnchanged:.savedChanged
+#endif
+// INPUT_PROBE_END
+}
+        catch {
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+inputProbeOutcome = .saveFailed
+#endif
+// INPUT_PROBE_END
+notice=VistaL10n.text("無法保存捷徑順序；原順序保留。")}
     }
     func reorder(_ id:UUID,to target:UUID) {guard editing else{return};saved.reorderShortcut(id,to:target);persist()}
     func addShortcut() {
@@ -1086,9 +1106,27 @@ struct ShortcutBrowserView: View {
                     ForEach(Array(model.saved.shortcuts.enumerated()),id:\.element.id) {index,item in
                         if model.editing {
                             ShortcutEditRow(item:item,rename:{model.rename(item.id,to:$0)},remove:{model.remove(item.id)},preview:{point in
+
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+                                ShortcutInputMemoryProbe.shared.input(.changed,id:item.id,ordinal:index+1,point:point,rect:shortcutFrames[item.id],viewport:sidebarViewport,offset:sidebarGeometry.width,contentHeight:sidebarGeometry.height,about:showingAbout,removing:removingSource != nil,playback:model.playback != nil)
+#endif
+// INPUT_PROBE_END
                                 shortcutDrag=(item.id,point);refreshShortcutInsertion()
                             },move:{point in
+
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+                                ShortcutInputMemoryProbe.shared.input(.ended,id:item.id,ordinal:index+1,point:point,rect:shortcutFrames[item.id],viewport:sidebarViewport,offset:sidebarGeometry.width,contentHeight:sidebarGeometry.height,about:showingAbout,removing:removingSource != nil,playback:model.playback != nil)
+#endif
+// INPUT_PROBE_END
                                 shortcutDrag=(item.id,point);refreshShortcutInsertion()
+
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+if shortcutInsertion == nil {ShortcutInputMemoryProbe.shared.order(id:item.id,outcome:.noInsertion,from:index+1,requested:0,applied:index+1)}
+#endif
+// INPUT_PROBE_END
                                 if let insertion=shortcutInsertion {lastDrop=insertion.index;model.insertShortcut(insertion.id,at:insertion.index)}
                                 clearShortcutDrag()
                             },cancel:clearShortcutDrag)
@@ -1129,7 +1167,13 @@ struct ShortcutBrowserView: View {
             .coordinateSpace(name:"shortcutViewport")
             .scrollPosition($sidebarPosition)
             .onGeometryChange(for:CGSize.self){$0.size} action:{sidebarViewport=$0}
-            .onScrollGeometryChange(for:CGSize.self){CGSize(width:$0.contentOffset.y,height:$0.contentSize.height)} action:{_,value in sidebarGeometry=value}
+            .onScrollGeometryChange(for:CGSize.self){CGSize(width:$0.contentOffset.y,height:$0.contentSize.height)} action:{_,value in 
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+ShortcutInputMemoryProbe.shared.scroll(offset:value.width)
+#endif
+// INPUT_PROBE_END
+sidebarGeometry=value}
             .accessibilityIdentifier("shortcutSidebarScroll")
             .overlay(alignment:.bottomLeading) {
                 if ProcessInfo.processInfo.arguments.contains("--long-shortcuts") {
@@ -1148,8 +1192,26 @@ struct ShortcutBrowserView: View {
                     do {try await Task.sleep(for:.milliseconds(50))} catch {break}
                 }
             }
-            .onChange(of:model.editing){_,_ in clearShortcutDrag()}
-            .onDisappear{clearShortcutDrag()}
+
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+            .onAppear {ShortcutInputMemoryProbe.shared.editing(model.editing)}
+#endif
+// INPUT_PROBE_END
+            .onChange(of:model.editing){_,_ in
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+ShortcutInputMemoryProbe.shared.editing(model.editing)
+#endif
+// INPUT_PROBE_END
+ clearShortcutDrag()}
+            .onDisappear{
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+ShortcutInputMemoryProbe.shared.boundary(.browserDisappeared,active:shortcutDrag?.id);ShortcutInputMemoryProbe.shared.stop()
+#endif
+// INPUT_PROBE_END
+clearShortcutDrag()}
             Spacer(minLength:0)
             if ProcessInfo.processInfo.arguments.contains("--long-shortcuts") {
                 Text("ticks=\(autoTicks);drop=\(lastDrop);active=\(shortcutDrag != nil);order="+model.saved.shortcuts.map(\.name).joined(separator:","))
@@ -1160,7 +1222,13 @@ struct ShortcutBrowserView: View {
                 .accessibilityIdentifier("vistaAbout")
         }.background(.black.opacity(0.08))
     }
-    private func clearShortcutDrag() {shortcutDrag=nil;shortcutInsertion=nil}
+    private func clearShortcutDrag() {
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+ShortcutInputMemoryProbe.shared.boundary(.cleared,active:shortcutDrag?.id)
+#endif
+// INPUT_PROBE_END
+shortcutDrag=nil;shortcutInsertion=nil}
     private func refreshShortcutInsertion() {
         guard let drag=shortcutDrag,model.editing,drag.point.y>=0,drag.point.y<=sidebarViewport.height else {shortcutInsertion=nil;return}
         let slot=ShortcutInsertion.index(dragged:drag.id,ordered:model.saved.shortcuts.map(\.id),frames:shortcutFrames,point:drag.point)
@@ -1544,8 +1612,8 @@ private struct ShortcutEditRow:View {
         HStack(spacing:8) {
             Image(systemName:"line.3.horizontal")
                 .frame(width:44,height:44)
-                .contentShape(.interaction,Capsule())
-                .contentShape(.hoverEffect,Capsule())
+                .contentShape(.interaction,Capsule().inset(by:4))
+                .contentShape(.hoverEffect,Capsule().inset(by:4))
                 .hoverEffect(.highlight)
                 .foregroundStyle(dragging ? BrowserBluePalette.emphasis:Color.secondary)
                 .gesture(DragGesture(minimumDistance:0,coordinateSpace:.named("shortcutViewport"))
@@ -1559,8 +1627,20 @@ private struct ShortcutEditRow:View {
                 .buttonStyle(.plain).accessibilityLabel(VistaL10n.text("移除 %@" , String(describing: item.name)))
                 .accessibilityIdentifier("remove-\(item.name)")
         }.padding(.vertical,5)
-            .onChange(of:dragging){_,active in if !active {cancel()}}
-            .onDisappear{cancel()}
+            .onChange(of:dragging){_,active in
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+ShortcutInputMemoryProbe.shared.highlight(active,id:item.id)
+#endif
+// INPUT_PROBE_END
+ if !active {cancel()}}
+            .onDisappear{
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+ShortcutInputMemoryProbe.shared.lifecycle(.rowDisappeared,id:item.id)
+#endif
+// INPUT_PROBE_END
+cancel()}
     }
 }
 private struct ShortcutFrameKey:PreferenceKey {
@@ -1691,7 +1771,7 @@ private struct VistaAboutView:View {
                 Section {
                     Text("Vista").font(.title.bold())
                     Text(VistaL10n.text("Apple Vision Pro 的 VR 影片播放器。從 SMB 或本機資料夾選片，調整投影、左右眼排列與沉浸式播放控制。"))
-                    Text(version).foregroundStyle(.secondary)
+                    Text(version).foregroundStyle(.secondary).accessibilityIdentifier("vistaAboutVersion")
                 }
                 Section(VistaL10n.text("隱私權與授權")) {
                     NavigationLink(VistaL10n.text("隱私權聲明")) { VistaBundledNotice(title:VistaL10n.text("隱私權聲明"),resource:"VistaPrivacy") }
@@ -1706,7 +1786,7 @@ private struct VistaAboutView:View {
                 }
             }
             .navigationTitle(VistaL10n.text("關於 Vista"))
-            .toolbar {ToolbarItem(placement:.confirmationAction) {Button(VistaL10n.text("完成")) {dismiss()}}}
+            .toolbar {ToolbarItem(placement:.confirmationAction) {Button(VistaL10n.text("完成")) {dismiss()}.accessibilityIdentifier("vistaAboutDone")}}
         }.safeAreaPadding(.bottom,24).frame(width:640,height:620)
     }
 }
@@ -1749,3 +1829,168 @@ private struct VistaBundledNotice:View {
         }
     }
 }
+
+// INPUT_PROBE_BEGIN
+#if DEBUG || VISTA_DIAGNOSTICS
+// INPUT_PROBE_CORE_BEGIN
+import Foundation
+// Non-observable bounded capture. The injected sink uses the existing asynchronous diagnostic writer; no gesture recognizers or timers.
+@MainActor final class ShortcutInputMemoryProbe {
+    static let shared = ShortcutInputMemoryProbe(sink:ShortcutInputLog.shared.persist)
+    enum Kind:String,Codable { case changed, ended, inactive, rowDisappeared, scroll, cleared, editingChanged, browserDisappeared, captureStarted, captureStopped, orderResult, highlightActive }
+    struct Context:Codable,Equatable {
+        var row:Int
+        var ordinal:Int
+        var x:Double
+        var y:Double
+        var rowRect:[Double]
+        var viewport:[Double]
+        var offset:Double
+        var contentHeight:Double
+        var about:Bool
+        var removing:Bool
+        var playback:Bool
+    }
+    enum OrderOutcome:Int,Codable {case noInsertion=1,notEditing,storageUnavailable,savedChanged,savedUnchanged,saveFailed}
+    struct OrderResult:Codable {let outcome:OrderOutcome;let from:Int;let requested:Int;let applied:Int}
+    struct Event:Codable {
+        var firstSequence:Int
+        var lastSequence:Int
+        var firstMS:Double
+        var lastMS:Double
+        var kind:Kind
+        var row:Int
+        var count:Int
+        var firstContext:Context?
+        var context:Context?
+        var firstOffset:Double?
+        var offset:Double?
+        var order:OrderResult?
+    }
+    struct Report:Codable {
+        let schema:Int
+        let recording:Bool
+        let observations:Int
+        let discardedGroups:Int
+        let aliasCapacityReached:Bool
+        let events:[Event]
+        let limits:String
+    }
+    private(set) var recording=false
+    private(set) var events:[Event]=[]
+    private(set) var observations=0
+    private(set) var discardedGroups=0
+    private(set) var aliasCapacityReached=false
+    private var aliases:[UUID:Int]=[:]
+    private var contexts:[Int:Context]=[:]
+    private var started=0.0
+    private let clock:()->Double
+    private let capacity=128
+    private let sink:@MainActor (Event)->Void
+    private var persistedSequence=0
+    init(clock:@escaping ()->Double = {ProcessInfo.processInfo.systemUptime},sink:@escaping @MainActor (Event)->Void = {_ in}) { self.clock=clock;self.sink=sink }
+    func begin() {
+        stop()
+        events.removeAll(keepingCapacity:true);aliases.removeAll(keepingCapacity:true);contexts.removeAll(keepingCapacity:true)
+        observations=0;discardedGroups=0;aliasCapacityReached=false;started=clock();persistedSequence=0;recording=true
+        append(.captureStarted,row:0,context:nil,offset:nil)
+    }
+    func stop() {
+        guard recording else{return}
+        append(.captureStopped,row:0,context:nil,offset:nil);recording=false
+    }
+    func editing(_ active:Bool) {if active {if !recording {begin()}} else {stop()}}
+    func order(id:UUID,outcome:OrderOutcome,from:Int,requested:Int,applied:Int) {
+        guard recording else{return}
+        let row=alias(id)
+        append(.orderResult,row:row,context:contexts[row],offset:nil,order:OrderResult(outcome:outcome,from:from,requested:requested,applied:applied))
+    }
+    private func flushLast() {
+        guard let last=events.last,last.lastSequence>persistedSequence else{return}
+        sink(last);persistedSequence=last.lastSequence
+    }
+    private func alias(_ id:UUID)->Int {
+        if let value=aliases[id] {return value}
+        guard aliases.count<capacity else {aliasCapacityReached=true;return 0}
+        let value=aliases.count+1;aliases[id]=value;return value
+    }
+    func input(_ kind:Kind,id:UUID,ordinal:Int,point:CGPoint,rect:CGRect?,viewport:CGSize,offset:Double,contentHeight:Double,about:Bool,removing:Bool,playback:Bool) {
+        guard recording else{return}
+        let row=alias(id)
+        let context=Context(row:row,ordinal:ordinal,x:point.x,y:point.y,
+            rowRect:rect.map{[$0.minX,$0.minY,$0.width,$0.height]} ?? [],
+            viewport:[viewport.width,viewport.height],offset:offset,contentHeight:contentHeight,
+            about:about,removing:removing,playback:playback)
+        if row != 0 {contexts[row]=context}
+        append(kind,row:row,context:context,offset:nil)
+    }
+    func highlight(_ active:Bool,id:UUID) {
+        guard recording else{return}
+        if active {let row=alias(id);append(.highlightActive,row:row,context:contexts[row],offset:nil)}
+        else {lifecycle(.inactive,id:id)}
+    }
+    func lifecycle(_ kind:Kind,id:UUID) {
+        guard recording,let row=aliases[id] else{return}
+        // This is an observed inactive/disappear edge, never a claim of OS cancellation.
+        append(kind,row:row,context:contexts[row],offset:nil)
+    }
+    func scroll(offset:Double) {
+        guard recording else{return}
+        append(.scroll,row:0,context:nil,offset:offset)
+    }
+    func boundary(_ kind:Kind,active:UUID?=nil) {
+        guard recording else{return}
+        let row=active.flatMap{aliases[$0]} ?? 0
+        append(kind,row:row,context:contexts[row],offset:nil)
+    }
+    private func append(_ kind:Kind,row:Int,context:Context?,offset:Double?,order:OrderResult?=nil) {
+        observations += 1
+        let ms=(clock()-started)*1000
+        // Compress only consecutive updates. Start/end/inactive boundaries stay separate.
+        if (kind == .changed || kind == .scroll),var last=events.last,last.kind==kind,last.row==row {
+            last.lastSequence=observations;last.lastMS=ms;last.count += 1;last.context=context;last.offset=offset
+            events[events.count-1]=last;return
+        }
+        flushLast()
+        if events.count==capacity {events.removeFirst();discardedGroups += 1}
+        events.append(Event(firstSequence:observations,lastSequence:observations,firstMS:ms,lastMS:ms,kind:kind,row:row,count:1,firstContext:context,context:context,firstOffset:offset,offset:offset,order:order))
+        if kind != .changed && kind != .scroll {flushLast()}
+    }
+    func snapshot()->String {
+        let report=Report(schema:1,recording:recording,observations:observations,discardedGroups:discardedGroups,aliasCapacityReached:aliasCapacityReached,events:events,
+            limits:"Observed SwiftUI callbacks only. inactive is not proof of cancellation; onEnded ordering may vary. Missing callbacks cannot count attempted pinches or identify the winning recognizer. Context at inactive/disappear is the last input sample, not a fresh geometry measurement. Consecutive changed/scroll updates retain only first/last samples and count. Diagnostic sink persists completed groups asynchronously; an unflushed tail or pending writes can be lost at process exit. Gaze focus and unreported physical pinch attempts are unknown.")
+        let encoder=JSONEncoder();encoder.outputFormatting=[.prettyPrinted,.sortedKeys]
+        guard let data=try? encoder.encode(report),let text=String(data:data,encoding:.utf8) else{return "Snapshot encoding failed"}
+        return text
+    }
+}
+// INPUT_PROBE_CORE_END
+@MainActor final class ShortcutInputLog {
+    static let shared=ShortcutInputLog()
+    private let writer:LifecycleDiagnostics
+    private var capture=0
+    init(directory:URL=FileManager.default.urls(for:.applicationSupportDirectory,in:.userDomainMask)[0].appendingPathComponent("VistaShortcutDiagnostics",isDirectory:true)) {
+        writer=LifecycleDiagnostics(directory:directory,mirror:false,criticalDurability:false)
+    }
+    func persist(_ e:ShortcutInputMemoryProbe.Event) {
+        if e.kind == .captureStarted {capture += 1}
+        let kinds:[ShortcutInputMemoryProbe.Kind]=[.changed,.ended,.inactive,.rowDisappeared,.scroll,.cleared,.editingChanged,.browserDisappeared,.captureStarted,.captureStopped,.orderResult,.highlightActive]
+        var f:[LifecycleField:Double]=[.scope:212,.capture:Double(capture),.inputKind:Double(kinds.firstIndex(of:e.kind)!+1),.row:Double(e.row),.firstSequence:Double(e.firstSequence),.lastSequence:Double(e.lastSequence),.firstMS:e.firstMS,.lastMS:e.lastMS,.sampleCount:Double(e.count)]
+        if let v=e.firstOffset {f[.firstOffset]=v};if let v=e.offset {f[.offset]=v}
+        if let c=e.context {
+            f[.ordinal]=Double(c.ordinal);f[.inputX]=c.x;f[.inputY]=c.y;f[.offset]=c.offset;f[.contentHeight]=c.contentHeight
+            f[.about]=c.about ? 1:0;f[.removing]=c.removing ? 1:0;f[.playback]=c.playback ? 1:0
+            if c.rowRect.count==4 {f[.rowX]=c.rowRect[0];f[.rowY]=c.rowRect[1];f[.rowWidth]=c.rowRect[2];f[.rowHeight]=c.rowRect[3]}
+            if c.viewport.count==2 {f[.viewportWidth]=c.viewport[0];f[.viewportHeight]=c.viewport[1]}
+        }
+        if let c=e.firstContext {f[.firstX]=c.x;f[.firstY]=c.y;f[.firstOffset]=c.offset}
+        if let o=e.order {f[.orderOutcome]=Double(o.outcome.rawValue);f[.fromOrdinal]=Double(o.from);f[.requestedOrdinal]=Double(o.requested);f[.appliedOrdinal]=Double(o.applied)}
+        // 0 means unavailable, never "not focused" or "no attempt".
+        f[.gazeObservable]=0;f[.physicalAttemptObservable]=0
+        f[.handleFrame]=44;f[.targetDiameter]=36;f[.targetInset]=4
+        writer.record(.shortcutInput,f)
+    }
+}
+
+#endif
+// INPUT_PROBE_END

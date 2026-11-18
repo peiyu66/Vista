@@ -32,7 +32,7 @@ Vista 不提供自動將影片或診斷上傳至開發者伺服器的功能，�
 
 Vista 的正式支援不要求使用者上傳診斷日誌。請到 [GitHub Issues](https://github.com/peiyu66/Vista/issues)自行描述 App 版本、操作步驟及遇到的現象；請勿附上診斷日誌、帳密、私人影片或私人路徑。Vista 不會自動將日誌、影片或來源設定附加至回報。
 
-GitHub Issues 是外部的公開回報平台。你自行提交的文字、附件及公開帳號資訊，可由維護者與其他人讀取；維護者會使用回報內容協助排查及回應問題。GitHub 也會依其[隱私權聲明](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement)處理帳號、提交內容及使用服務時的裝置與連線資料。這不代表在 GitHub 回報問題完全沒有資料處理。
+GitHub Issues 是外部的公開回報平台。你自行提交的文字、附件及公開帳號資訊，可由維護者與其他人讀取；維護者會使用回報內容協助排查及回應問題。GitHub 也會依其[隱私權聲明](https://docs.github.com/zh/site-policy/privacy-policies/github-general-privacy-statement)處理帳號、提交內容及使用服務時的裝置與連線資料。這不代表在 GitHub 回報問題完全沒有資料處理。
 
 ## 管理資料
 
